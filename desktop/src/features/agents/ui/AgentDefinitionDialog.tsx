@@ -111,6 +111,12 @@ type AgentDefinitionDialogProps = {
   createRunSection?: React.ReactNode;
   /** Extra create-mode submit gate (e.g. incomplete provider config). */
   createSubmitBlocked?: boolean;
+  /**
+   * True when the create-mode "Run on" selection targets a remote backend
+   * provider. Local install state cannot gate harness choice then — the
+   * agent runs on the remote host, not this machine.
+   */
+  remoteBackendSelected?: boolean;
 };
 
 export type AgentDefinitionSubmitOptions = {
@@ -137,6 +143,7 @@ export function AgentDefinitionDialog({
   publishCatalogUpdatesOnSave = false,
   createRunSection,
   createSubmitBlocked = false,
+  remoteBackendSelected = false,
 }: AgentDefinitionDialogProps) {
   const [displayName, setDisplayName] = React.useState("");
   const [aiDefaultsOpen, setAiDefaultsOpen] = React.useState(false);
@@ -582,6 +589,7 @@ export function AgentDefinitionDialog({
     buildPersonaRuntimeDropdownOptions({
       defaultRuntimeId: defaultRuntime?.id,
       isCreateMode,
+      remoteBackendSelected,
       runtime,
       runtimes,
       runtimesLoading,

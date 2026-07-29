@@ -6,6 +6,7 @@ import {
   getPersonaModelOptions,
   getPersonaProviderOptions,
   resetConfigForHarnessChange,
+  runtimeDropdownOption,
   runtimeSupportsLlmProviderSelection,
 } from "./agentConfigOptions.tsx";
 import { formatModelDiscoveryErrorStatus } from "./personaModelDiscoveryStatus.ts";
@@ -245,4 +246,55 @@ test("formatModelDiscoveryErrorStatus returns a non-null status for runtime unav
     assert.ok(typeof status?.message === "string", "status has a message");
     assert.ok(typeof status?.tone === "string", "status has a tone");
   }
+});
+
+// ── runtimeDropdownOption: local availability must not gate remote backends ──
+
+function runtimeEntry(overrides = {}) {
+  return {
+    availability: "not_installed",
+    id: "claude",
+    label: "Claude Code",
+    ...overrides,
+  };
+}
+
+test("local create mode disables unavailable harnesses when a default exists", () => {
+  const option = runtimeDropdownOption({
+    isCreateMode: true,
+    isDefault: false,
+    localGatingActive: true,
+    remoteBackendSelected: false,
+    runtime: runtimeEntry(),
+  });
+  assert.equal(option.disabled, true);
+  assert.equal(option.label, "Claude Code (not installed)");
+});
+
+test("remote backend offers every harness regardless of local install state", () => {
+  const option = runtimeDropdownOption({
+    isCreateMode: true,
+    isDefault: false,
+    localGatingActive: true,
+    remoteBackendSelected: true,
+    runtime: runtimeEntry(),
+  });
+  // Local install state is meaningless for a remote backend: selectable,
+  // and the local "(not installed)" suffix is replaced by a neutral note.
+  assert.equal(option.disabled, undefined);
+  assert.equal(option.label, "Claude Code (not verified on remote backend)");
+});
+
+test("remote backend keeps available harnesses unannotated", () => {
+  const option = runtimeDropdownOption({
+    isCreateMode: true,
+    isDefault: true,
+    localGatingActive: true,
+    remoteBackendSelected: true,
+    runtime: runtimeEntry({ availability: "available" }),
+  });
+  assert.deepEqual(option, {
+    label: "Claude Code (default)",
+    value: "claude",
+  });
 });

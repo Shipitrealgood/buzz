@@ -15,6 +15,31 @@ export const emptyWhereToRunDraft: WhereToRunDraft = {
   probedProvider: null,
 };
 
+/**
+ * Seed schema defaults into a provider config without clobbering typed values.
+ *
+ * Only fields the user has left empty receive the schema `default`. The
+ * previous behavior (replacing the whole config with defaults after every
+ * probe) wiped the user's input as they typed, because the probe effect
+ * re-ran on each draft change.
+ */
+export function seedProviderConfigDefaults(
+  schema: Record<string, unknown> | undefined,
+  current: Record<string, string>,
+): Record<string, string> {
+  const properties = (schema?.properties ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const seeded: Record<string, string> = { ...current };
+  for (const [key, property] of Object.entries(properties)) {
+    if ((seeded[key] ?? "").trim() === "" && property.default != null) {
+      seeded[key] = String(property.default);
+    }
+  }
+  return seeded;
+}
+
 export function providerConfigComplete(draft: WhereToRunDraft): boolean {
   if (draft.runOn === "local") return true;
   if (!draft.probedProvider) return false;

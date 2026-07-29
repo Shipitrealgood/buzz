@@ -429,12 +429,15 @@ export function formatRuntimeOptionLabel(runtime: AcpRuntimeCatalogEntry) {
 export function buildPersonaRuntimeDropdownOptions({
   defaultRuntimeId,
   isCreateMode,
+  remoteBackendSelected = false,
   runtime,
   runtimes,
   runtimesLoading,
 }: {
   defaultRuntimeId?: string;
   isCreateMode: boolean;
+  /** True when the create-mode "Run on" selection targets a remote backend. */
+  remoteBackendSelected?: boolean;
   runtime: string;
   runtimes: AcpRuntimeCatalogEntry[];
   runtimesLoading: boolean;
@@ -456,16 +459,15 @@ export function buildPersonaRuntimeDropdownOptions({
           },
         ]
       : []),
-    ...sortPersonaRuntimes(runtimes).map((candidate) => ({
-      disabled:
-        isCreateMode &&
-        defaultRuntimeId !== undefined &&
-        candidate.availability !== "available",
-      label: `${formatRuntimeOptionLabel(candidate)}${
-        isCreateMode && candidate.id === defaultRuntimeId ? " (default)" : ""
-      }`,
-      value: candidate.id,
-    })),
+    ...sortPersonaRuntimes(runtimes).map((candidate) =>
+      runtimeDropdownOption({
+        isCreateMode,
+        isDefault: candidate.id === defaultRuntimeId,
+        localGatingActive: defaultRuntimeId !== undefined,
+        remoteBackendSelected,
+        runtime: candidate,
+      }),
+    ),
   ];
   const currentRuntime = runtime.trim();
   if (
@@ -478,6 +480,48 @@ export function buildPersonaRuntimeDropdownOptions({
     });
   }
   return { blankRuntimeOptionLabel, runtimeDropdownOptions };
+}
+
+/**
+ * Build one harness dropdown option, accounting for where the agent will run.
+ *
+ * Availability is probed on THIS machine, so it can only gate selection for
+ * local agents. When a remote backend provider is selected, every harness is
+ * offered — the remote host's install state is unknown here — with local
+ * availability suffixes replaced by a neutral "not verified" note so the
+ * label does not misreport the remote host.
+ */
+export function runtimeDropdownOption({
+  isCreateMode,
+  isDefault,
+  localGatingActive,
+  remoteBackendSelected,
+  runtime,
+}: {
+  isCreateMode: boolean;
+  isDefault: boolean;
+  /** True when a default runtime exists to fall back to (create mode gate). */
+  localGatingActive: boolean;
+  remoteBackendSelected: boolean;
+  runtime: AcpRuntimeCatalogEntry;
+}): { disabled?: boolean; label: string; value: string } {
+  const defaultSuffix = isCreateMode && isDefault ? " (default)" : "";
+  if (remoteBackendSelected) {
+    const remoteSuffix =
+      runtime.availability === "available"
+        ? ""
+        : " (not verified on remote backend)";
+    return {
+      label: `${runtime.label}${remoteSuffix}${defaultSuffix}`,
+      value: runtime.id,
+    };
+  }
+  return {
+    disabled:
+      isCreateMode && localGatingActive && runtime.availability !== "available",
+    label: `${formatRuntimeOptionLabel(runtime)}${defaultSuffix}`,
+    value: runtime.id,
+  };
 }
 
 function runtimeAvailabilitySortRank(

@@ -5,7 +5,11 @@ import { useBackendProvidersQuery } from "@/features/agents/hooks";
 import { probeBackendProvider } from "@/shared/api/tauri";
 
 import { ProviderConfigFields } from "./ProviderConfigFields";
-import { emptyWhereToRunDraft, type WhereToRunDraft } from "./whereToRunIntent";
+import {
+  emptyWhereToRunDraft,
+  seedProviderConfigDefaults,
+  type WhereToRunDraft,
+} from "./whereToRunIntent";
 
 /** Optional remote-backend selector. Buzz shared compute is an LLM provider, not a run destination. */
 export function WhereToRunSection({
@@ -26,31 +30,33 @@ export function WhereToRunSection({
     [backendProviders, draft.runOn],
   );
 
+  // The probe result merges into the CURRENT draft, not the draft the effect
+  // closed over — the ref keeps typed config intact while the probe is in
+  // flight without making the effect depend on (and re-run for) every edit.
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
+
   React.useEffect(() => {
     if (!isProviderMode || !selectedBackendProvider) {
       setProbeError(null);
       return;
     }
+    // Probe once per selected provider — NOT on every draft change. The
+    // effect used to depend on `draft`, so each keystroke re-probed and
+    // reset providerConfig to schema defaults, wiping input as it was typed.
     let cancelled = false;
     setProbeError(null);
     void probeBackendProvider(selectedBackendProvider.binaryPath)
       .then((result) => {
         if (cancelled) return;
-        const defaults: Record<string, string> = {};
-        const properties =
-          (result.config_schema as Record<string, unknown> | undefined)
-            ?.properties ?? {};
-        for (const [key, property] of Object.entries(properties) as [
-          string,
-          Record<string, unknown>,
-        ][]) {
-          if (property.default != null)
-            defaults[key] = String(property.default);
-        }
+        const current = draftRef.current;
         onDraftChange({
-          ...draft,
+          ...current,
           probedProvider: result,
-          providerConfig: defaults,
+          providerConfig: seedProviderConfigDefaults(
+            result.config_schema as Record<string, unknown> | undefined,
+            current.providerConfig,
+          ),
         });
       })
       .catch((error: unknown) => {
@@ -61,7 +67,7 @@ export function WhereToRunSection({
     return () => {
       cancelled = true;
     };
-  }, [draft, isProviderMode, onDraftChange, selectedBackendProvider]);
+  }, [isProviderMode, onDraftChange, selectedBackendProvider]);
 
   if (backendProviders.length === 0) return null;
 

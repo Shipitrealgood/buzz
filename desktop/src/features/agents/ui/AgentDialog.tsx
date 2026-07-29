@@ -133,6 +133,7 @@ function AgentCreateDialogRouter({
         />
       }
       createSubmitBlocked={!canSubmitWhereToRun(runDraft)}
+      remoteBackendSelected={runDraft.runOn !== "local"}
       description={copy.description}
       error={definitionError}
       initialValues={initialValues}

@@ -6,6 +6,7 @@ import {
   emptyWhereToRunDraft,
   providerConfigComplete,
   resolveBackendIntent,
+  seedProviderConfigDefaults,
 } from "./whereToRunIntent.ts";
 
 const probed = {
@@ -58,4 +59,45 @@ test("provider draft resolves with coerced config values", () => {
     id: "blox",
     config: { region: "us", size: 3 },
   });
+});
+
+const seedSchema = {
+  properties: {
+    host: { type: "string" },
+    region: { type: "string", default: "us-east" },
+    tier: { type: "string", default: "standard" },
+  },
+};
+
+test("seeding fills only empty fields from schema defaults", () => {
+  const seeded = seedProviderConfigDefaults(seedSchema, {
+    region: "eu-west",
+    tier: "",
+  });
+  // Typed value wins; empty and absent fields take the default.
+  assert.deepEqual(seeded, { region: "eu-west", tier: "standard" });
+});
+
+test("seeding never clobbers typed config on re-probe", () => {
+  // Regression: the probe effect re-ran per keystroke and replaced the whole
+  // config with defaults, wiping the user's host as they typed it.
+  const typed = { host: "user@backend", region: "us-east" };
+  assert.deepEqual(seedProviderConfigDefaults(seedSchema, typed), {
+    host: "user@backend",
+    region: "us-east",
+    tier: "standard",
+  });
+});
+
+test("seeding tolerates a missing or default-free schema", () => {
+  assert.deepEqual(seedProviderConfigDefaults(undefined, { a: "1" }), {
+    a: "1",
+  });
+  assert.deepEqual(
+    seedProviderConfigDefaults(
+      { properties: { host: { type: "string" } } },
+      {},
+    ),
+    {},
+  );
 });
