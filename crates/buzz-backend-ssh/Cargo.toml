@@ -1,0 +1,20 @@
+[package]
+name = "buzz-backend-ssh"
+description = "Generic SSH backend provider for Buzz desktop — runs managed agents on a remote Linux host as systemd user services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# The remote helper (key → agent id derivation, systemd) is unix-only; the
+# provider mode that runs next to the desktop needs none of it. Keeping
+# nostr out of the Windows graph makes the Windows build dependency-light
+# and trivially cross-compilable.
+[target.'cfg(unix)'.dependencies]
+nostr = { workspace = true }

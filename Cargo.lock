@@ -880,6 +880,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "buzz-backend-ssh"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nostr",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "buzz-cli"
 version = "0.1.0"
 dependencies = [
