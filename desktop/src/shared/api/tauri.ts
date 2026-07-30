@@ -113,6 +113,7 @@ type RawRelayAgent = {
   status: RelayAgent["status"];
   respond_to?: RelayAgent["respondTo"];
   respond_to_allowlist?: string[];
+  channel_add_policy?: RelayAgent["channelAddPolicy"];
 };
 export type RawManagedAgent = {
   pubkey: string;
@@ -691,6 +692,7 @@ function fromRawRelayAgent(agent: RawRelayAgent): RelayAgent {
     status: agent.status,
     respondTo: agent.respond_to ?? null,
     respondToAllowlist: agent.respond_to_allowlist ?? [],
+    channelAddPolicy: agent.channel_add_policy ?? null,
   };
 }
 
