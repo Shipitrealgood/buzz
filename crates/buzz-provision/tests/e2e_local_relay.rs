@@ -19,6 +19,13 @@
 //!    is submitter-identity-shaped by re-submitting the SAME event with
 //!    owner NIP-98 auth and asserting acceptance.
 //!
+//! A second test runs the full **Design-A ceremony** (the default mint,
+//! T4b #2694): `keygen` → `buzz-mint attest` (publishes the 9000s LIVE,
+//! owner-authenticated, fresh timestamps) → `buzz-provision agent` on the
+//! manifest-only bundle (kind:0 + 10100 ViaOwner, membership VERIFIED via
+//! bridge read, nothing owner-signed submitted host-side) — fully green
+//! including the adds.
+//!
 //! # Running
 //!
 //! ```text
@@ -27,8 +34,9 @@
 //! cargo test -p buzz-provision --test e2e_local_relay -- --ignored --nocapture
 //! ```
 //!
-//! Ports used: 3033 (relay), 8098 (health), 9203 (metrics). Systemd is never
-//! touched (`--no-systemd`); the throwaway agent exists only in the local DB.
+//! Ports: B test 3033/8098/9203, A test 3034/8099/9204 (disjoint so the
+//! parallel runner cannot collide them). Systemd is never touched
+//! (`--no-systemd`); the throwaway agents exist only in the local DB.
 
 use std::fs;
 use std::io::Write as _;
@@ -39,16 +47,36 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag};
 
-const RELAY_PORT: u16 = 3033;
-const HEALTH_PORT: u16 = 8098;
-const METRICS_PORT: u16 = 9203;
-
-fn relay_host() -> String {
-    format!("localhost:{RELAY_PORT}")
+/// Ports for one relay instance. The two e2e tests use disjoint sets so the
+/// default parallel test runner cannot collide them (each seeds its own
+/// community keyed by its own `localhost:<port>` host).
+#[derive(Copy, Clone)]
+struct Ports {
+    relay: u16,
+    health: u16,
+    metrics: u16,
 }
 
-fn http_base() -> String {
-    format!("http://{}", relay_host())
+/// B-ceremony (sealed transit) test ports.
+const PORTS_B: Ports = Ports {
+    relay: 3033,
+    health: 8098,
+    metrics: 9203,
+};
+
+/// A-ceremony (keygen → attest → provision) test ports.
+const PORTS_A: Ports = Ports {
+    relay: 3034,
+    health: 8099,
+    metrics: 9204,
+};
+
+fn relay_host(ports: Ports) -> String {
+    format!("localhost:{}", ports.relay)
+}
+
+fn http_base(ports: Ports) -> String {
+    format!("http://{}", relay_host(ports))
 }
 
 fn database_url() -> String {
@@ -73,7 +101,7 @@ impl Drop for RelayGuard {
     }
 }
 
-fn spawn_relay(tmp: &std::path::Path, owner_pubkey_hex: &str) -> RelayGuard {
+fn spawn_relay(tmp: &std::path::Path, owner_pubkey_hex: &str, ports: Ports) -> RelayGuard {
     let relay_bin = target_debug_dir().join("buzz-relay");
     assert!(
         relay_bin.exists(),
@@ -85,10 +113,10 @@ fn spawn_relay(tmp: &std::path::Path, owner_pubkey_hex: &str) -> RelayGuard {
     let relay_sk = Keys::generate().secret_key().to_secret_hex();
     let child = Command::new(&relay_bin)
         .current_dir(tmp)
-        .env("BUZZ_BIND_ADDR", format!("127.0.0.1:{RELAY_PORT}"))
-        .env("BUZZ_HEALTH_PORT", HEALTH_PORT.to_string())
-        .env("BUZZ_METRICS_PORT", METRICS_PORT.to_string())
-        .env("RELAY_URL", format!("ws://{}", relay_host()))
+        .env("BUZZ_BIND_ADDR", format!("127.0.0.1:{}", ports.relay))
+        .env("BUZZ_HEALTH_PORT", ports.health.to_string())
+        .env("BUZZ_METRICS_PORT", ports.metrics.to_string())
+        .env("RELAY_URL", format!("ws://{}", relay_host(ports)))
         .env("DATABASE_URL", database_url())
         .env("BUZZ_AUTO_MIGRATE", "1")
         .env("BUZZ_REQUIRE_RELAY_MEMBERSHIP", "true")
@@ -105,10 +133,14 @@ fn spawn_relay(tmp: &std::path::Path, owner_pubkey_hex: &str) -> RelayGuard {
     RelayGuard(child)
 }
 
-async fn wait_for_relay(client: &reqwest::Client) {
+async fn wait_for_relay(client: &reqwest::Client, ports: Ports) {
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
-        if let Ok(resp) = client.get(format!("{}/health", http_base())).send().await {
+        if let Ok(resp) = client
+            .get(format!("{}/health", http_base(ports)))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 return;
             }
@@ -116,7 +148,7 @@ async fn wait_for_relay(client: &reqwest::Client) {
         assert!(
             Instant::now() < deadline,
             "relay did not become healthy on {} within 90s",
-            http_base()
+            http_base(ports)
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
@@ -144,11 +176,12 @@ fn nip98_header(keys: &Keys, method: &str, url: &str, body: &[u8]) -> String {
 /// POST a signed event to /events. Returns (status, body).
 async fn post_event(
     client: &reqwest::Client,
+    ports: Ports,
     signer: &Keys,
     auth_tag: Option<&str>,
     event: &Event,
 ) -> (u16, String) {
-    let url = format!("{}/events", http_base());
+    let url = format!("{}/events", http_base(ports));
     let body = event.as_json().into_bytes();
     let mut req = client
         .post(&url)
@@ -165,11 +198,12 @@ async fn post_event(
 /// POST /query with NIP-98 auth; returns the JSON array of events.
 async fn query(
     client: &reqwest::Client,
+    ports: Ports,
     signer: &Keys,
     auth_tag: Option<&str>,
     filter: serde_json::Value,
 ) -> Vec<serde_json::Value> {
-    let url = format!("{}/query", http_base());
+    let url = format!("{}/query", http_base(ports));
     let body = serde_json::to_vec(&[filter]).unwrap();
     let mut req = client
         .post(&url)
@@ -199,16 +233,10 @@ fn run_checked(cmd: &mut Command, what: &str) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-#[tokio::test]
-#[ignore] // needs docker postgres+redis and built buzz-relay/buzz-mint binaries
-async fn full_virtual_mint_pipeline_against_local_relay() {
-    let tmp = tempfile::tempdir().unwrap();
-    // Throwaway owner generated first: the relay bootstraps it as the
-    // deployment owner (RELAY_OWNER_PUBKEY) of the RELAY_URL-host community.
-    let owner = Keys::generate();
-    let _relay = spawn_relay(tmp.path(), &owner.public_key().to_hex());
-    let client = reqwest::Client::new();
-    wait_for_relay(&client).await;
+/// Connect Postgres, seed this relay instance's community, and enroll the
+/// throwaway owner as a relay member (direct DB seed, same pattern as
+/// buzz-test-client's e2e suite). Returns (pool, community_id).
+async fn seed_community_and_owner(ports: Ports, owner: &Keys) -> (sqlx::PgPool, uuid::Uuid) {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url())
@@ -219,13 +247,13 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
         "INSERT INTO communities (id, host) VALUES ($1, $2) ON CONFLICT (lower(host)) DO NOTHING",
     )
     .bind(community_id)
-    .bind(relay_host())
+    .bind(relay_host(ports))
     .execute(&pool)
     .await
     .expect("seed community");
     let community_id: uuid::Uuid =
         sqlx::query_scalar("SELECT id FROM communities WHERE lower(host) = lower($1)")
-            .bind(relay_host())
+            .bind(relay_host(ports))
             .fetch_one(&pool)
             .await
             .expect("lookup community");
@@ -238,8 +266,11 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
     .execute(&pool)
     .await
     .expect("enroll throwaway owner");
+    (pool, community_id)
+}
 
-    // ── Owner creates a channel over the bridge. ──
+/// Owner creates a fresh open stream channel over the bridge.
+async fn create_channel(client: &reqwest::Client, ports: Ports, owner: &Keys) -> uuid::Uuid {
     let channel = uuid::Uuid::new_v4();
     let create = EventBuilder::new(Kind::Custom(9007), "")
         .tags(vec![
@@ -248,10 +279,28 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
             Tag::parse(["channel_type", "stream"]).unwrap(),
             Tag::parse(["visibility", "open"]).unwrap(),
         ])
-        .sign_with_keys(&owner)
+        .sign_with_keys(owner)
         .unwrap();
-    let (status, body) = post_event(&client, &owner, None, &create).await;
+    let (status, body) = post_event(client, ports, owner, None, &create).await;
     assert_eq!(status, 200, "channel create failed: {body}");
+    channel
+}
+
+#[tokio::test]
+#[ignore] // needs docker postgres+redis and built buzz-relay/buzz-mint binaries
+async fn full_virtual_mint_pipeline_against_local_relay() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ports = PORTS_B;
+    // Throwaway owner generated first: the relay bootstraps it as the
+    // deployment owner (RELAY_OWNER_PUBKEY) of the RELAY_URL-host community.
+    let owner = Keys::generate();
+    let _relay = spawn_relay(tmp.path(), &owner.public_key().to_hex(), ports);
+    let client = reqwest::Client::new();
+    wait_for_relay(&client, ports).await;
+    let (pool, community_id) = seed_community_and_owner(ports, &owner).await;
+
+    // ── Owner creates a channel over the bridge. ──
+    let channel = create_channel(&client, ports, &owner).await;
 
     // ── host-init → mint → provision, with the real binaries. ──
     let provision_bin = env!("CARGO_BIN_EXE_buzz-provision");
@@ -294,7 +343,7 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
             "--channel",
             &channel.to_string(),
             "--relay-url",
-            &format!("ws://{}", relay_host()),
+            &format!("ws://{}", relay_host(ports)),
             "--harness-cmd",
             "/usr/bin/true",
         ])
@@ -384,6 +433,7 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
 
     let kind0 = query(
         &client,
+        ports,
         &agent_keys,
         Some(&attestation),
         serde_json::json!({"kinds": [0], "authors": [agent_pubkey], "limit": 1}),
@@ -393,6 +443,7 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
 
     let k10100 = query(
         &client,
+        ports,
         &agent_keys,
         Some(&attestation),
         serde_json::json!({"kinds": [10100], "authors": [agent_pubkey], "limit": 1}),
@@ -414,7 +465,8 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
     if prov_out.status.success() {
         println!("RESULT: relay ACCEPTED host-side submission of the owner-pre-signed 9000");
         let member_row: Option<String> = sqlx::query_scalar(
-            "SELECT role FROM channel_members WHERE community_id=$1 AND channel_id=$2 AND pubkey=$3",
+            "SELECT role::text FROM channel_members WHERE community_id=$1 AND channel_id=$2 \
+             AND encode(pubkey, 'hex')=$3",
         )
         .bind(community_id)
         .bind(channel)
@@ -435,7 +487,7 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
         // Control: the SAME pre-signed event, submitted with OWNER NIP-98
         // auth, must be accepted — proving the event is valid and fresh and
         // the refusal is purely submitter-identity-shaped.
-        let (status, body) = post_event(&client, &owner, None, &presigned_9000).await;
+        let (status, body) = post_event(&client, ports, &owner, None, &presigned_9000).await;
         assert_eq!(
             status, 200,
             "owner-authenticated submission of the same 9000 must succeed: {body}"
@@ -447,4 +499,259 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
         );
         println!("CONTROL: same 9000 accepted when submitted with owner NIP-98 auth");
     }
+}
+
+/// Full Design-A ceremony (the DEFAULT mint, T4b #2694): keygen on the host
+/// → owner attests the exported pubkey and publishes the 9000s DIRECTLY
+/// (owner NIP-98, fresh timestamps) → provision consumes the manifest-only
+/// bundle, publishes kind:0 + kind:10100 ViaOwner, and VERIFIES the channel
+/// membership instead of submitting anything owner-signed.
+///
+/// This is the ceremony the B test's step 5 pinned empirically: the relay
+/// refuses third-party submission of owner-signed events, so A goes fully
+/// green — including the adds — because the owner is the submitter.
+#[tokio::test]
+#[ignore] // needs docker postgres+redis and built buzz-relay/buzz-mint binaries
+async fn full_design_a_ceremony_against_local_relay() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ports = PORTS_A;
+    let owner = Keys::generate();
+    let _relay = spawn_relay(tmp.path(), &owner.public_key().to_hex(), ports);
+    let client = reqwest::Client::new();
+    wait_for_relay(&client, ports).await;
+    let (pool, community_id) = seed_community_and_owner(ports, &owner).await;
+
+    // ── Owner creates a channel over the bridge. ──
+    let channel = create_channel(&client, ports, &owner).await;
+
+    // ── host-init → keygen, on the "host" (real binaries, temp dirs). ──
+    let provision_bin = env!("CARGO_BIN_EXE_buzz-provision");
+    let mint_bin = target_debug_dir().join("buzz-mint");
+    assert!(
+        mint_bin.exists(),
+        "buzz-mint binary missing at {} — run `cargo build -p buzz-mint` first",
+        mint_bin.display()
+    );
+    let cfg_dir = tmp.path().join("cfg");
+    let env_dir = tmp.path().join("env");
+    let bundle_out = tmp.path().join("out");
+    fs::create_dir_all(&bundle_out).unwrap();
+
+    let so = run_checked(
+        Command::new(provision_bin)
+            .args(["host-init", "--allow-owner", &owner.public_key().to_hex()])
+            .arg("--config-dir")
+            .arg(&cfg_dir),
+        "host-init",
+    );
+    let host_pubkey = so
+        .lines()
+        .find_map(|l| l.strip_prefix("host pubkey (hex):"))
+        .expect("host pubkey line")
+        .trim()
+        .to_owned();
+
+    let agent_name = format!(
+        "e2e-akey-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    let so = run_checked(
+        Command::new(provision_bin)
+            .args(["keygen", "--name", &agent_name])
+            .arg("--config-dir")
+            .arg(&cfg_dir)
+            .arg("--env-dir")
+            .arg(&env_dir),
+        "keygen",
+    );
+    let agent_pubkey = so
+        .lines()
+        .find_map(|l| l.strip_prefix("agent pubkey (hex):"))
+        .expect("agent pubkey line")
+        .trim()
+        .to_owned();
+    // keygen prints the exact attest command with agent + host filled in.
+    assert!(
+        so.contains(&format!("--agent {agent_pubkey}"))
+            && so.contains(&format!("--host {host_pubkey}")),
+        "keygen must print the filled-in attest command: {so}"
+    );
+
+    // ── Owner attests the exported pubkey; 9000s published LIVE. ──
+    let mut attest = Command::new(&mint_bin)
+        .args([
+            "attest",
+            "--name",
+            &agent_name,
+            "--agent",
+            &agent_pubkey,
+            "--host",
+            &host_pubkey,
+            "--channel",
+            &channel.to_string(),
+            "--relay-url",
+            &format!("ws://{}", relay_host(ports)),
+            "--harness-cmd",
+            "/usr/bin/true",
+        ])
+        .arg("--out")
+        .arg(&bundle_out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn buzz-mint attest");
+    attest
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(owner.secret_key().to_secret_hex().as_bytes())
+        .unwrap();
+    let attest_out = attest.wait_with_output().unwrap();
+    let attest_stdout = String::from_utf8_lossy(&attest_out.stdout).into_owned();
+    let attest_stderr = String::from_utf8_lossy(&attest_out.stderr).into_owned();
+    println!("--- attest stdout ---\n{attest_stdout}\n--- attest stderr ---\n{attest_stderr}");
+    assert!(
+        attest_out.status.success(),
+        "buzz-mint attest failed: {attest_stderr}"
+    );
+    assert!(
+        attest_stdout.contains("ACCEPTED"),
+        "the owner-authenticated 9000 must be accepted live: {attest_stdout}"
+    );
+
+    // A-mode bundle: manifest.json ONLY.
+    let bundle_dir = bundle_out.join(format!("{agent_name}-mint"));
+    assert!(bundle_dir.join("manifest.json").exists());
+    assert!(!bundle_dir.join("sealed.json").exists(), "A-mode: no seal");
+    assert!(!bundle_dir.join("events").exists(), "A-mode: no events dir");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(bundle_dir.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["mode"], "a");
+    assert_eq!(manifest["agent_pubkey"], agent_pubkey);
+    let attestation = manifest["attestation"].as_str().unwrap().to_owned();
+
+    // The add landed: channel_members row with role bot, added by the owner.
+    // (channel_members.pubkey is bytea, unlike relay_members.pubkey.)
+    let member_role: Option<String> = sqlx::query_scalar(
+        "SELECT role::text FROM channel_members WHERE community_id=$1 AND channel_id=$2 \
+         AND encode(pubkey, 'hex')=$3",
+    )
+    .bind(community_id)
+    .bind(channel)
+    .bind(&agent_pubkey)
+    .fetch_optional(&pool)
+    .await
+    .expect("channel member check");
+    assert_eq!(
+        member_role.as_deref(),
+        Some("bot"),
+        "owner-published 9000 must have materialized the bot membership"
+    );
+
+    // ── Provision from the manifest-only bundle (no systemd). Must go
+    // fully green: nothing owner-signed is submitted host-side. ──
+    let prov_out = Command::new(provision_bin)
+        .arg("agent")
+        .arg(&bundle_dir)
+        .arg("--no-systemd")
+        .arg("--config-dir")
+        .arg(&cfg_dir)
+        .arg("--env-dir")
+        .arg(&env_dir)
+        .output()
+        .expect("spawn buzz-provision agent");
+    let prov_stdout = String::from_utf8_lossy(&prov_out.stdout).into_owned();
+    let prov_stderr = String::from_utf8_lossy(&prov_out.stderr).into_owned();
+    println!("--- provision stdout ---\n{prov_stdout}\n--- provision stderr ---\n{prov_stderr}");
+    assert!(
+        prov_out.status.success(),
+        "A-mode provision must be fully green: {prov_stderr}"
+    );
+    assert!(prov_stdout.contains("published kind:0"));
+    assert!(prov_stdout.contains("published kind:10100"));
+    assert!(
+        prov_stdout.contains(&format!("membership verified: channel {channel}")),
+        "provision must verify the owner's add via bridge read: {prov_stdout}"
+    );
+    assert!(
+        !prov_stdout.contains("kind:9000 bot add (owner-signed, published verbatim)"),
+        "A-mode must not submit any owner-signed event host-side"
+    );
+
+    // ── The agent must NOT be a relay member: acceptance proves ViaOwner. ──
+    let direct_member: Option<String> =
+        sqlx::query_scalar("SELECT role FROM relay_members WHERE community_id=$1 AND pubkey=$2")
+            .bind(community_id)
+            .bind(&agent_pubkey)
+            .fetch_optional(&pool)
+            .await
+            .expect("member check");
+    assert!(
+        direct_member.is_none(),
+        "agent must not be a direct relay member — admission must be ViaOwner"
+    );
+
+    // ── Read the identity back over the bridge AS THE AGENT (NIP-98 +
+    // x-auth-tag), signing with the keygen-born credential. ──
+    let cred_hex = fs::read_to_string(cfg_dir.join("creds").join(format!("{agent_name}.nsec")))
+        .expect("credential written by keygen");
+    let agent_keys = Keys::parse(&cred_hex).expect("credential parses");
+    assert_eq!(agent_keys.public_key().to_hex(), agent_pubkey);
+
+    let kind0 = query(
+        &client,
+        ports,
+        &agent_keys,
+        Some(&attestation),
+        serde_json::json!({"kinds": [0], "authors": [agent_pubkey], "limit": 1}),
+    )
+    .await;
+    assert_eq!(kind0.len(), 1, "kind:0 must be readable back");
+
+    let k10100 = query(
+        &client,
+        ports,
+        &agent_keys,
+        Some(&attestation),
+        serde_json::json!({"kinds": [10100], "authors": [agent_pubkey], "limit": 1}),
+    )
+    .await;
+    assert_eq!(k10100.len(), 1, "kind:10100 must be readable back");
+    let content: serde_json::Value =
+        serde_json::from_str(k10100[0]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(content["channel_add_policy"], "owner_only");
+    assert_eq!(
+        content["host"], host_pubkey,
+        "lineage anchor must be the host pubkey"
+    );
+    assert_eq!(content["channel_ids"][0], channel.to_string());
+
+    // The agent's kind:9000 add (owner-signed) is queryable in-channel too.
+    let k9000 = query(
+        &client,
+        ports,
+        &agent_keys,
+        Some(&attestation),
+        serde_json::json!({
+            "kinds": [9000],
+            "#h": [channel.to_string()],
+            "#p": [agent_pubkey],
+            "limit": 1
+        }),
+    )
+    .await;
+    assert_eq!(
+        k9000.len(),
+        1,
+        "the owner's live-published 9000 must be readable as the agent"
+    );
+    assert_eq!(
+        k9000[0]["pubkey"],
+        owner.public_key().to_hex(),
+        "the add must be owner-signed"
+    );
+
+    println!("RESULT: full Design-A ceremony green — keygen → attest (live 9000s) → provision (verify-not-submit)");
 }

@@ -24,6 +24,37 @@ use crate::Envelope;
 /// Manifest schema version (matches the envelope/inner version).
 pub const MANIFEST_VERSION: u32 = 1;
 
+/// Which mint ceremony produced the bundle (⚑ ruling 2026-07-30, design doc
+/// header + task #2694 amendment).
+///
+/// - **A (default ceremony)**: the agent key was born on the HOST
+///   (`buzz-provision keygen`); the owner attested the exported pubkey and
+///   published the kind:9000 batch DIRECTLY (`buzz-mint attest`). The bundle
+///   is `manifest.json` only — 100% public data, no seal, no events dir.
+/// - **B (secondary mode)**: sealed key transit for keyring-colocated
+///   callers (`buzz-mint new`): manifest + `sealed.json` + pre-signed
+///   `events/`.
+///
+/// Serde default is **B**: every bundle minted before the field existed is a
+/// sealed bundle.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BundleMode {
+    #[serde(rename = "a")]
+    A,
+    #[default]
+    #[serde(rename = "b")]
+    B,
+}
+
+impl BundleMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::A => "a (public attestation bundle; key born host-side)",
+            Self::B => "b (sealed key transit)",
+        }
+    }
+}
+
 /// Public, operator-editable agent configuration carried by the manifest.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ManifestConfig {
@@ -52,6 +83,10 @@ pub struct Manifest {
     /// NIP-OA auth tag JSON (public data, same as native's agent record).
     pub attestation: String,
     pub created_at: u64,
+    /// Which ceremony minted this bundle. Absent in pre-mode manifests,
+    /// which are all sealed (B) bundles.
+    #[serde(default)]
+    pub mode: BundleMode,
     pub config: ManifestConfig,
 }
 
@@ -77,10 +112,11 @@ pub fn validate_agent_name(name: &str) -> Result<(), String> {
     }
 }
 
-/// Whether `sealed.json` must be present when loading.
+/// Whether `sealed.json` must be present when loading a **B-mode** bundle.
 ///
 /// Provision shreds `sealed.json` after the credential is verified on disk,
-/// so a converged re-run legitimately sees a bundle without it.
+/// so a converged re-run legitimately sees a B bundle without it. A-mode
+/// bundles never carry `sealed.json`; the parameter does not apply to them.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum SealedPresence {
     Required,
@@ -91,14 +127,15 @@ pub enum SealedPresence {
 pub struct LoadedBundle {
     pub dir: PathBuf,
     pub manifest: Manifest,
-    /// `None` only under [`SealedPresence::Optional`] when the file is gone.
+    /// `None` for A-mode bundles (which never seal anything) and under
+    /// [`SealedPresence::Optional`] when a B bundle's file is gone.
     pub envelope: Option<Envelope>,
     /// Parsed `events/9000-<uuid>.json` files, sorted by filename. Files that
-    /// exist but do not parse are recorded in `event_problems` instead.
+    /// exist but do not parse are recorded in `load_problems` instead.
     pub events: Vec<(Uuid, Event)>,
-    /// Problems found while enumerating/parsing the events dir (unexpected
+    /// Problems found while loading (mode/artifact disagreement, unexpected
     /// filenames, unparseable events). Folded into [`validate`]'s output.
-    pub event_problems: Vec<String>,
+    pub load_problems: Vec<String>,
 }
 
 /// Fatal load failures: without these pieces there is no bundle to validate.
@@ -138,16 +175,33 @@ fn read_json<T: serde::de::DeserializeOwned>(
 /// and every `events/9000-<uuid>.json`.
 pub fn load(dir: &Path, sealed: SealedPresence) -> Result<LoadedBundle, BundleError> {
     let manifest: Manifest = read_json(&dir.join("manifest.json"), "a manifest")?;
+    let mut load_problems: Vec<String> = Vec::new();
 
     let sealed_path = dir.join("sealed.json");
-    let envelope: Option<Envelope> = if sealed_path.exists() || sealed == SealedPresence::Required {
-        Some(read_json(&sealed_path, "an envelope")?)
-    } else {
-        None
+    let envelope: Option<Envelope> = match manifest.mode {
+        // A-mode bundles are 100% public data. A sealed.json here means the
+        // bundle does not match its declared ceremony — record the problem
+        // (validate() fails it) rather than parsing secrets nobody expects.
+        BundleMode::A => {
+            if sealed_path.exists() {
+                load_problems.push(
+                    "sealed.json present in an A-mode bundle (A-mode carries manifest.json \
+                     only; the agent key is born host-side and never sealed)"
+                        .to_owned(),
+                );
+            }
+            None
+        }
+        BundleMode::B => {
+            if sealed_path.exists() || sealed == SealedPresence::Required {
+                Some(read_json(&sealed_path, "an envelope")?)
+            } else {
+                None
+            }
+        }
     };
 
     let mut events: Vec<(Uuid, Event)> = Vec::new();
-    let mut event_problems: Vec<String> = Vec::new();
     let events_dir = dir.join("events");
     if events_dir.is_dir() {
         let mut entries: Vec<PathBuf> = fs::read_dir(&events_dir)
@@ -169,7 +223,7 @@ pub fn load(dir: &Path, sealed: SealedPresence) -> Result<LoadedBundle, BundleEr
                 .and_then(|s| s.strip_suffix(".json"))
                 .and_then(|s| s.parse().ok());
             let Some(channel) = channel else {
-                event_problems.push(format!(
+                load_problems.push(format!(
                     "events/{fname}: unexpected file (want 9000-<uuid>.json)"
                 ));
                 continue;
@@ -181,7 +235,7 @@ pub fn load(dir: &Path, sealed: SealedPresence) -> Result<LoadedBundle, BundleEr
             match Event::from_json(&raw) {
                 Ok(ev) => events.push((channel, ev)),
                 Err(e) => {
-                    event_problems.push(format!("events/{fname}: does not parse as an event: {e}"))
+                    load_problems.push(format!("events/{fname}: does not parse as an event: {e}"))
                 }
             }
         }
@@ -192,7 +246,7 @@ pub fn load(dir: &Path, sealed: SealedPresence) -> Result<LoadedBundle, BundleEr
         manifest,
         envelope,
         events,
-        event_problems,
+        load_problems,
     })
 }
 
@@ -202,7 +256,7 @@ pub fn load(dir: &Path, sealed: SealedPresence) -> Result<LoadedBundle, BundleEr
 /// cannot make (inner payload authority) are exactly the sealed spec's unseal
 /// steps 2-6, run host-side with the host key.
 pub fn validate(bundle: &LoadedBundle) -> Vec<String> {
-    let mut problems: Vec<String> = bundle.event_problems.clone();
+    let mut problems: Vec<String> = bundle.load_problems.clone();
     let manifest = &bundle.manifest;
 
     if manifest.v != MANIFEST_VERSION {
@@ -210,6 +264,21 @@ pub fn validate(bundle: &LoadedBundle) -> Vec<String> {
             "manifest.v is {} (expected {MANIFEST_VERSION})",
             manifest.v
         ));
+    }
+
+    // A-mode bundles are manifest-only: the owner published the kind:9000
+    // batch directly at attest time (#2694 amendment), so pre-signed events
+    // in the bundle mean it does not match its declared ceremony.
+    if manifest.mode == BundleMode::A {
+        if bundle.envelope.is_some() {
+            problems.push("A-mode bundle carries an envelope (must be manifest-only)".to_owned());
+        }
+        for (channel, _) in &bundle.events {
+            problems.push(format!(
+                "events/9000-{channel}.json present in an A-mode bundle (owner publishes \
+                 9000s directly at attest time; A-mode bundles are manifest-only)"
+            ));
+        }
     }
 
     if let Some(envelope) = &bundle.envelope {
@@ -276,8 +345,8 @@ pub fn validate(bundle: &LoadedBundle) -> Vec<String> {
         Err(e) => problems.push(format!("attestation does not verify: {e}")),
     }
 
-    // Events: one per manifest channel, none extra, each a valid owner-signed
-    // kind:9000 bot add for THIS agent in THAT channel.
+    // Events (B-mode): one per manifest channel, none extra, each a valid
+    // owner-signed kind:9000 bot add for THIS agent in THAT channel.
     for (channel, event) in &bundle.events {
         let fname = format!("9000-{channel}.json");
         if let Err(e) = event.verify() {
@@ -319,11 +388,13 @@ pub fn validate(bundle: &LoadedBundle) -> Vec<String> {
             ));
         }
     }
-    for channel in &manifest.config.channels {
-        if !bundle.events.iter().any(|(c, _)| c == channel) {
-            problems.push(format!(
-                "missing events/9000-{channel}.json for manifest channel"
-            ));
+    if manifest.mode == BundleMode::B {
+        for channel in &manifest.config.channels {
+            if !bundle.events.iter().any(|(c, _)| c == channel) {
+                problems.push(format!(
+                    "missing events/9000-{channel}.json for manifest channel"
+                ));
+            }
         }
     }
 

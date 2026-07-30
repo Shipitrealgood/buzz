@@ -1027,6 +1027,7 @@ name = "buzz-mint"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "buzz-sdk",
  "buzz-seal",
  "clap",
@@ -1266,8 +1267,10 @@ dependencies = [
  "base64",
  "buzz-sdk",
  "nostr",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "uuid",
  "zeroize",

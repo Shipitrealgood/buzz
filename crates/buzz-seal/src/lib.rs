@@ -19,6 +19,7 @@
 //! [`unseal`] is fail-closed with a distinct error variant, in the exact
 //! order the spec numbers them.
 
+pub mod bridge;
 pub mod bundle;
 
 use std::collections::BTreeMap;
@@ -46,6 +47,47 @@ pub const STALENESS_WARN_SECS: u64 = 30 * 24 * 60 * 60;
 /// killing the newline/CRLF class (T2-preflight M5) at the source.
 pub fn is_canonical_64_hex(s: &[u8]) -> bool {
     s.len() == 64 && s.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Redact key-shaped material from a message before it reaches stderr.
+///
+/// clap's own error rendering echoes argv values verbatim ("unexpected
+/// argument 'nsec1…' found") — and a secret pasted without its flag prefix
+/// would land in session transcripts (chuck post-audit T1-4, measured leak
+/// channel). Every token that looks like key material (≥32 hex chars, or a
+/// bech32 `nsec`/`npub` string) is replaced wholesale. Shared by every mint
+/// binary that parses argv (buzz-provision, buzz-mint) — one redactor, all
+/// consumers.
+pub fn redact_key_material(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut chars = message.char_indices().peekable();
+    while let Some(&(start, c)) = chars.peek() {
+        if c.is_ascii_alphanumeric() {
+            let mut end = start;
+            while let Some(&(i, c2)) = chars.peek() {
+                if c2.is_ascii_alphanumeric() {
+                    end = i + c2.len_utf8();
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            let token = &message[start..end];
+            let hexish = token.len() >= 32 && token.bytes().all(|b| b.is_ascii_hexdigit());
+            let bech32ish = (token.len() >= 20)
+                && (token.to_ascii_lowercase().starts_with("nsec1")
+                    || token.to_ascii_lowercase().starts_with("npub1"));
+            if hexish || bech32ish {
+                out.push_str("<redacted-key-material>");
+            } else {
+                out.push_str(token);
+            }
+        } else {
+            out.push(c);
+            chars.next();
+        }
+    }
+    out
 }
 
 // ─── Secret newtypes ─────────────────────────────────────────────────────────

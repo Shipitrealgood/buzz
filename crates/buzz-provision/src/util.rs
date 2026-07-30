@@ -265,43 +265,31 @@ pub fn load_host_keys(key_path: &Path) -> Result<Keys> {
     Ok(Keys::new(secret))
 }
 
-/// Redact key-shaped material from a message before it reaches stderr.
-///
-/// clap's own error rendering echoes argv values verbatim ("unexpected
-/// argument 'nsec1…' found") — and a secret pasted without its flag prefix
-/// would land in session transcripts (chuck post-audit T1-4, measured leak
-/// channel). Every token that looks like key material (≥32 hex chars, or a
-/// bech32 `nsec`/`npub` string) is replaced wholesale.
-pub fn redact_key_material(message: &str) -> String {
-    let mut out = String::with_capacity(message.len());
-    let mut chars = message.char_indices().peekable();
-    while let Some(&(start, c)) = chars.peek() {
-        if c.is_ascii_alphanumeric() {
-            let mut end = start;
-            while let Some(&(i, c2)) = chars.peek() {
-                if c2.is_ascii_alphanumeric() {
-                    end = i + c2.len_utf8();
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-            let token = &message[start..end];
-            let hexish = token.len() >= 32 && token.bytes().all(|b| b.is_ascii_hexdigit());
-            let bech32ish = (token.len() >= 20)
-                && (token.to_ascii_lowercase().starts_with("nsec1")
-                    || token.to_ascii_lowercase().starts_with("npub1"));
-            if hexish || bech32ish {
-                out.push_str("<redacted-key-material>");
-            } else {
-                out.push_str(token);
-            }
-        } else {
-            out.push(c);
-            chars.next();
-        }
+// Shared with buzz-mint via buzz-seal: one redactor, all argv-parsing mint
+// binaries (chuck T1-4 class fix).
+pub use buzz_seal::redact_key_material;
+
+/// Resolve the agent env-file directory: explicit flag override, else
+/// `$HOME/services/buzz-agents` (the deployment convention the systemd
+/// units read `EnvironmentFile=` from).
+pub fn default_env_dir(explicit: Option<&Path>) -> Result<PathBuf> {
+    if let Some(dir) = explicit {
+        return Ok(dir.to_path_buf());
     }
-    out
+    let home = std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .context("HOME is not set; pass --env-dir explicitly")?;
+    Ok(PathBuf::from(home).join("services").join("buzz-agents"))
+}
+
+/// Derive the pubkey a credential file corresponds to, if it parses.
+pub fn credential_pubkey(cred_path: &Path) -> Option<PublicKey> {
+    let raw = Zeroizing::new(fs::read(cred_path).ok()?);
+    if !is_canonical_64_hex(&raw) {
+        return None;
+    }
+    let secret = SecretKey::from_hex(std::str::from_utf8(&raw).ok()?).ok()?;
+    Some(Keys::new(secret).public_key())
 }
 
 #[cfg(test)]

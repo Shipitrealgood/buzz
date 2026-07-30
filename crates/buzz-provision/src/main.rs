@@ -33,9 +33,9 @@ use nostr::Keys;
 use zeroize::Zeroizing;
 
 use util::{
-    config_dir, ensure_dir_0700, is_canonical_64_hex, load_host_keys, merge_owners,
-    redact_key_material, sweep_stale_tempfiles, validate_pubkey_arg, write_atomic_0600,
-    write_owners_file, Clobber, ALLOWED_OWNERS_FILE, HOST_KEY_FILE,
+    config_dir, credential_pubkey, default_env_dir, ensure_dir_0700, is_canonical_64_hex,
+    load_host_keys, merge_owners, redact_key_material, sweep_stale_tempfiles, validate_pubkey_arg,
+    write_atomic_0600, write_owners_file, Clobber, ALLOWED_OWNERS_FILE, HOST_KEY_FILE,
 };
 
 #[derive(Parser)]
@@ -60,12 +60,21 @@ enum Command {
     /// Manage the allowed-owners pin list without touching the host key.
     #[command(subcommand)]
     PinOwner(PinOwnerCommand),
-    /// Provision an agent from a buzz-mint bundle directory.
+    /// Birth an agent keypair on this host (Design A — the default mint).
     ///
-    /// Unseals the bundle (fail-closed, owner-pinned), writes the systemd
-    /// credential and secret-free env file, publishes the agent's identity
-    /// events (kind:0 → kind:10100 → owner-signed kind:9000 batch), enables
-    /// and verifies the buzz-agent@<name> unit, then shreds sealed.json.
+    /// The secret is written straight into its credential file and never
+    /// exists anywhere else; the printed PUBLIC key is what the owner
+    /// attests with `buzz-mint attest`. Nothing is published here.
+    Keygen(KeygenArgs),
+    /// Provision an agent from a buzz-mint bundle directory (both modes).
+    ///
+    /// A-mode (default mint): validates the manifest against the keygen-born
+    /// credential (fail-closed, owner-pinned), writes the secret-free env
+    /// file, publishes kind:0 → kind:10100, verifies channel memberships
+    /// (the owner already published the 9000s at attest time), and enables +
+    /// verifies the buzz-agent@<name> unit. B-mode: additionally unseals the
+    /// sealed bundle first, submits the pre-signed 9000 batch, and shreds
+    /// sealed.json.
     Agent(agent::AgentArgs),
 }
 
@@ -91,6 +100,31 @@ struct HostInitArgs {
     /// This is what `buzz-mint` users run to obtain the seal target.
     #[arg(long, conflicts_with_all = ["allow_owner", "force"])]
     show: bool,
+
+    /// Override the config directory (default: ~/.config/buzz-provision).
+    #[arg(long, hide = true, value_name = "DIR")]
+    config_dir: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct KeygenArgs {
+    /// Agent name — becomes the credential filename (<name>.nsec), the
+    /// systemd instance name, and the bundle name the owner attests.
+    #[arg(long)]
+    name: String,
+
+    /// Replace an existing credential with a NEW identity.
+    ///
+    /// DANGER: the old key is overwritten; anything attested or published
+    /// under the old pubkey no longer belongs to this instance.
+    #[arg(long)]
+    force: bool,
+
+    /// Override the env-file directory the <name>.pub marker is written
+    /// beside (default: ~/services/buzz-agents). If the directory does not
+    /// exist, the pubkey is print-only.
+    #[arg(long, hide = true, value_name = "DIR")]
+    env_dir: Option<PathBuf>,
 
     /// Override the config directory (default: ~/.config/buzz-provision).
     #[arg(long, hide = true, value_name = "DIR")]
@@ -145,6 +179,7 @@ fn main() {
             }
         }
         Command::PinOwner(PinOwnerCommand::Add(args)) => pin_owner_add(&args),
+        Command::Keygen(args) => keygen(&args),
         Command::Agent(args) => agent::provision_agent(&args),
     };
     if let Err(e) = result {
@@ -263,6 +298,146 @@ fn host_show(args: &HostInitArgs) -> Result<()> {
         owners = merge_owners(&owners_path, &[])?;
     }
     print_identity(&keys, &key_path, &owners_path, &owners);
+    Ok(())
+}
+
+/// Print the exact `buzz-mint attest` command the owner should run for this
+/// agent. `host_hex` is the pinned host identity when one exists, else a
+/// placeholder the owner must fill after `host-init`.
+fn print_attest_command(name: &str, agent_pubkey_hex: &str, host_hex: &str) {
+    println!("next, on the OWNER machine, attest this key and publish its channel adds:");
+    println!();
+    println!(
+        "  buzz-mint attest --agent {agent_pubkey_hex} --host {host_hex} --name {name} \
+         --relay-url <wss://your-relay> [--channel <uuid>]... [--harness-cmd <cmd>]"
+    );
+    println!();
+    println!("then copy the resulting {name}-mint/ bundle back here and run:");
+    println!("  buzz-provision agent {name}-mint");
+}
+
+fn keygen(args: &KeygenArgs) -> Result<()> {
+    // Validate before touching disk. The name becomes a filename and a
+    // systemd instance name — same rule the bundle schema enforces.
+    buzz_seal::bundle::validate_agent_name(&args.name)
+        .map_err(|e| anyhow::anyhow!("--name: {e}"))?;
+    let name = args.name.as_str();
+
+    let dir = config_dir(args.config_dir.as_deref())?;
+    let creds_dir = dir.join("creds");
+    let cred_path = creds_dir.join(format!("{name}.nsec"));
+    let host_key_path = dir.join(HOST_KEY_FILE);
+    // Host identity is optional for keygen itself (key birth must not depend
+    // on it) but fills in the printed attest command when present.
+    let host_hex = if host_key_path.exists() {
+        load_host_keys(&host_key_path)?.public_key().to_hex()
+    } else {
+        eprintln!(
+            "note: no host identity at {} yet — run `buzz-provision host-init` before \
+             provisioning; the printed attest command carries a <host-pubkey> placeholder",
+            host_key_path.display()
+        );
+        "<host-pubkey>".to_owned()
+    };
+
+    if cred_path.exists() && !args.force {
+        // Non-steering refusal: the right next step for an existing key is
+        // attesting it, not --force. Print the EXISTING pubkey so the owner
+        // can do exactly that; mention --force last, with its cost.
+        let existing = credential_pubkey(&cred_path);
+        eprintln!(
+            "credential {} already exists — refusing to overwrite.",
+            cred_path.display()
+        );
+        match existing {
+            Some(pubkey) => {
+                eprintln!(
+                    "The existing key is intact; its pubkey is {}.\n\
+                     To (re-)attest it, run on the owner machine:",
+                    pubkey.to_hex()
+                );
+                eprintln!(
+                    "  buzz-mint attest --agent {} --host {host_hex} --name {name} \
+                     --relay-url <wss://your-relay> [--channel <uuid>]...",
+                    pubkey.to_hex()
+                );
+            }
+            None => eprintln!(
+                "It does not parse as a canonical credential — inspect it before anything else."
+            ),
+        }
+        bail!(
+            "generating a NEW identity (--force) overwrites the credential: anything attested \
+             or published under the old pubkey no longer belongs to this instance"
+        );
+    }
+
+    ensure_dir_0700(&dir)?;
+    ensure_dir_0700(&creds_dir)?;
+    sweep_stale_tempfiles(&dir);
+    sweep_stale_tempfiles(&creds_dir);
+
+    // Same Keys::generate() family as the native desktop mint; canonical
+    // 64-lowercase-hex, byte-exact, tempfile+rename (host-init discipline).
+    let keys = Keys::generate();
+    let sk_hex: Zeroizing<String> = Zeroizing::new(keys.secret_key().to_secret_hex());
+    if !is_canonical_64_hex(sk_hex.as_bytes()) {
+        bail!(
+            "internal error: generated secret is not canonical 64-lowercase-hex; nothing written"
+        );
+    }
+    let clobber = if args.force {
+        Clobber::Allow
+    } else {
+        // The rename itself refuses to clobber: two racing keygens cannot
+        // both win, so the printed pubkey always matches what is on disk.
+        Clobber::Refuse
+    };
+    write_atomic_0600(&cred_path, sk_hex.as_bytes(), clobber)?;
+    let pubkey = keys.public_key();
+
+    if args.force {
+        eprintln!(
+            "WARNING: --force replaced the previous credential; anything attested under the \
+             old pubkey no longer belongs to this instance. Re-attest with the new pubkey below."
+        );
+    }
+
+    // Public marker beside the env-file convention — only if the deployment
+    // dir already exists (keygen creates credentials, not deployment trees).
+    let env_dir = default_env_dir(args.env_dir.as_deref())?;
+    let pub_path = env_dir.join(format!("{name}.pub"));
+    let pub_written = if env_dir.is_dir() {
+        write_atomic_0600(
+            &pub_path,
+            format!("{}\n", pubkey.to_hex()).as_bytes(),
+            Clobber::Allow,
+        )?;
+        true
+    } else {
+        false
+    };
+
+    println!("agent {name:?}: key born on this host");
+    println!("agent pubkey (hex):  {}", pubkey.to_hex());
+    match pubkey.to_bech32() {
+        Ok(npub) => println!("agent pubkey (npub): {npub}"),
+        Err(_) => println!("agent pubkey (npub): <bech32 encoding failed>"),
+    }
+    println!(
+        "credential:          {} (0600; never printed, never leaves this host)",
+        cred_path.display()
+    );
+    if pub_written {
+        println!("pubkey marker:       {}", pub_path.display());
+    } else {
+        println!(
+            "pubkey marker:       not written ({} does not exist yet; provision creates it)",
+            env_dir.display()
+        );
+    }
+    println!();
+    print_attest_command(name, &pubkey.to_hex(), &host_hex);
     Ok(())
 }
 

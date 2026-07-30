@@ -1,18 +1,27 @@
-//! buzz-mint — the owner-side half of the Buzz virtual mint (D1b).
+//! buzz-mint — the owner-side half of the Buzz virtual mint.
 //!
 //! Runs where the owner key lives (Windows workstation is the eventual
-//! primary locus). `new` mirrors the native desktop mint pattern
-//! (`create_managed_agent`): `Keys::generate()` → NIP-OA auth tag with empty
-//! conditions → then, instead of a keyring, seals the agent secret to the
-//! target host's pubkey (NIP-44 v2, owner as static sender) and pre-signs
-//! the owner kind:9000 bot-membership batch. Output is a mint bundle
-//! directory consumed by `buzz-provision agent` (T4).
+//! primary locus). Two ceremonies (⚑ ruling 2026-07-30, virtual-mint design
+//! doc header):
+//!
+//! - **`attest` (Design A — THE default)**: the agent key was already born
+//!   on the host (`buzz-provision keygen`); the owner attests the exported
+//!   PUBLIC key (NIP-OA auth tag, empty conditions — upstream
+//!   `compute_auth_tag`'s own external-pubkey shape) and PUBLISHES the
+//!   owner-signed kind:9000 bot-add batch directly to the relay with fresh
+//!   timestamps (#2694 amendment: the relay refuses third-party submission
+//!   of owner-signed events, and ±15min created_at freshness kills
+//!   pre-signing). Output bundle is `manifest.json` only — 100% public data.
+//! - **`new` (Design B — secondary mode)**: for keyring-colocated callers;
+//!   generates the keypair owner-side and seals it to the host (NIP-44 v2).
 //!
 //! Key-handling rules (binding, sealed-mint-bundle spec): the owner secret
 //! arrives via a 0600 file or a silent prompt — never argv/env; it is held
 //! in [`Zeroizing`]/[`Keys`] only as long as signing takes. The agent secret
-//! exists owner-side only between generation and seal. No print/log surface
-//! ever formats secret material — pubkeys, paths, and event ids only.
+//! exists owner-side only between generation and seal (B-mode; A-mode never
+//! sees it at all). No print/log surface ever formats secret material —
+//! pubkeys, paths, and event ids only. clap argv errors are redacted before
+//! reaching stderr (shared redactor, chuck T1-4 class fix).
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -22,8 +31,13 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use buzz_seal::bundle::{self, Manifest, ManifestConfig, SealedPresence, MANIFEST_VERSION};
-use buzz_seal::{is_canonical_64_hex, seal, AgentSecretKey, InnerPayload, SecretString};
+use buzz_seal::bridge::{self, BridgeError};
+use buzz_seal::bundle::{
+    self, BundleMode, Manifest, ManifestConfig, SealedPresence, MANIFEST_VERSION,
+};
+use buzz_seal::{
+    is_canonical_64_hex, redact_key_material, seal, AgentSecretKey, InnerPayload, SecretString,
+};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use nostr::nips::nip19::ToBech32;
 use nostr::{Event, JsonUtil, Keys, PublicKey, SecretKey};
@@ -34,7 +48,8 @@ use zeroize::Zeroizing;
 #[command(
     name = "buzz-mint",
     version,
-    about = "Owner-side mint for VM-deployed Buzz agents: keygen, attestation, seal-to-host bundle"
+    about = "Owner-side mint for VM-deployed Buzz agents: attest a host-born agent key (default, \
+             Design A) or seal a key to the host (B-mode)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -43,9 +58,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Mint a new agent: keypair, NIP-OA attestation, sealed bundle, 9000 batch.
+    /// Attest a host-born agent PUBLIC key (Design A — the default ceremony).
+    ///
+    /// Run `buzz-provision keygen --name <agent>` on the host first; it
+    /// prints the agent pubkey this command attests. Signs the NIP-OA auth
+    /// tag, publishes the owner kind:9000 bot-add batch directly to the
+    /// relay, and emits a manifest-only bundle (100% public data — no seal,
+    /// no shred duty, transportable over any channel).
+    Attest(AttestArgs),
+    /// Mint a sealed-key agent (B-mode, secondary): keypair born owner-side,
+    /// sealed to the host; bundle carries sealed.json + pre-signed 9000s.
+    ///
+    /// For keyring-colocated callers (e.g. the future desktop-button mint).
+    /// The default ceremony is `attest`. After the host confirms provision,
+    /// DELETE the owner-side bundle's sealed.json (B-mode cleanup duty —
+    /// NIP-44 static-static has no forward secrecy).
     New(NewArgs),
-    /// Validate a mint bundle's structure and internal consistency.
+    /// Validate a mint bundle's structure and internal consistency (both
+    /// modes).
     ///
     /// Pure pre-flight: uses public data only — no secret input, no decrypt.
     Inspect(InspectArgs),
@@ -117,14 +147,79 @@ struct NewArgs {
 }
 
 #[derive(Args)]
+struct AttestArgs {
+    /// Agent PUBLIC key to attest (exactly 64 lowercase hex) — printed by
+    /// `buzz-provision keygen --name <agent>` on the host. The secret never
+    /// leaves the host; this ceremony only ever sees public data.
+    #[arg(long, value_name = "PUBKEY_64HEX")]
+    agent: String,
+
+    /// Host PUBLIC key (exactly 64 lowercase hex) — the lineage anchor,
+    /// printed by `buzz-provision host-init --show` on the VM.
+    #[arg(long, value_name = "PUBKEY_64HEX")]
+    host: String,
+
+    /// Agent name (bundle dir becomes <name>-mint/; must equal the name
+    /// given to `buzz-provision keygen`).
+    #[arg(long)]
+    name: String,
+
+    /// Channel id to add the agent to (owner-signed kind:9000, role=bot,
+    /// published directly to --relay-url). Repeatable.
+    #[arg(long = "channel", value_name = "CHANNEL_UUID")]
+    channels: Vec<Uuid>,
+
+    /// Who the agent responds to (written to the public manifest config).
+    #[arg(long = "respond-to", value_enum, default_value = "owner-only")]
+    respond_to: RespondTo,
+
+    /// Harness command for the host-side unit (public manifest config).
+    #[arg(long = "harness-cmd", value_name = "CMD")]
+    harness_cmd: Option<String>,
+
+    /// Relay URL: the kind:9000 batch is published here (owner NIP-98,
+    /// fresh timestamps) and it becomes the agent's BUZZ_RELAY_URL.
+    #[arg(long = "relay-url", value_name = "WS_URL")]
+    relay_url: String,
+
+    /// Output directory the bundle dir is created under (default: cwd).
+    #[arg(long, value_name = "DIR")]
+    out: Option<PathBuf>,
+
+    /// Read the owner SECRET key from this file (must not be group/world
+    /// accessible — 0600). Without this flag, a silent prompt is used.
+    /// There is deliberately NO --owner-key <hex> flag: argv leaks into
+    /// shell history and process listings.
+    #[arg(long = "owner-key-file", value_name = "PATH")]
+    owner_key_file: Option<PathBuf>,
+}
+
+#[derive(Args)]
 struct InspectArgs {
     /// Path to the <name>-mint bundle directory.
     bundle_dir: PathBuf,
 }
 
 fn main() {
-    let cli = Cli::parse();
+    // try_parse instead of parse: clap's own error rendering echoes argv
+    // values verbatim, and a secret pasted without its flag prefix must not
+    // land on stderr (same measured leak channel as buzz-provision, chuck
+    // T1-4 — one redactor, all mint binaries).
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            let is_error = e.use_stderr();
+            let rendered = redact_key_material(&e.render().to_string());
+            if is_error {
+                eprint!("{rendered}");
+            } else {
+                print!("{rendered}");
+            }
+            std::process::exit(e.exit_code());
+        }
+    };
     let result = match cli.command {
+        Command::Attest(args) => attest(&args),
         Command::New(args) => mint_new(&args),
         Command::Inspect(args) => inspect(&args.bundle_dir),
     };
@@ -197,8 +292,8 @@ fn check_owner_key_file_mode(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn read_owner_keys(args: &NewArgs) -> Result<Keys> {
-    if let Some(path) = &args.owner_key_file {
+fn read_owner_keys(owner_key_file: Option<&Path>) -> Result<Keys> {
+    if let Some(path) = owner_key_file {
         check_owner_key_file_mode(path)?;
         let raw = Zeroizing::new(
             fs::read(path)
@@ -244,17 +339,34 @@ fn validate_relay_url(s: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_host_pubkey(s: &str) -> Result<PublicKey> {
+/// Strictly validate a 64-lowercase-hex PUBLIC key argument.
+///
+/// The value is NEVER echoed back: a mistakenly pasted secret key is
+/// indistinguishable from a public key (both are 64 hex chars), so no error
+/// path may reproduce the input. `what` names the argument; `hint` says
+/// where the right value comes from.
+fn validate_pubkey_arg(s: &str, what: &str, hint: &str) -> Result<PublicKey> {
     if !is_canonical_64_hex(s.as_bytes()) {
         bail!(
-            "invalid --host value (got {} chars): expected the host PUBLIC key as exactly \
-             64 lowercase hex characters, as printed by `buzz-provision host-init --show`",
+            "invalid {what} value (got {} chars): expected a PUBLIC key as exactly \
+             64 lowercase hex characters, {hint} (value withheld from this message on purpose)",
             s.len()
         );
     }
     PublicKey::from_hex(s).map_err(|_| {
-        anyhow::anyhow!("invalid --host value: not a valid x-only secp256k1 public key")
+        anyhow::anyhow!(
+            "invalid {what} value: not a valid x-only secp256k1 public key \
+             (value withheld from this message on purpose)"
+        )
     })
+}
+
+fn validate_host_pubkey(s: &str) -> Result<PublicKey> {
+    validate_pubkey_arg(
+        s,
+        "--host",
+        "as printed by `buzz-provision host-init --show`",
+    )
 }
 
 /// Parse `--seal-env KEY=VALUE`. The VALUE is secret-tier and never echoed.
@@ -367,7 +479,7 @@ fn mint_new(args: &NewArgs) -> Result<()> {
 
     // 2) Owner key in, everything signed/sealed, owner key dropped — before
     //    any disk write, so a write failure never leaves half-signed state.
-    let owner_keys = read_owner_keys(args)?;
+    let owner_keys = read_owner_keys(args.owner_key_file.as_deref())?;
     let owner_pubkey = owner_keys.public_key();
     if owner_pubkey == host_pubkey {
         bail!(
@@ -428,6 +540,7 @@ fn mint_new(args: &NewArgs) -> Result<()> {
         host_pubkey,
         attestation,
         created_at,
+        mode: BundleMode::B,
         config: ManifestConfig {
             respond_to: args.respond_to.as_str().to_owned(),
             channels: channels.clone(),
@@ -494,6 +607,188 @@ fn mint_new(args: &NewArgs) -> Result<()> {
              is idempotent."
         );
     }
+    println!(
+        "B-mode cleanup duty (sealed-mint-bundle spec, scope-change banner): after the host \
+         confirms provision, DELETE this bundle's sealed.json owner-side and treat any \
+         transport copies as compromised-by-default — NIP-44 static-static has no forward \
+         secrecy, so a lingering copy plus a future host-key leak decrypts retroactively."
+    );
+    Ok(())
+}
+
+// ─── attest (Design A — the default ceremony) ────────────────────────────────
+
+/// Attest an EXTERNAL, host-born agent pubkey and publish its kind:9000
+/// bot-add batch directly (owner NIP-98, fresh created_at) — #2694 amendment:
+/// the relay refuses events whose pubkey differs from the authenticated
+/// submitter, and its ±15min freshness window kills pre-signing, so the
+/// owner is the only party that can land these adds.
+fn attest(args: &AttestArgs) -> Result<()> {
+    // 1) Validate everything before touching secrets or the network.
+    validate_name(&args.name)?;
+    let agent_pubkey = validate_pubkey_arg(
+        &args.agent,
+        "--agent",
+        "as printed by `buzz-provision keygen --name <agent>` on the host",
+    )?;
+    let host_pubkey = validate_host_pubkey(&args.host)?;
+    validate_relay_url(&args.relay_url)?;
+    if agent_pubkey == host_pubkey {
+        bail!(
+            "--agent equals the HOST pubkey; expected the AGENT pubkey printed by \
+             `buzz-provision keygen`, not the host identity"
+        );
+    }
+    let channels = args.channels.clone();
+    {
+        let mut deduped = channels.clone();
+        deduped.sort();
+        deduped.dedup();
+        if deduped.len() != channels.len() {
+            bail!("duplicate --channel values given");
+        }
+    }
+    if args.respond_to == RespondTo::Allowlist {
+        eprintln!(
+            "note: --respond-to allowlist requires the allowlist pubkeys to be configured \
+             host-side (BUZZ_ACP_RESPOND_TO_ALLOWLIST) at provision time."
+        );
+    }
+    let out_dir = args.out.clone().unwrap_or_else(|| PathBuf::from("."));
+    let bundle_dir = out_dir.join(format!("{}-mint", args.name));
+    if bundle_dir.exists() {
+        bail!(
+            "bundle directory {} already exists — refusing to overwrite. Re-attesting the \
+             same agent key is safe (remove the old bundle or choose another --out); the \
+             kind:9000 adds are idempotent",
+            bundle_dir.display()
+        );
+    }
+
+    // 2) Owner key in, attestation + 9000 batch signed and PUBLISHED, owner
+    //    key dropped. The key must live through publishing: each POST is
+    //    owner-NIP-98-authenticated (that is the whole point of the ruling).
+    let owner_keys = read_owner_keys(args.owner_key_file.as_deref())?;
+    let owner_pubkey = owner_keys.public_key();
+    if owner_pubkey == host_pubkey {
+        bail!(
+            "--host equals the OWNER pubkey; expected the host identity printed by \
+             `buzz-provision host-init --show`"
+        );
+    }
+    if owner_pubkey == agent_pubkey {
+        bail!(
+            "--agent equals the OWNER pubkey — an agent identity must be its own key \
+             (run `buzz-provision keygen` on the host and attest the pubkey it prints)"
+        );
+    }
+
+    // NIP-OA auth tag over the EXTERNAL pubkey, empty conditions — this is
+    // upstream compute_auth_tag's own shape: it never needs the agent secret.
+    let attestation = buzz_sdk::nip_oa::compute_auth_tag(&owner_keys, &agent_pubkey, "")
+        .map_err(|e| anyhow::anyhow!("cannot compute NIP-OA auth tag: {e}"))?;
+    let created_at = nostr::Timestamp::now().as_secs();
+
+    // Owner-signed kind:9000 batch, FRESH created_at (sign time), published
+    // immediately below. Same h/p/role shape the desktop emits.
+    let mut events: Vec<(Uuid, Event)> = Vec::with_capacity(channels.len());
+    for channel in &channels {
+        let builder = buzz_sdk::builders::build_add_member(
+            *channel,
+            &agent_pubkey.to_hex(),
+            Some(buzz_sdk::MemberRole::Bot),
+        )
+        .map_err(|e| anyhow::anyhow!("cannot build kind:9000 for channel {channel}: {e}"))?;
+        let event = builder
+            .sign_with_keys(&owner_keys)
+            .with_context(|| format!("cannot sign kind:9000 for channel {channel}"))?;
+        events.push((*channel, event));
+    }
+
+    // Publish the batch directly, owner-authenticated. A rejected or
+    // unreachable add is a WARNING, not a mint failure — the relay enforces
+    // per-channel preconditions (not archived, owner an active member), and
+    // `buzz-provision agent` re-verifies memberships host-side.
+    let mut outcomes: Vec<(Uuid, std::result::Result<String, BridgeError>)> = Vec::new();
+    if !events.is_empty() {
+        let http_base = bridge::http_base_url(&args.relay_url);
+        let client =
+            bridge::client().map_err(|e| anyhow::anyhow!("cannot build HTTP client: {e}"))?;
+        for (channel, event) in &events {
+            outcomes.push((
+                *channel,
+                bridge::post_event(&client, &http_base, &owner_keys, None, event),
+            ));
+        }
+    }
+
+    // Owner key is done — drop it before any disk write.
+    drop(owner_keys);
+
+    // 3) Bundle fallout: dir 0700 + manifest.json ONLY (all public data).
+    let manifest = Manifest {
+        v: MANIFEST_VERSION,
+        name: args.name.clone(),
+        agent_pubkey,
+        owner_pubkey,
+        host_pubkey,
+        attestation,
+        created_at,
+        mode: BundleMode::A,
+        config: ManifestConfig {
+            respond_to: args.respond_to.as_str().to_owned(),
+            channels: channels.clone(),
+            harness_cmd: args.harness_cmd.clone(),
+            relay_url: Some(args.relay_url.clone()),
+        },
+    };
+    create_dir_0700(&bundle_dir)?;
+    write_bundle_file(
+        &bundle_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)
+            .context("manifest serialization failed")?
+            .as_bytes(),
+        0o644,
+    )?;
+    fsync_dir(&bundle_dir)?;
+
+    // 4) Report — pubkeys, paths, event ids ONLY.
+    println!(
+        "attested agent {:?} (Design A: key born on the host)",
+        args.name
+    );
+    println!("agent pubkey (hex):  {}", agent_pubkey.to_hex());
+    match agent_pubkey.to_bech32() {
+        Ok(npub) => println!("agent pubkey (npub): {npub}"),
+        Err(_) => println!("agent pubkey (npub): <bech32 encoding failed>"),
+    }
+    println!("owner pubkey:        {}", owner_pubkey.to_hex());
+    println!("host pubkey:         {}", host_pubkey.to_hex());
+    println!("bundle: {}", bundle_dir.display());
+    println!("  manifest.json  (public: name, pubkeys, attestation, config — nothing sealed)");
+    let mut warnings = 0usize;
+    for (channel, outcome) in &outcomes {
+        match outcome {
+            Ok(id) => println!("channel {channel}: kind:9000 bot add ACCEPTED  id {id}"),
+            Err(e) => {
+                warnings += 1;
+                eprintln!(
+                    "warning: channel {channel}: kind:9000 bot add NOT accepted: {e}\n\
+                     warning: this is not a mint failure — fix the precondition (channel \
+                     archived? owner not an active member? relay reachable?) and re-run \
+                     attest, or add the agent from a client; adds are idempotent."
+                );
+            }
+        }
+    }
+    println!();
+    println!("next: copy the bundle to the host and run `buzz-provision agent` there.");
+    if warnings > 0 {
+        eprintln!(
+            "note: {warnings} channel add(s) did not land; `buzz-provision agent` verifies \
+             memberships and will warn about the same channels until the adds land."
+        );
+    }
     Ok(())
 }
 
@@ -538,6 +833,7 @@ fn inspect(bundle_dir: &Path) -> Result<()> {
 
     println!("bundle:       {}", bundle_dir.display());
     println!("name:         {}", manifest.name);
+    println!("mode:         {}", manifest.mode.as_str());
     println!("agent pubkey: {}", manifest.agent_pubkey.to_hex());
     println!("owner pubkey: {}", manifest.owner_pubkey.to_hex());
     println!("host pubkey:  {}", manifest.host_pubkey.to_hex());
@@ -545,10 +841,17 @@ fn inspect(bundle_dir: &Path) -> Result<()> {
     println!("channels:     {}", manifest.config.channels.len());
 
     if problems.is_empty() {
-        println!(
-            "inspect: OK — structure and public-field consistency verified (inner payload \
-             authority is verified host-side at unseal)"
-        );
+        match manifest.mode {
+            BundleMode::A => println!(
+                "inspect: OK — structure and public-field consistency verified (A-mode: \
+                 everything is public; the host verifies its credential derives to the \
+                 attested pubkey at provision time)"
+            ),
+            BundleMode::B => println!(
+                "inspect: OK — structure and public-field consistency verified (inner payload \
+                 authority is verified host-side at unseal)"
+            ),
+        }
         Ok(())
     } else {
         for p in &problems {

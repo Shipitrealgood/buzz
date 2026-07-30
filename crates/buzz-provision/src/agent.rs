@@ -1,29 +1,43 @@
-//! `buzz-provision agent` — consume a buzz-mint bundle end-to-end (T4, D1).
+//! `buzz-provision agent` — consume a buzz-mint bundle end-to-end (T4 + T4b).
 //!
-//! Pipeline (fail-closed at every step, sealed-mint-bundle spec + task #2687
-//! amendments binding):
+//! Two ceremonies, one shared pipeline (fail-closed at every step;
+//! sealed-mint-bundle spec, task #2687 amendments, and the #2694 Design-A
+//! ruling binding):
 //!
-//! 1. Validate bundle structure (shared `buzz_seal::bundle` validator) and
-//!    unseal via [`buzz_seal::unseal`] with the host key + pinned owners.
+//! **A-mode (default mint)** — the bundle is `manifest.json` only; the agent
+//! key was born here via `buzz-provision keygen`:
+//! 1. Validate bundle structure; require the credential to ALREADY exist and
+//!    the manifest owner to be pinned (same trust rule as B, no decrypt).
+//! 2. Credential re-read + pubkey re-derivation against the manifest — the
+//!    A-mode splice analogue: a wrong-bundle-for-this-key refuses BEFORE any
+//!    publish or systemd action.
+//!
+//! **B-mode (sealed transit)**:
+//! 1. Unseal via [`buzz_seal::unseal`] with the host key + pinned owners.
 //! 2. Credential BEFORE any systemd action: write
 //!    `~/.config/buzz-provision/creds/<name>.nsec` byte-exact (tempfile +
 //!    rename, 0600, dir 0700), then re-read and re-derive the pubkey against
 //!    the manifest — the structural fix for the restart-loop hazard
 //!    (Restart=on-failure + bad credential = unbounded loop, measured).
+//!    Shred `sealed.json` only after that verification; manifest + events
+//!    stay (they ARE the on-disk lineage record; re-runs converge).
+//!
+//! **Shared pipeline from there**:
 //! 3. Secret-free env file `<env-dir>/<name>.env`, written directly (never
 //!    via shell: bash mangles BUZZ_AUTH_TAG's literal JSON quoting).
 //! 4. Publish identity events over NIP-98 HTTP, agent-signed, with the
 //!    attestation as `x-auth-tag`: kind:0 (auth tag verified then embedded)
 //!    THEN full kind:10100 with `channel_add_policy: owner_only` and the
 //!    `host` lineage field. RULED ordering (P0 #2683).
-//! 5. THEN submit the pre-signed owner kind:9000 batch verbatim (never
-//!    re-signed, never agent self-add).
+//! 5. Memberships: B-mode submits the pre-signed owner kind:9000 batch
+//!    verbatim (never re-signed). A-mode submits NOTHING — the owner already
+//!    published the adds at attest time (relay refuses third-party
+//!    submission, ingest pubkey-match) — and instead VERIFIES each manifest
+//!    channel's add via a bridge read as the agent, warning (never failing)
+//!    on channels whose adds are pending or rejected.
 //! 6. Enable + restart `buzz-agent@<name>` (restart, not start: LoadCredential
 //!    snapshots at unit start, chuck T2-4) and verify the journal for
 //!    connected/presence/owner-resolved markers.
-//! 7. Shred `sealed.json` — only after step 2's verification. Manifest and
-//!    events stay: they ARE the on-disk lineage record. A re-run without
-//!    sealed.json converges from the verified credential (idempotence).
 //!
 //! `--dry-run` performs steps 1-3 plus event construction, then stops:
 //! nothing is POSTed, systemd is untouched, sealed.json is not shredded.
@@ -34,17 +48,17 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use base64::Engine;
-use buzz_seal::bundle::{self, Manifest, SealedPresence};
+use buzz_seal::bridge;
+use buzz_seal::bundle::{self, BundleMode, Manifest, SealedPresence};
 use buzz_seal::{unseal, UnsealWarning};
 use clap::Args;
-use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
+use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use zeroize::Zeroizing;
 
 use crate::util::{
-    config_dir, ensure_dir_0700, is_canonical_64_hex, load_host_keys, merge_owners, shred_file,
-    sweep_stale_tempfiles, validate_pubkey_arg, write_atomic_0600, Clobber, ALLOWED_OWNERS_FILE,
-    HOST_KEY_FILE,
+    config_dir, credential_pubkey, default_env_dir, ensure_dir_0700, is_canonical_64_hex,
+    load_host_keys, merge_owners, shred_file, sweep_stale_tempfiles, validate_pubkey_arg,
+    write_atomic_0600, Clobber, ALLOWED_OWNERS_FILE, HOST_KEY_FILE,
 };
 
 /// Journal markers that prove the harness came up healthy (buzz-acp
@@ -52,12 +66,10 @@ use crate::util::{
 const JOURNAL_MARKER_CONNECTED: &str = "connected to relay";
 const JOURNAL_MARKER_PRESENCE: &str = "presence set to online";
 
-/// Bound on echoed relay response bodies (diagnostics only, never secrets).
-const MAX_ECHOED_BODY: usize = 500;
-
 #[derive(Args)]
 pub struct AgentArgs {
-    /// Path to the <name>-mint bundle directory produced by `buzz-mint new`.
+    /// Path to the <name>-mint bundle directory produced by `buzz-mint
+    /// attest` (A-mode, the default) or `buzz-mint new` (B-mode).
     bundle_dir: PathBuf,
 
     /// Relay URL (ws:// or wss://). Overrides the manifest's relay_url;
@@ -168,15 +180,7 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
         );
     }
 
-    let env_dir = match &args.env_dir {
-        Some(d) => d.clone(),
-        None => {
-            let home = std::env::var_os("HOME")
-                .filter(|h| !h.is_empty())
-                .context("HOME is not set; pass --env-dir explicitly")?;
-            PathBuf::from(home).join("services").join("buzz-agents")
-        }
-    };
+    let env_dir = default_env_dir(args.env_dir.as_deref())?;
     let env_path = env_dir.join(format!("{name}.env"));
     if env_path.exists() && !args.force {
         bail!(
@@ -232,76 +236,19 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
 
     let sealed_path = bundle.dir.join("sealed.json");
     let mut api_key_paths: Vec<PathBuf> = Vec::new();
-    match &bundle.envelope {
-        Some(envelope) => {
-            // Steps 1-6 of the spec's unseal order, fail-closed, in buzz-seal.
-            let unsealed = unseal(&host_keys, envelope, &pinned)
-                .map_err(|e| anyhow::anyhow!("unseal refused: {e}"))?;
-            for w in &unsealed.warnings {
-                match w {
-                    UnsealWarning::EnvelopeAgentPubkeyMismatch { .. }
-                    | UnsealWarning::Stale { .. } => {
-                        eprintln!("warning: {w}");
-                    }
-                }
-            }
-            let inner = &unsealed.inner;
-            // The manifest drives the env file, unit name, and published
-            // events; the inner payload is the authoritative identity. They
-            // must agree or the provision would be self-inconsistent.
-            if inner.agent_pubkey != manifest.agent_pubkey {
-                bail!(
-                    "inner (authoritative) agent_pubkey {} disagrees with manifest {} — \
-                     the manifest was tampered with or belongs to another mint",
-                    inner.agent_pubkey.to_hex(),
-                    manifest.agent_pubkey.to_hex()
-                );
-            }
-            if inner.host_pubkey != manifest.host_pubkey {
-                bail!("inner host_pubkey disagrees with manifest host_pubkey");
-            }
-
-            // Name-collision guard: never silently replace a DIFFERENT
-            // agent's credential under the same instance name.
-            if cred_path.exists() && !args.force {
-                let existing = credential_pubkey(&cred_path);
-                if existing.as_ref() != Some(&manifest.agent_pubkey) {
-                    bail!(
-                        "credential {} already exists and does not derive to this bundle's \
-                         agent pubkey — another agent uses this instance name. Re-run with \
-                         --force only if you intend to replace it",
-                        cred_path.display()
-                    );
-                }
-            }
-
-            // Step 7 (write half): byte-exact canonical hex, 0600, atomic.
-            write_atomic_0600(
-                &cred_path,
-                inner.agent_sk.expose_canonical_hex().as_bytes(),
-                Clobber::Allow,
-            )
-            .context("cannot write agent credential")?;
-
-            // Optional sealed api keys: same secret tier, credential files
-            // next to the nsec. Unit wiring (LoadCredential=) is manual in v1.
-            if let Some(api_keys) = &inner.api_keys {
-                for (env_name, value) in api_keys {
-                    let p = creds_dir.join(format!("{name}.{env_name}"));
-                    write_atomic_0600(&p, value.expose().as_bytes(), Clobber::Allow)
-                        .with_context(|| format!("cannot write sealed api key {env_name}"))?;
-                    api_key_paths.push(p);
-                }
-            }
-        }
-        None => {
-            // Converged re-run: sealed.json was already consumed + shredded.
-            // The credential on disk is the secret source; owner pinning
-            // still gates the (public, unauthenticated) manifest.
+    match manifest.mode {
+        // ── A-mode (default mint): nothing was ever sealed. The credential
+        // must ALREADY exist — born here by `buzz-provision keygen` — and
+        // the manifest's attester must be a pinned owner. Same trust rule
+        // as B, no decrypt step. Both checks fire BEFORE any publish or
+        // systemd action (fail-closed).
+        BundleMode::A => {
             if !cred_path.exists() {
                 bail!(
-                    "bundle has no sealed.json and no credential exists at {} — nothing to \
-                     provision from. Re-mint the agent to get a fresh sealed bundle",
+                    "A-mode bundle but no credential at {} — the agent key is born on the \
+                     host FIRST: run `buzz-provision keygen --name {name}` here, have the \
+                     owner attest the printed pubkey with `buzz-mint attest`, then re-run. \
+                     (If keygen ran on a different host, this bundle belongs there.)",
                     cred_path.display()
                 );
             }
@@ -312,7 +259,94 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
                     manifest.owner_pubkey.to_hex()
                 );
             }
+            // The pubkey re-derivation against the manifest (the A-mode
+            // splice analogue: wrong-bundle-for-this-key) happens in
+            // verify_credential below, before anything irreversible.
         }
+        BundleMode::B => match &bundle.envelope {
+            Some(envelope) => {
+                // Steps 1-6 of the spec's unseal order, fail-closed, in buzz-seal.
+                let unsealed = unseal(&host_keys, envelope, &pinned)
+                    .map_err(|e| anyhow::anyhow!("unseal refused: {e}"))?;
+                for w in &unsealed.warnings {
+                    match w {
+                        UnsealWarning::EnvelopeAgentPubkeyMismatch { .. }
+                        | UnsealWarning::Stale { .. } => {
+                            eprintln!("warning: {w}");
+                        }
+                    }
+                }
+                let inner = &unsealed.inner;
+                // The manifest drives the env file, unit name, and published
+                // events; the inner payload is the authoritative identity. They
+                // must agree or the provision would be self-inconsistent.
+                if inner.agent_pubkey != manifest.agent_pubkey {
+                    bail!(
+                        "inner (authoritative) agent_pubkey {} disagrees with manifest {} — \
+                     the manifest was tampered with or belongs to another mint",
+                        inner.agent_pubkey.to_hex(),
+                        manifest.agent_pubkey.to_hex()
+                    );
+                }
+                if inner.host_pubkey != manifest.host_pubkey {
+                    bail!("inner host_pubkey disagrees with manifest host_pubkey");
+                }
+
+                // Name-collision guard: never silently replace a DIFFERENT
+                // agent's credential under the same instance name.
+                if cred_path.exists() && !args.force {
+                    let existing = credential_pubkey(&cred_path);
+                    if existing.as_ref() != Some(&manifest.agent_pubkey) {
+                        bail!(
+                            "credential {} already exists and does not derive to this bundle's \
+                         agent pubkey — another agent uses this instance name. Re-run with \
+                         --force only if you intend to replace it",
+                            cred_path.display()
+                        );
+                    }
+                }
+
+                // Step 7 (write half): byte-exact canonical hex, 0600, atomic.
+                write_atomic_0600(
+                    &cred_path,
+                    inner.agent_sk.expose_canonical_hex().as_bytes(),
+                    Clobber::Allow,
+                )
+                .context("cannot write agent credential")?;
+
+                // Optional sealed api keys: same secret tier, credential files
+                // next to the nsec. Unit wiring (LoadCredential=) is manual in v1.
+                if let Some(api_keys) = &inner.api_keys {
+                    for (env_name, value) in api_keys {
+                        let p = creds_dir.join(format!("{name}.{env_name}"));
+                        write_atomic_0600(&p, value.expose().as_bytes(), Clobber::Allow)
+                            .with_context(|| format!("cannot write sealed api key {env_name}"))?;
+                        api_key_paths.push(p);
+                    }
+                }
+            }
+            None => {
+                // Converged re-run: sealed.json was already consumed +
+                // shredded. The credential on disk is the secret source;
+                // owner pinning still gates the (public, unauthenticated)
+                // manifest.
+                if !cred_path.exists() {
+                    bail!(
+                        "bundle has no sealed.json and no credential exists at {} — nothing \
+                         to provision from. Re-mint the agent to get a fresh sealed bundle",
+                        cred_path.display()
+                    );
+                }
+                if !pinned.contains(&manifest.owner_pubkey) {
+                    bail!(
+                        "manifest owner {} is not a pinned owner — refusing a foreign \
+                         manifest (extend trust explicitly with pin-owner add or \
+                         --trust-owner)",
+                        manifest.owner_pubkey.to_hex()
+                    );
+                }
+            }
+        },
     }
 
     // ── Phase 2: credential verification BEFORE anything else happens
@@ -404,25 +438,60 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
         return Ok(());
     }
 
-    // ── Phase 5: publish over the NIP-98 HTTP bridge. ──
-    let http_base = http_base_url(&relay_url);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(15))
-        .build()
-        .context("cannot build HTTP client")?;
+    // ── Phase 5: publish over the NIP-98 HTTP bridge (shared bridge client
+    // — the same code path buzz-mint attest publishes with). ──
+    let http_base = bridge::http_base_url(&relay_url);
+    let client = bridge::client().map_err(|e| anyhow::anyhow!("cannot build HTTP client: {e}"))?;
     let mut published: Vec<(String, String)> = Vec::new();
     for p in &prepared {
-        let receipt = post_event(
+        let receipt = bridge::post_event(
             &client,
             &http_base,
             &agent_keys,
-            &manifest.attestation,
+            Some(&manifest.attestation),
             &p.event,
         )
+        .map_err(anyhow::Error::from)
         .with_context(|| format!("publishing {} failed", p.label))?;
         println!("published {}  id {receipt}", p.label);
         published.push((p.label.to_owned(), receipt));
+    }
+
+    // ── Phase 5b (A-mode): VERIFY memberships instead of submitting 9000s —
+    // the owner published the adds at attest time; the relay refuses them
+    // from anyone else (ingest pubkey-match). Warn, never fail: an add may
+    // be pending (owner offline mid-ceremony) or rejected by relay
+    // preconditions, and neither invalidates the provision.
+    if manifest.mode == BundleMode::A {
+        for channel in &manifest.config.channels {
+            let filter = serde_json::json!({
+                "kinds": [9000],
+                "#h": [channel.to_string()],
+                "#p": [manifest.agent_pubkey.to_hex()],
+                "limit": 1,
+            });
+            match bridge::query_events(
+                &client,
+                &http_base,
+                &agent_keys,
+                Some(&manifest.attestation),
+                &filter,
+            ) {
+                Ok(events) if !events.is_empty() => {
+                    println!("membership verified: channel {channel} (owner kind:9000 found)");
+                }
+                Ok(_) => eprintln!(
+                    "warning: channel {channel}: no kind:9000 add found for this agent — the \
+                     owner's add may be pending or was rejected by relay preconditions. \
+                     Re-run `buzz-mint attest` (adds are idempotent) or add the agent from \
+                     a client; this provision remains valid."
+                ),
+                Err(e) => eprintln!(
+                    "warning: channel {channel}: membership check failed ({e}) — verify the \
+                     agent's channel membership manually; this provision remains valid."
+                ),
+            }
+        }
     }
 
     // ── Phase 6: systemd unit + journal verification. ──
@@ -491,16 +560,6 @@ fn verify_credential(cred_path: &Path, expected: &PublicKey) -> Result<Keys> {
         );
     }
     Ok(keys)
-}
-
-/// Derive the pubkey a credential file corresponds to, if it parses.
-fn credential_pubkey(cred_path: &Path) -> Option<PublicKey> {
-    let raw = Zeroizing::new(fs::read(cred_path).ok()?);
-    if !is_canonical_64_hex(&raw) {
-        return None;
-    }
-    let secret = SecretKey::from_hex(std::str::from_utf8(&raw).ok()?).ok()?;
-    Some(Keys::new(secret).public_key())
 }
 
 /// Verify the NIP-OA attestation for this agent and return it as an event
@@ -588,93 +647,6 @@ fn render_env_file(
     // the quoting; systemd EnvironmentFile= reads it verbatim).
     out.push_str(&format!("BUZZ_AUTH_TAG={}\n", manifest.attestation));
     Ok(out)
-}
-
-/// ws(s):// → http(s):// base URL, no trailing slash.
-fn http_base_url(relay_url: &str) -> String {
-    relay_url
-        .replacen("wss://", "https://", 1)
-        .replacen("ws://", "http://", 1)
-        .trim_end_matches('/')
-        .to_owned()
-}
-
-/// Sign a NIP-98 HTTP-auth event (kind:27235) → `Authorization` header value.
-/// Same tag shape as buzz-cli's `sign_nip98`: u, method, payload, nonce.
-fn nip98_header(keys: &Keys, method: &str, url: &str, body: &[u8]) -> Result<String> {
-    use nostr::hashes::{sha256, Hash};
-    let payload_hex = sha256::Hash::hash(body).to_string();
-    let tags = vec![
-        Tag::parse(["u", url]).map_err(|e| anyhow::anyhow!("tag error: {e}"))?,
-        Tag::parse(["method", method]).map_err(|e| anyhow::anyhow!("tag error: {e}"))?,
-        Tag::parse(["payload", &payload_hex]).map_err(|e| anyhow::anyhow!("tag error: {e}"))?,
-        // Nonce keeps rapid retries distinct under the relay's replay guard.
-        Tag::parse(["nonce", &uuid::Uuid::new_v4().to_string()])
-            .map_err(|e| anyhow::anyhow!("tag error: {e}"))?,
-    ];
-    let event = EventBuilder::new(Kind::Custom(27235), "")
-        .tags(tags)
-        .sign_with_keys(keys)
-        .context("NIP-98 signing failed")?;
-    Ok(format!(
-        "Nostr {}",
-        base64::engine::general_purpose::STANDARD.encode(event.as_json())
-    ))
-}
-
-/// POST one signed event to `<base>/events` with agent NIP-98 auth and the
-/// `x-auth-tag` delegation header. Returns the relay-confirmed event id.
-fn post_event(
-    client: &reqwest::blocking::Client,
-    http_base: &str,
-    agent_keys: &Keys,
-    auth_tag_json: &str,
-    event: &Event,
-) -> Result<String> {
-    let url = format!("{http_base}/events");
-    let body = event.as_json().into_bytes();
-    let auth = nip98_header(agent_keys, "POST", &url, &body)?;
-    let resp = client
-        .post(&url)
-        .header("Authorization", auth)
-        .header("Content-Type", "application/json")
-        .header("x-auth-tag", auth_tag_json)
-        .body(body)
-        .send()
-        .with_context(|| format!("POST {url} failed"))?;
-    let status = resp.status();
-    let text = resp.text().unwrap_or_default();
-    let excerpt: String = text.chars().take(MAX_ECHOED_BODY).collect();
-    if !status.is_success() {
-        let hint = if status.as_u16() == 403 {
-            "\nhint: a 403 here usually means the relay is not running with \
-             BUZZ_ALLOW_NIP_OA_AUTH=true, the owner is not a relay member, or the relay \
-             requires the event author itself to be the authenticated submitter"
-        } else {
-            ""
-        };
-        bail!("relay returned {status}: {excerpt}{hint}");
-    }
-    let parsed: serde_json::Value = serde_json::from_str(&text)
-        .with_context(|| format!("relay response not JSON: {excerpt}"))?;
-    let accepted = parsed
-        .get("accepted")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    if !accepted {
-        bail!(
-            "relay did not accept the event: {}",
-            parsed
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or(&excerpt)
-        );
-    }
-    Ok(parsed
-        .get("event_id")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(&event.id.to_hex())
-        .to_owned())
 }
 
 /// Run `systemctl --user <args>`; non-zero exit is a hard error carrying the

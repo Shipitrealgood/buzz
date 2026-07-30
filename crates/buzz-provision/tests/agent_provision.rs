@@ -13,7 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use buzz_seal::bundle::{Manifest, ManifestConfig};
+use buzz_seal::bundle::{BundleMode, Manifest, ManifestConfig};
 use buzz_seal::{seal, AgentSecretKey, InnerPayload};
 use nostr::{JsonUtil, Keys, PublicKey};
 use uuid::Uuid;
@@ -128,6 +128,7 @@ fn make_bundle(
         host_pubkey,
         attestation,
         created_at,
+        mode: BundleMode::B,
         config: ManifestConfig {
             respond_to: "owner-only".to_owned(),
             channels: channels.to_vec(),
@@ -442,6 +443,221 @@ fn empty_pin_list_refuses_everything() {
     assert!(
         stderr(&out).contains("pin-owner add"),
         "must point at pin-owner"
+    );
+}
+
+// ─── A-mode (Design A: key born host-side, manifest-only bundle) ────────────
+
+/// Run `buzz-provision keygen` for `name`; return the credential's pubkey.
+fn run_keygen(host: &TestHost, name: &str) -> PublicKey {
+    let out = Command::new(bin())
+        .args(["keygen", "--name", name])
+        .arg("--config-dir")
+        .arg(&host.config_dir)
+        .arg("--env-dir")
+        .arg(&host.env_dir)
+        .output()
+        .expect("spawn keygen");
+    assert!(out.status.success(), "keygen failed: {}", stderr(&out));
+    let sk = fs::read_to_string(host.config_dir.join("creds").join(format!("{name}.nsec")))
+        .expect("credential written");
+    Keys::parse(&sk).unwrap().public_key()
+}
+
+/// Build an A-mode bundle (manifest.json ONLY) attesting `agent_pubkey`.
+fn make_a_bundle(
+    host: &TestHost,
+    name: &str,
+    agent_pubkey: PublicKey,
+    channels: &[Uuid],
+    owner: Option<&Keys>, // override attester (foreign-owner tests)
+) -> PathBuf {
+    let owner = owner.unwrap_or(&host.owner);
+    let attestation = buzz_sdk::nip_oa::compute_auth_tag(owner, &agent_pubkey, "").unwrap();
+    let manifest = Manifest {
+        v: 1,
+        name: name.to_owned(),
+        agent_pubkey,
+        owner_pubkey: owner.public_key(),
+        host_pubkey: host.host_pubkey,
+        attestation,
+        created_at: nostr::Timestamp::now().as_secs(),
+        mode: BundleMode::A,
+        config: ManifestConfig {
+            respond_to: "owner-only".to_owned(),
+            channels: channels.to_vec(),
+            harness_cmd: Some("/usr/bin/true".to_owned()),
+            relay_url: None,
+        },
+    };
+    let dir = host.tmp.path().join(format!("{name}-mint"));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn a_mode_happy_path_provisions_from_keygen_credential() {
+    let host = init_host();
+    let chan = Uuid::new_v4();
+    let agent_pubkey = run_keygen(&host, "warbler");
+    let sk = fs::read_to_string(host.config_dir.join("creds").join("warbler.nsec")).unwrap();
+    let bundle = make_a_bundle(&host, "warbler", agent_pubkey, &[chan], None);
+
+    // Dry run: credential validated, env written, events constructed —
+    // and NO 9000 in the prepared list (the owner published those).
+    let out = run_agent(&host, &bundle, &["--dry-run"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    let so = stdout(&out);
+    assert!(so.contains("kind:0"));
+    assert!(so.contains("kind:10100"));
+    assert!(
+        !so.contains("kind:9000"),
+        "A-mode must not submit (or list) any 9000: {so}"
+    );
+
+    // Env file: secret-free, same contract as B.
+    let env = fs::read_to_string(host.env_dir.join("warbler.env")).unwrap();
+    assert!(env.contains("BUZZ_ACP_RESPOND_TO=owner-only\n"));
+    assert!(env.contains("BUZZ_AUTH_TAG=[\"auth\""));
+    assert!(!env.contains("BUZZ_PRIVATE_KEY="));
+    assert_no_secret_leak(sk.trim(), &[&env, &so, &stderr(&out)]);
+
+    // Credential untouched by provisioning (it was born by keygen).
+    assert_eq!(
+        fs::read_to_string(host.config_dir.join("creds").join("warbler.nsec")).unwrap(),
+        sk
+    );
+
+    // Real run against an unreachable relay: fails AT PUBLISH — everything
+    // before (credential + pinning + env) already held.
+    let out = run_agent(&host, &bundle, &["--force"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("publishing"),
+        "A-mode failure point must be publish: {}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn a_mode_missing_credential_fails_closed_before_any_publish() {
+    let host = init_host();
+    let stray = Keys::generate().public_key();
+    let bundle = make_a_bundle(&host, "ghost", stray, &[], None);
+
+    // NOT a dry run: if the credential gate did not fire first, this would
+    // reach the (unreachable) relay and fail with "publishing" instead.
+    let out = run_agent(&host, &bundle, &[]);
+    assert!(!out.status.success());
+    let se = stderr(&out);
+    assert!(
+        se.contains("keygen"),
+        "must route to buzz-provision keygen: {se}"
+    );
+    assert!(
+        !se.contains("publishing"),
+        "must fail BEFORE any publish: {se}"
+    );
+    assert!(
+        !host.config_dir.join("creds").join("ghost.nsec").exists(),
+        "A-mode must never create a credential"
+    );
+}
+
+#[test]
+fn a_mode_wrong_credential_pubkey_mismatch_fails_closed() {
+    let host = init_host();
+    run_keygen(&host, "mismatch");
+    // Bundle attests a DIFFERENT key under the same instance name — the
+    // A-mode splice analogue (wrong bundle for this host's key).
+    let other = Keys::generate().public_key();
+    let bundle = make_a_bundle(&host, "mismatch", other, &[], None);
+
+    let out = run_agent(&host, &bundle, &[]);
+    assert!(!out.status.success());
+    let se = stderr(&out);
+    assert!(
+        se.contains("derives to") && se.contains("agent_pubkey"),
+        "must name the derivation mismatch: {se}"
+    );
+    assert!(!se.contains("publishing"), "must fail BEFORE publish: {se}");
+
+    // --force must NOT bypass the identity gate either.
+    let out = run_agent(&host, &bundle, &["--force"]);
+    assert!(
+        !out.status.success(),
+        "--force must not bypass pubkey verification"
+    );
+}
+
+#[test]
+fn a_mode_unpinned_attester_is_refused() {
+    let host = init_host();
+    let agent_pubkey = run_keygen(&host, "foreigner");
+    let foreign = Keys::generate();
+    let bundle = make_a_bundle(&host, "foreigner", agent_pubkey, &[], Some(&foreign));
+
+    let out = run_agent(&host, &bundle, &["--dry-run"]);
+    assert!(!out.status.success(), "unpinned attester must be refused");
+    assert!(stderr(&out).contains("pinned"), "got: {}", stderr(&out));
+
+    // Same trust-extension escape hatch as B-mode.
+    let out = run_agent(
+        &host,
+        &bundle,
+        &["--dry-run", "--trust-owner", &foreign.public_key().to_hex()],
+    );
+    assert!(
+        out.status.success(),
+        "explicit --trust-owner must admit it: {}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn a_mode_bundle_carrying_sealed_or_events_is_refused() {
+    let host = init_host();
+    let agent_pubkey = run_keygen(&host, "impure");
+
+    // Stray sealed.json in an A-mode bundle.
+    let bundle = make_a_bundle(&host, "impure", agent_pubkey, &[], None);
+    fs::write(bundle.join("sealed.json"), "{}").unwrap();
+    let out = run_agent(&host, &bundle, &["--dry-run"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("A-mode"),
+        "must name the mode violation: {}",
+        stderr(&out)
+    );
+    fs::remove_file(bundle.join("sealed.json")).unwrap();
+
+    // Stray pre-signed event in an A-mode bundle.
+    let chan = Uuid::new_v4();
+    let ev = buzz_sdk::builders::build_add_member(
+        chan,
+        &agent_pubkey.to_hex(),
+        Some(buzz_sdk::MemberRole::Bot),
+    )
+    .unwrap()
+    .sign_with_keys(&host.owner)
+    .unwrap();
+    fs::create_dir_all(bundle.join("events")).unwrap();
+    fs::write(
+        bundle.join("events").join(format!("9000-{chan}.json")),
+        ev.as_json(),
+    )
+    .unwrap();
+    let out = run_agent(&host, &bundle, &["--dry-run", "--force"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("A-mode"),
+        "must name the mode violation: {}",
+        stderr(&out)
     );
 }
 
