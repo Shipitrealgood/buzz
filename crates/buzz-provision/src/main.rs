@@ -21,6 +21,7 @@
 //! reach stderr.
 
 mod agent;
+mod retire;
 mod util;
 
 use std::fs;
@@ -76,6 +77,16 @@ enum Command {
     /// sealed bundle first, submits the pre-signed 9000 batch, and shreds
     /// sealed.json.
     Agent(agent::AgentArgs),
+    /// Retire an agent — the HOST half of teardown (run this FIRST).
+    ///
+    /// As the agent (its credential must still exist): leaves every channel
+    /// (kind:9022), republishes kind:10100 as a not-mentionable tombstone,
+    /// stops + disables the unit, shreds the credential, and archives the
+    /// env file as <name>.env.retired. The agent's kind:0 is deliberately
+    /// NOT touched — the relay verifies the owner's NIP-IA archive request
+    /// against it. Finish with `buzz-mint retire` on the OWNER machine: the
+    /// kind:9035 archive is the real revocation of the attestation.
+    Retire(retire::RetireArgs),
 }
 
 #[derive(Args)]
@@ -181,6 +192,7 @@ fn main() {
         Command::PinOwner(PinOwnerCommand::Add(args)) => pin_owner_add(&args),
         Command::Keygen(args) => keygen(&args),
         Command::Agent(args) => agent::provision_agent(&args),
+        Command::Retire(args) => retire::retire(&args),
     };
     if let Err(e) = result {
         eprintln!("error: {e:#}");

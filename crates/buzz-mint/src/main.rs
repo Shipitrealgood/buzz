@@ -79,6 +79,23 @@ enum Command {
     ///
     /// Pure pre-flight: uses public data only — no secret input, no decrypt.
     Inspect(InspectArgs),
+    /// Publish the NIP-IA kind:9035 archive request for a retired agent —
+    /// the OWNER half of teardown, and the REAL revocation (run this LAST).
+    ///
+    /// ⚑ ORDERING CONTRACT: run `buzz-provision retire <name>` on the HOST
+    /// first — it authenticates as the agent (leaves channels, tombstones
+    /// the kind:10100 directory entry) and must happen while the credential
+    /// still exists. Then run this. The relay accepts the archive only while
+    /// the agent's LIVE kind:0 carries a currently-valid auth tag naming
+    /// this owner, which is why the host half never touches the kind:0.
+    ///
+    /// Why this step is not optional: with NIP-OA auth enabled on the relay,
+    /// the attestation is a standing relay credential (empty conditions,
+    /// native parity). Host teardown alone leaves that key valid on the
+    /// door; the archive is what revokes it. A FRESH auth tag is minted and
+    /// the request freshly signed here because the relay enforces a ±120s
+    /// created_at window on kind:9035.
+    Retire(RetireArgs),
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -200,6 +217,32 @@ struct InspectArgs {
     bundle_dir: PathBuf,
 }
 
+#[derive(Args)]
+struct RetireArgs {
+    /// Agent PUBLIC key to archive (exactly 64 lowercase hex) — printed by
+    /// the host half (`buzz-provision retire <name>`), which must run FIRST.
+    #[arg(long, value_name = "PUBKEY_64HEX")]
+    agent: String,
+
+    /// Relay URL the archive request is published to (owner NIP-98, fresh
+    /// created_at — the relay enforces a ±120s window on kind:9035).
+    #[arg(long = "relay-url", value_name = "WS_URL")]
+    relay_url: String,
+
+    /// Machine-readable reason code recorded on the archive (NIP-IA
+    /// suggested codes: retired, rotated, bot-rebuilt, left-organization,
+    /// spam, ...).
+    #[arg(long, default_value = "retired")]
+    reason: String,
+
+    /// Read the owner SECRET key from this file (must not be group/world
+    /// accessible — 0600). Without this flag, a silent prompt is used.
+    /// There is deliberately NO --owner-key <hex> flag: argv leaks into
+    /// shell history and process listings.
+    #[arg(long = "owner-key-file", value_name = "PATH")]
+    owner_key_file: Option<PathBuf>,
+}
+
 fn main() {
     // try_parse instead of parse: clap's own error rendering echoes argv
     // values verbatim, and a secret pasted without its flag prefix must not
@@ -222,6 +265,7 @@ fn main() {
         Command::Attest(args) => attest(&args),
         Command::New(args) => mint_new(&args),
         Command::Inspect(args) => inspect(&args.bundle_dir),
+        Command::Retire(args) => retire(&args),
     };
     if let Err(e) = result {
         eprintln!("error: {e:#}");
@@ -792,6 +836,125 @@ fn attest(args: &AttestArgs) -> Result<()> {
     Ok(())
 }
 
+// ─── retire (owner half of teardown — the real revocation) ──────────────────
+
+/// Build the owner-signed NIP-IA kind:9035 archive request. Mirrors the
+/// native delete path's `build_agent_archive_request` shape (desktop
+/// `commands/agents.rs`): content empty, exactly one NIP-70 protected tag
+/// `["-"]`, exactly one `["p", target]`, machine-readable `reason`, and
+/// exactly ONE freshly-minted owner auth tag — the relay's
+/// `verify_owner_consent` requires the single auth tag to name the request
+/// signer AND the target's live kind:0 to still attest the same owner.
+fn build_retire_archive_request(
+    owner_keys: &Keys,
+    agent_pubkey: &PublicKey,
+    reason: &str,
+) -> Result<Event> {
+    // FRESH auth tag at request-build time — native's delete path also mints
+    // a new tag rather than reusing a stored one, and the flush loop re-signs
+    // with a fresh created_at because of the relay's ±120s window on 9035s
+    // (persona_events.rs re-sign-before-publish pattern). Here build and
+    // publish are one step, so signing now IS the fresh signature.
+    let attestation = buzz_sdk::nip_oa::compute_auth_tag(owner_keys, agent_pubkey, "")
+        .map_err(|e| anyhow::anyhow!("cannot compute NIP-OA auth tag: {e}"))?;
+    let auth_tag = buzz_sdk::nip_oa::parse_auth_tag(&attestation)
+        .map_err(|e| anyhow::anyhow!("cannot parse freshly-minted auth tag: {e}"))?;
+    let tags = vec![
+        nostr::Tag::parse(["-"]).map_err(|e| anyhow::anyhow!("cannot build protected tag: {e}"))?,
+        nostr::Tag::parse(["p", &agent_pubkey.to_hex()])
+            .map_err(|e| anyhow::anyhow!("cannot build p tag: {e}"))?,
+        nostr::Tag::parse(["reason", reason])
+            .map_err(|e| anyhow::anyhow!("cannot build reason tag: {e}"))?,
+        auth_tag,
+    ];
+    // `.allow_self_tagging()` mirrors the desktop wire builder: our p tag
+    // names the agent (never the owner signer), but the builder must never
+    // silently reshape the wire form either way.
+    nostr::EventBuilder::new(nostr::Kind::Custom(9035), "")
+        .tags(tags)
+        .allow_self_tagging()
+        .sign_with_keys(owner_keys)
+        .map_err(|e| anyhow::anyhow!("cannot sign kind:9035 archive request: {e}"))
+}
+
+/// Validate a `--reason` code: short single token, no whitespace/control
+/// (it lands verbatim in a tag and in relay logs).
+fn validate_reason(reason: &str) -> Result<()> {
+    if reason.is_empty() || reason.len() > 64 {
+        bail!("--reason must be 1..=64 characters");
+    }
+    if !reason
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        bail!("--reason must be a single [A-Za-z0-9_-] token (e.g. retired, rotated)");
+    }
+    Ok(())
+}
+
+/// The owner half of teardown: mint a fresh auth tag, build the kind:9035
+/// NIP-IA archive request (reason defaults to "retired"), and publish it
+/// over owner NIP-98 with a fresh created_at. See the subcommand docs for
+/// the ordering contract (host half FIRST; kind:0 must still be live).
+fn retire(args: &RetireArgs) -> Result<()> {
+    // 1) Validate everything before touching secrets or the network.
+    let agent_pubkey = validate_pubkey_arg(
+        &args.agent,
+        "--agent",
+        "as printed by `buzz-provision retire <name>` on the host",
+    )?;
+    validate_relay_url(&args.relay_url)?;
+    validate_reason(&args.reason)?;
+
+    // 2) Owner key in, request built + published, owner key dropped.
+    let owner_keys = read_owner_keys(args.owner_key_file.as_deref())?;
+    let owner_pubkey = owner_keys.public_key();
+    if owner_pubkey == agent_pubkey {
+        bail!(
+            "--agent equals the OWNER pubkey — this command archives an AGENT identity \
+             via the owner consent path; archiving your own key is a different ceremony"
+        );
+    }
+
+    let event = build_retire_archive_request(&owner_keys, &agent_pubkey, &args.reason)?;
+    let http_base = bridge::http_base_url(&args.relay_url);
+    let client = bridge::client().map_err(|e| anyhow::anyhow!("cannot build HTTP client: {e}"))?;
+    let outcome = bridge::post_event(&client, &http_base, &owner_keys, None, &event);
+
+    // Owner key is done — drop it before reporting.
+    drop(owner_keys);
+
+    // 3) Report — pubkeys and event ids ONLY.
+    match outcome {
+        Ok(id) => {
+            println!("archived agent identity {}", agent_pubkey.to_hex());
+            println!("owner pubkey:  {}", owner_pubkey.to_hex());
+            println!(
+                "kind:9035 archive request ACCEPTED  id {id}  (reason: {})",
+                args.reason
+            );
+            println!();
+            println!(
+                "revocation complete: the attestation no longer admits this key anywhere \
+                 the archive is honored. The agent's kind:0 stops mattering now."
+            );
+            Ok(())
+        }
+        Err(e) => {
+            bail!(
+                "kind:9035 archive request NOT accepted: {e}\n\
+                 The relay's owner consent path requires (a) this owner to be a relay \
+                 member, (b) the request to carry exactly one fresh auth tag naming this \
+                 owner, and (c) the agent's LIVE kind:0 to still attest this owner — if \
+                 the kind:0 was deleted or replaced, owner revocation is no longer \
+                 possible from here (a relay owner/admin can still archive it). \
+                 Run the HOST half (`buzz-provision retire`) before, not after, and \
+                 never remove the agent's kind:0."
+            )
+        }
+    }
+}
+
 // ─── inspect ─────────────────────────────────────────────────────────────────
 
 /// Owner-side pre-flight: validate bundle structure and manifest/envelope
@@ -890,6 +1053,81 @@ mod tests {
         assert!(
             parse_seal_env(&[format!("GOOD_KEY={secret}"), format!("GOOD_KEY={secret}")]).is_err()
         );
+    }
+
+    #[test]
+    fn retire_archive_request_matches_relay_consent_shape() {
+        // Mirror of the relay-side validators the request must satisfy
+        // (identity_archive.rs): exactly one NIP-70 "-" tag, exactly one
+        // 64-hex p tag, exactly one 4-element auth tag verifying for the
+        // TARGET and naming the SIGNER, fresh created_at, empty content.
+        let owner = Keys::generate();
+        let agent = Keys::generate();
+        let event = build_retire_archive_request(&owner, &agent.public_key(), "retired").unwrap();
+
+        assert_eq!(event.kind, nostr::Kind::Custom(9035));
+        assert!(event.content.is_empty());
+        event.verify().unwrap();
+        assert_eq!(event.pubkey, owner.public_key(), "owner-signed");
+
+        let count_named = |name: &str| {
+            event
+                .tags
+                .iter()
+                .filter(|t| t.as_slice().first().map(|s| s.as_str()) == Some(name))
+                .count()
+        };
+        assert_eq!(count_named("-"), 1, "exactly one protected tag");
+        assert_eq!(count_named("p"), 1, "exactly one p tag");
+        assert_eq!(count_named("auth"), 1, "exactly one auth tag");
+        assert_eq!(count_named("reason"), 1);
+
+        let p_val = event
+            .tags
+            .iter()
+            .find_map(|t| {
+                let parts = t.as_slice();
+                (parts.first().map(|s| s.as_str()) == Some("p"))
+                    .then(|| parts.get(1).unwrap().to_string())
+            })
+            .unwrap();
+        assert_eq!(p_val, agent.public_key().to_hex());
+
+        // The auth tag must verify for the target and resolve to the signer
+        // (verify_owner_consent: request auth owner == request signer).
+        let auth_parts: Vec<String> = event
+            .tags
+            .iter()
+            .find(|t| t.as_slice().first().map(|s| s.as_str()) == Some("auth"))
+            .unwrap()
+            .as_slice()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            auth_parts.len(),
+            4,
+            "auth tag must have exactly four elements"
+        );
+        let auth_json = serde_json::to_string(&auth_parts).unwrap();
+        let resolved_owner =
+            buzz_sdk::nip_oa::verify_auth_tag(&auth_json, &agent.public_key()).unwrap();
+        assert_eq!(resolved_owner, owner.public_key());
+
+        // Freshly signed: created_at within the relay's ±120s 9035 window.
+        let now = nostr::Timestamp::now().as_secs() as i64;
+        assert!((event.created_at.as_secs() as i64 - now).abs() <= 5);
+    }
+
+    #[test]
+    fn retire_reason_validation() {
+        assert!(validate_reason("retired").is_ok());
+        assert!(validate_reason("bot-rebuilt").is_ok());
+        assert!(validate_reason("left_organization").is_ok());
+        assert!(validate_reason("").is_err());
+        assert!(validate_reason("two words").is_err());
+        assert!(validate_reason("line\nbreak").is_err());
+        assert!(validate_reason(&"x".repeat(65)).is_err());
     }
 
     #[test]

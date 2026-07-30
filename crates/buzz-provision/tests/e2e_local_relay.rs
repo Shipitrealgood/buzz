@@ -34,9 +34,17 @@
 //! cargo test -p buzz-provision --test e2e_local_relay -- --ignored --nocapture
 //! ```
 //!
-//! Ports: B test 3033/8098/9203, A test 3034/8099/9204 (disjoint so the
-//! parallel runner cannot collide them). Systemd is never touched
-//! (`--no-systemd`); the throwaway agents exist only in the local DB.
+//! A third test runs the full **T5 retire lifecycle** (#2688): keygen →
+//! attest → provision → `buzz-provision retire` (channels left via 9022,
+//! 10100 tombstoned not-mentionable, credential shredded, kind:0 left
+//! ALIVE) → converged re-run → `buzz-mint retire` kind:9035 archive,
+//! accepted through the REAL owner consent path (the owner is seeded as a
+//! plain relay `member`, so the relay cannot take the admin shortcut).
+//!
+//! Ports: B test 3033/8098/9203, A test 3034/8099/9204, retire test
+//! 3035/8100/9205 (disjoint so the parallel runner cannot collide them).
+//! Systemd is never touched (`--no-systemd`); the throwaway agents exist
+//! only in the local DB.
 
 use std::fs;
 use std::io::Write as _;
@@ -69,6 +77,13 @@ const PORTS_A: Ports = Ports {
     relay: 3034,
     health: 8099,
     metrics: 9204,
+};
+
+/// Retire-lifecycle (T5) test ports.
+const PORTS_R: Ports = Ports {
+    relay: 3035,
+    health: 8100,
+    metrics: 9205,
 };
 
 fn relay_host(ports: Ports) -> String {
@@ -234,9 +249,18 @@ fn run_checked(cmd: &mut Command, what: &str) -> String {
 }
 
 /// Connect Postgres, seed this relay instance's community, and enroll the
-/// throwaway owner as a relay member (direct DB seed, same pattern as
-/// buzz-test-client's e2e suite). Returns (pool, community_id).
-async fn seed_community_and_owner(ports: Ports, owner: &Keys) -> (sqlx::PgPool, uuid::Uuid) {
+/// throwaway owner as a relay member with the given role (direct DB seed,
+/// same pattern as buzz-test-client's e2e suite). Returns (pool, community_id).
+///
+/// Role matters for T5: an owner seeded as relay `owner`/`admin` short-cuts
+/// the 9035 consent check to the Admin path; seeding `member` forces the
+/// REAL owner consent path (`verify_owner_consent`: fresh auth tag + live
+/// kind:0 attestation).
+async fn seed_community_and_member(
+    ports: Ports,
+    owner: &Keys,
+    role: &str,
+) -> (sqlx::PgPool, uuid::Uuid) {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url())
@@ -258,11 +282,12 @@ async fn seed_community_and_owner(ports: Ports, owner: &Keys) -> (sqlx::PgPool, 
             .await
             .expect("lookup community");
     sqlx::query(
-        "INSERT INTO relay_members (community_id, pubkey, role, added_by) VALUES ($1,$2,'owner',NULL) \
-         ON CONFLICT (community_id, pubkey) DO UPDATE SET role='owner', updated_at=now()",
+        "INSERT INTO relay_members (community_id, pubkey, role, added_by) VALUES ($1,$2,$3,NULL) \
+         ON CONFLICT (community_id, pubkey) DO UPDATE SET role=$3, updated_at=now()",
     )
     .bind(community_id)
     .bind(owner.public_key().to_hex())
+    .bind(role)
     .execute(&pool)
     .await
     .expect("enroll throwaway owner");
@@ -297,7 +322,7 @@ async fn full_virtual_mint_pipeline_against_local_relay() {
     let _relay = spawn_relay(tmp.path(), &owner.public_key().to_hex(), ports);
     let client = reqwest::Client::new();
     wait_for_relay(&client, ports).await;
-    let (pool, community_id) = seed_community_and_owner(ports, &owner).await;
+    let (pool, community_id) = seed_community_and_member(ports, &owner, "owner").await;
 
     // ── Owner creates a channel over the bridge. ──
     let channel = create_channel(&client, ports, &owner).await;
@@ -519,7 +544,7 @@ async fn full_design_a_ceremony_against_local_relay() {
     let _relay = spawn_relay(tmp.path(), &owner.public_key().to_hex(), ports);
     let client = reqwest::Client::new();
     wait_for_relay(&client, ports).await;
-    let (pool, community_id) = seed_community_and_owner(ports, &owner).await;
+    let (pool, community_id) = seed_community_and_member(ports, &owner, "owner").await;
 
     // ── Owner creates a channel over the bridge. ──
     let channel = create_channel(&client, ports, &owner).await;
@@ -754,4 +779,330 @@ async fn full_design_a_ceremony_against_local_relay() {
     );
 
     println!("RESULT: full Design-A ceremony green — keygen → attest (live 9000s) → provision (verify-not-submit)");
+}
+
+/// Full T5 retire lifecycle (#2688): keygen → attest → provision → HOST
+/// retire (channels left, 10100 tombstoned, credential gone, kind:0 ALIVE)
+/// → retire re-run converges → OWNER kind:9035 archive accepted through the
+/// REAL owner consent path.
+///
+/// The agent's owner is seeded as relay role `member` (NOT `owner`/`admin`)
+/// and a separate throwaway key takes RELAY_OWNER_PUBKEY: this forces the
+/// relay's `determine_consent_path` past the admin shortcut and through
+/// `verify_owner_consent` — fresh auth tag naming the signer + the target's
+/// live kind:0 still attesting the same owner. That is exactly the ordering
+/// contract under test: the host half must leave the kind:0 alone or this
+/// archive would be impossible.
+#[tokio::test]
+#[ignore] // needs docker postgres+redis and built buzz-relay/buzz-mint binaries
+async fn full_retire_lifecycle_against_local_relay() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ports = PORTS_R;
+    // Separate relay operator: the agent's owner must NOT be relay
+    // owner/admin, or the 9035 would take the Admin consent shortcut.
+    let relay_op = Keys::generate();
+    let owner = Keys::generate();
+    let _relay = spawn_relay(tmp.path(), &relay_op.public_key().to_hex(), ports);
+    let client = reqwest::Client::new();
+    wait_for_relay(&client, ports).await;
+    let (pool, community_id) = seed_community_and_member(ports, &owner, "member").await;
+
+    // ── Owner (plain member) creates a channel over the bridge. ──
+    let channel = create_channel(&client, ports, &owner).await;
+
+    // ── keygen → attest → provision (the Design-A default ceremony). ──
+    let provision_bin = env!("CARGO_BIN_EXE_buzz-provision");
+    let mint_bin = target_debug_dir().join("buzz-mint");
+    assert!(
+        mint_bin.exists(),
+        "buzz-mint binary missing at {} — run `cargo build -p buzz-mint` first",
+        mint_bin.display()
+    );
+    let cfg_dir = tmp.path().join("cfg");
+    let env_dir = tmp.path().join("env");
+    let bundle_out = tmp.path().join("out");
+    fs::create_dir_all(&bundle_out).unwrap();
+
+    let so = run_checked(
+        Command::new(provision_bin)
+            .args(["host-init", "--allow-owner", &owner.public_key().to_hex()])
+            .arg("--config-dir")
+            .arg(&cfg_dir),
+        "host-init",
+    );
+    let host_pubkey = so
+        .lines()
+        .find_map(|l| l.strip_prefix("host pubkey (hex):"))
+        .expect("host pubkey line")
+        .trim()
+        .to_owned();
+
+    let agent_name = format!(
+        "e2e-ret-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    let so = run_checked(
+        Command::new(provision_bin)
+            .args(["keygen", "--name", &agent_name])
+            .arg("--config-dir")
+            .arg(&cfg_dir)
+            .arg("--env-dir")
+            .arg(&env_dir),
+        "keygen",
+    );
+    let agent_pubkey = so
+        .lines()
+        .find_map(|l| l.strip_prefix("agent pubkey (hex):"))
+        .expect("agent pubkey line")
+        .trim()
+        .to_owned();
+
+    let mut attest = Command::new(&mint_bin)
+        .args([
+            "attest",
+            "--name",
+            &agent_name,
+            "--agent",
+            &agent_pubkey,
+            "--host",
+            &host_pubkey,
+            "--channel",
+            &channel.to_string(),
+            "--relay-url",
+            &format!("ws://{}", relay_host(ports)),
+            "--harness-cmd",
+            "/usr/bin/true",
+        ])
+        .arg("--out")
+        .arg(&bundle_out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn buzz-mint attest");
+    attest
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(owner.secret_key().to_secret_hex().as_bytes())
+        .unwrap();
+    let attest_out = attest.wait_with_output().unwrap();
+    assert!(
+        attest_out.status.success(),
+        "buzz-mint attest failed: {}",
+        String::from_utf8_lossy(&attest_out.stderr)
+    );
+
+    let bundle_dir = bundle_out.join(format!("{agent_name}-mint"));
+    run_checked(
+        Command::new(provision_bin)
+            .arg("agent")
+            .arg(&bundle_dir)
+            .arg("--no-systemd")
+            .arg("--config-dir")
+            .arg(&cfg_dir)
+            .arg("--env-dir")
+            .arg(&env_dir),
+        "provision agent",
+    );
+
+    // ── Pre-retire ground truth: bot membership + online directory entry. ──
+    let member_role: Option<String> = sqlx::query_scalar(
+        "SELECT role::text FROM channel_members WHERE community_id=$1 AND channel_id=$2 \
+         AND encode(pubkey, 'hex')=$3",
+    )
+    .bind(community_id)
+    .bind(channel)
+    .bind(&agent_pubkey)
+    .fetch_optional(&pool)
+    .await
+    .expect("channel member check");
+    assert_eq!(member_role.as_deref(), Some("bot"), "provisioned as bot");
+
+    // ── HOST HALF: buzz-provision retire (agent still authenticates). ──
+    let retire_out = run_checked(
+        Command::new(provision_bin)
+            .args(["retire", &agent_name, "--no-systemd"])
+            .arg("--config-dir")
+            .arg(&cfg_dir)
+            .arg("--env-dir")
+            .arg(&env_dir),
+        "retire (host half)",
+    );
+    println!("--- retire stdout ---\n{retire_out}");
+    assert!(
+        retire_out.contains("published kind:9022 leave"),
+        "retire must leave the channel: {retire_out}"
+    );
+    assert!(
+        retire_out.contains("published kind:10100 tombstone"),
+        "retire must tombstone the directory entry: {retire_out}"
+    );
+    // The exact owner-half command is printed (keygen UX pattern).
+    assert!(
+        retire_out.contains(&format!(
+            "buzz-mint retire --agent {agent_pubkey} --relay-url ws://{}",
+            relay_host(ports)
+        )),
+        "retire must print the exact owner-half command: {retire_out}"
+    );
+
+    // Membership row GONE.
+    let member_role: Option<String> = sqlx::query_scalar(
+        "SELECT role::text FROM channel_members WHERE community_id=$1 AND channel_id=$2 \
+         AND encode(pubkey, 'hex')=$3 AND left_at IS NULL",
+    )
+    .bind(community_id)
+    .bind(channel)
+    .bind(&agent_pubkey)
+    .fetch_optional(&pool)
+    .await
+    .unwrap_or(None);
+    assert_eq!(
+        member_role, None,
+        "kind:9022 leave must have removed the bot membership"
+    );
+
+    // Directory entry: tombstoned, NOT-mentionable under the client
+    // contract (respond_to nobody + empty channel_ids), lineage preserved.
+    let k10100 = query(
+        &client,
+        ports,
+        &owner,
+        None,
+        serde_json::json!({"kinds": [10100], "authors": [agent_pubkey], "limit": 1}),
+    )
+    .await;
+    assert_eq!(k10100.len(), 1, "tombstone must replace the 10100");
+    let content: serde_json::Value =
+        serde_json::from_str(k10100[0]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(content["status"], "offline");
+    assert_eq!(content["respond_to"], "nobody");
+    assert_eq!(content["channel_ids"].as_array().unwrap().len(), 0);
+    assert_eq!(content["channel_add_policy"], "owner_only");
+    assert_eq!(
+        content["host"], host_pubkey,
+        "lineage survives the tombstone"
+    );
+
+    // kind:0 STILL ALIVE — the ordering constraint made material: the
+    // owner's archive below is only possible because retire left it alone.
+    let kind0 = query(
+        &client,
+        ports,
+        &owner,
+        None,
+        serde_json::json!({"kinds": [0], "authors": [agent_pubkey], "limit": 1}),
+    )
+    .await;
+    assert_eq!(
+        kind0.len(),
+        1,
+        "host retire must NEVER remove/replace the agent kind:0"
+    );
+
+    // Host files: credential shredded, .pub removed, env archived 0600.
+    assert!(
+        !cfg_dir
+            .join("creds")
+            .join(format!("{agent_name}.nsec"))
+            .exists(),
+        "credential must be gone"
+    );
+    assert!(
+        !env_dir.join(format!("{agent_name}.pub")).exists(),
+        ".pub marker must be gone"
+    );
+    assert!(
+        !env_dir.join(format!("{agent_name}.env")).exists(),
+        "live env file must be gone"
+    );
+    let retired_path = env_dir.join(format!("{agent_name}.env.retired"));
+    assert!(retired_path.exists(), ".env.retired archive must remain");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&retired_path).unwrap().permissions().mode() & 0o7777,
+            0o600,
+            ".env.retired must keep 0600"
+        );
+    }
+    // Bundle dir untouched: public lineage record.
+    assert!(
+        bundle_dir.join("manifest.json").exists(),
+        "manifest must never be deleted by retire"
+    );
+
+    // ── Idempotence: a second retire converges without error. ──
+    let rerun_out = run_checked(
+        Command::new(provision_bin)
+            .args(["retire", &agent_name, "--no-systemd"])
+            .arg("--config-dir")
+            .arg(&cfg_dir)
+            .arg("--env-dir")
+            .arg(&env_dir),
+        "retire (re-run, must converge)",
+    );
+    assert!(
+        rerun_out.contains("already retired"),
+        "re-run must report convergence: {rerun_out}"
+    );
+
+    // ── OWNER HALF: buzz-mint retire → kind:9035 NIP-IA archive. ──
+    let mut mint_retire = Command::new(&mint_bin)
+        .args([
+            "retire",
+            "--agent",
+            &agent_pubkey,
+            "--relay-url",
+            &format!("ws://{}", relay_host(ports)),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn buzz-mint retire");
+    mint_retire
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(owner.secret_key().to_secret_hex().as_bytes())
+        .unwrap();
+    let mr_out = mint_retire.wait_with_output().unwrap();
+    let mr_stdout = String::from_utf8_lossy(&mr_out.stdout).into_owned();
+    let mr_stderr = String::from_utf8_lossy(&mr_out.stderr).into_owned();
+    println!("--- mint retire stdout ---\n{mr_stdout}\n--- mint retire stderr ---\n{mr_stderr}");
+    assert!(
+        mr_out.status.success(),
+        "buzz-mint retire failed: {mr_stderr}"
+    );
+    assert!(
+        mr_stdout.contains("kind:9035 archive request ACCEPTED"),
+        "{mr_stdout}"
+    );
+
+    // Archived state per relay, through the REAL owner consent path (the
+    // owner is a plain relay member, so 'admin' here would mean the test
+    // stopped exercising verify_owner_consent).
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT consent_path, actor, reason FROM archived_identities \
+         WHERE community_id=$1 AND pubkey=$2",
+    )
+    .bind(community_id)
+    .bind(&agent_pubkey)
+    .fetch_optional(&pool)
+    .await
+    .expect("archived_identities lookup");
+    let (consent_path, actor, reason) = row.expect("identity must be archived");
+    assert_eq!(
+        consent_path, "owner",
+        "archive must have gone through verify_owner_consent (fresh auth tag + live kind:0)"
+    );
+    assert_eq!(actor, owner.public_key().to_hex());
+    assert_eq!(reason.as_deref(), Some("retired"));
+
+    println!(
+        "RESULT: full T5 lifecycle green — provision → host retire (leave + tombstone + \
+         files, kind:0 untouched) → converged re-run → owner 9035 archive via owner consent"
+    );
 }
