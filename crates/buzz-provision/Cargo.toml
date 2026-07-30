@@ -1,0 +1,22 @@
+[package]
+name = "buzz-provision"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Host-side provisioning CLI for VM-deployed Buzz agents (virtual mint): host identity, owner pinning, credential fallout"
+
+[[bin]]
+name = "buzz-provision"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
+nostr = { workspace = true }
+tempfile = "3"
+zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
