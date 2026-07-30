@@ -13,10 +13,18 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { version = "4", features = ["derive", "env"] }
+base64 = { workspace = true }
+buzz-sdk = { workspace = true }
+buzz-seal = { workspace = true }
+clap = { version = "4", features = ["derive"] }
 nostr = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+serde_json = { workspace = true }
 tempfile = "3"
+uuid = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+sqlx = { workspace = true }
 tempfile = "3"
+tokio = { workspace = true }

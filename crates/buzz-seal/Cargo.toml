@@ -8,9 +8,11 @@ repository.workspace = true
 description = "Sealed mint bundle envelope: NIP-44 v2 static-sender seal/unseal for owner→host agent-key transit (sealed-mint-bundle spec)"
 
 [dependencies]
+base64 = { workspace = true }
 buzz-sdk = { workspace = true }
 nostr = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 zeroize = { workspace = true }

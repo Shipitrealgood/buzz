@@ -22,19 +22,13 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use base64::Engine;
-use buzz_seal::{
-    is_canonical_64_hex, seal, AgentSecretKey, Envelope, InnerPayload, SecretString, ENVELOPE_TYPE,
-};
+use buzz_seal::bundle::{self, Manifest, ManifestConfig, SealedPresence, MANIFEST_VERSION};
+use buzz_seal::{is_canonical_64_hex, seal, AgentSecretKey, InnerPayload, SecretString};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use nostr::nips::nip19::ToBech32;
 use nostr::{Event, JsonUtil, Keys, PublicKey, SecretKey};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::Zeroizing;
-
-/// Manifest schema version (matches the envelope/inner version).
-const MANIFEST_VERSION: u32 = 1;
 
 #[derive(Parser)]
 #[command(
@@ -100,6 +94,11 @@ struct NewArgs {
     #[arg(long = "harness-cmd", value_name = "CMD")]
     harness_cmd: Option<String>,
 
+    /// Relay URL the agent will connect to (public manifest config,
+    /// `BUZZ_RELAY_URL`). Optional: provision accepts `--relay-url` instead.
+    #[arg(long = "relay-url", value_name = "WS_URL")]
+    relay_url: Option<String>,
+
     /// Extra secret sealed into the bundle as KEY=VALUE (e.g. a provider API
     /// key). Repeatable. The VALUE is secret-tier: sealed, never printed.
     #[arg(long = "seal-env", value_name = "KEY=VALUE")]
@@ -121,29 +120,6 @@ struct NewArgs {
 struct InspectArgs {
     /// Path to the <name>-mint bundle directory.
     bundle_dir: PathBuf,
-}
-
-// ─── Manifest (public) ───────────────────────────────────────────────────────
-
-#[derive(Serialize, Deserialize)]
-struct ManifestConfig {
-    respond_to: String,
-    channels: Vec<Uuid>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    harness_cmd: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Manifest {
-    v: u32,
-    name: String,
-    agent_pubkey: PublicKey,
-    owner_pubkey: PublicKey,
-    host_pubkey: PublicKey,
-    /// NIP-OA auth tag JSON (public data, same as native's agent record).
-    attestation: String,
-    created_at: u64,
-    config: ManifestConfig,
 }
 
 fn main() {
@@ -250,18 +226,20 @@ fn read_owner_keys(args: &NewArgs) -> Result<Keys> {
 // ─── Validation helpers ──────────────────────────────────────────────────────
 
 /// Bundle dirs are created from the name: keep it path-safe and unit-safe.
+/// Shared rule with the provision-side consumer (buzz_seal::bundle).
 fn validate_name(name: &str) -> Result<()> {
-    let ok = !name.is_empty()
-        && name.len() <= 64
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        && name.as_bytes()[0].is_ascii_alphanumeric();
-    if !ok {
-        bail!(
-            "invalid --name {name:?}: expected 1-64 chars of [A-Za-z0-9_-], starting with an \
-             alphanumeric (it becomes a directory and systemd instance name)"
-        );
+    bundle::validate_agent_name(name).map_err(|e| anyhow::anyhow!("--name: {e}"))
+}
+
+/// Validate a `--relay-url`: ws/wss scheme, single line (the value is later
+/// written verbatim into an `EnvironmentFile=` line host-side, so a newline
+/// here would be an env-injection vector).
+fn validate_relay_url(s: &str) -> Result<()> {
+    if !(s.starts_with("ws://") || s.starts_with("wss://")) {
+        bail!("invalid --relay-url {s:?}: expected a ws:// or wss:// URL");
+    }
+    if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        bail!("invalid --relay-url: must not contain whitespace or control characters");
     }
     Ok(())
 }
@@ -358,6 +336,9 @@ fn mint_new(args: &NewArgs) -> Result<()> {
     // 1) Validate everything before touching secrets or disk.
     validate_name(&args.name)?;
     let host_pubkey = validate_host_pubkey(&args.host)?;
+    if let Some(relay_url) = &args.relay_url {
+        validate_relay_url(relay_url)?;
+    }
     let api_keys = parse_seal_env(&args.seal_env)?;
     let channels = args.channels.clone();
     {
@@ -451,6 +432,7 @@ fn mint_new(args: &NewArgs) -> Result<()> {
             respond_to: args.respond_to.as_str().to_owned(),
             channels: channels.clone(),
             harness_cmd: args.harness_cmd.clone(),
+            relay_url: args.relay_url.clone(),
         },
     };
 
@@ -522,167 +504,16 @@ fn mint_new(args: &NewArgs) -> Result<()> {
 /// checks it cannot make (inner payload authority) are exactly the sealed
 /// spec's unseal steps 2-6, run host-side.
 fn inspect(bundle_dir: &Path) -> Result<()> {
-    let mut problems: Vec<String> = Vec::new();
-
-    let manifest_path = bundle_dir.join("manifest.json");
-    let sealed_path = bundle_dir.join("sealed.json");
-    let manifest: Manifest = serde_json::from_str(
-        &fs::read_to_string(&manifest_path)
-            .with_context(|| format!("cannot read {}", manifest_path.display()))?,
-    )
-    .with_context(|| format!("{} does not parse as a manifest", manifest_path.display()))?;
-    let envelope: Envelope = serde_json::from_str(
-        &fs::read_to_string(&sealed_path)
-            .with_context(|| format!("cannot read {}", sealed_path.display()))?,
-    )
-    .with_context(|| format!("{} does not parse as an envelope", sealed_path.display()))?;
-
-    if manifest.v != MANIFEST_VERSION {
-        problems.push(format!("manifest.v is {} (expected 1)", manifest.v));
-    }
-    if envelope.v != 1 {
-        problems.push(format!("envelope v is {} (expected 1)", envelope.v));
-    }
-    if envelope.bundle_type != ENVELOPE_TYPE {
-        problems.push(format!(
-            "envelope type is {:?} (expected {ENVELOPE_TYPE:?})",
-            envelope.bundle_type
-        ));
-    }
-
-    // Manifest ↔ envelope agreement on every shared field.
-    for (field, m, e) in [
-        ("agent_pubkey", manifest.agent_pubkey, envelope.agent_pubkey),
-        ("owner_pubkey", manifest.owner_pubkey, envelope.owner_pubkey),
-        ("host_pubkey", manifest.host_pubkey, envelope.host_pubkey),
-    ] {
-        if m != e {
-            problems.push(format!(
-                "{field} disagrees: manifest {} vs envelope {}",
-                m.to_hex(),
-                e.to_hex()
-            ));
-        }
-    }
-
-    // Attestation is public — verify it and bind attester == owner.
-    match buzz_sdk::nip_oa::verify_auth_tag(&manifest.attestation, &manifest.agent_pubkey) {
-        Ok(attester) => {
-            if attester != manifest.owner_pubkey {
-                problems.push(format!(
-                    "attestation attester {} is not manifest.owner_pubkey {}",
-                    attester.to_hex(),
-                    manifest.owner_pubkey.to_hex()
-                ));
-            }
-        }
-        Err(e) => problems.push(format!("attestation does not verify: {e}")),
-    }
-
-    // Ciphertext plausibility without decrypting: NIP-44 content bounds and
-    // version byte 2 (same bounds the pairing crate enforces pre-decrypt).
-    let clen = envelope.ciphertext.len();
-    if !(132..=87472).contains(&clen) {
-        problems.push(format!(
-            "ciphertext length {clen} outside NIP-44 content bounds (132..=87472)"
-        ));
-    }
-    match base64::engine::general_purpose::STANDARD.decode(&envelope.ciphertext) {
-        Ok(decoded) if decoded.first() != Some(&2) => problems.push(format!(
-            "ciphertext version byte is {:?} (expected 2 = NIP-44 v2)",
-            decoded.first()
-        )),
-        Ok(_) => {}
-        Err(_) => problems.push("ciphertext is not valid base64".to_owned()),
-    }
-
-    // Events: one per manifest channel, none extra, each a valid owner-signed
-    // kind:9000 bot add for THIS agent in THAT channel.
-    let events_dir = bundle_dir.join("events");
-    let mut seen: Vec<Uuid> = Vec::new();
-    if events_dir.is_dir() {
-        let mut entries: Vec<PathBuf> = fs::read_dir(&events_dir)
-            .with_context(|| format!("cannot read {}", events_dir.display()))?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .collect();
-        entries.sort();
-        for path in entries {
-            let fname = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_owned();
-            let channel: Option<Uuid> = fname
-                .strip_prefix("9000-")
-                .and_then(|s| s.strip_suffix(".json"))
-                .and_then(|s| s.parse().ok());
-            let Some(channel) = channel else {
-                problems.push(format!(
-                    "events/{fname}: unexpected file (want 9000-<uuid>.json)"
-                ));
-                continue;
-            };
-            seen.push(channel);
-            let raw = fs::read_to_string(&path)
-                .with_context(|| format!("cannot read {}", path.display()))?;
-            let event = match Event::from_json(&raw) {
-                Ok(ev) => ev,
-                Err(e) => {
-                    problems.push(format!("events/{fname}: does not parse as an event: {e}"));
-                    continue;
-                }
-            };
-            if let Err(e) = event.verify() {
-                problems.push(format!("events/{fname}: id/signature invalid: {e}"));
-            }
-            if event.kind.as_u16() != 9000 {
-                problems.push(format!("events/{fname}: kind {} != 9000", event.kind));
-            }
-            if event.pubkey != manifest.owner_pubkey {
-                problems.push(format!(
-                    "events/{fname}: signer {} is not manifest.owner_pubkey",
-                    event.pubkey.to_hex()
-                ));
-            }
-            let tag_value = |name: &str| -> Option<String> {
-                event.tags.iter().find_map(|t| {
-                    let s = t.as_slice();
-                    (s.first().map(String::as_str) == Some(name))
-                        .then(|| s.get(1).cloned())
-                        .flatten()
-                })
-            };
-            if tag_value("h").as_deref() != Some(channel.to_string().as_str()) {
-                problems.push(format!(
-                    "events/{fname}: h tag does not match filename channel"
-                ));
-            }
-            if tag_value("p").as_deref() != Some(manifest.agent_pubkey.to_hex().as_str()) {
-                problems.push(format!(
-                    "events/{fname}: p tag does not target manifest.agent_pubkey"
-                ));
-            }
-            if tag_value("role").as_deref() != Some("bot") {
-                problems.push(format!("events/{fname}: role tag is not \"bot\""));
-            }
-            if !manifest.config.channels.contains(&channel) {
-                problems.push(format!(
-                    "events/{fname}: channel is not listed in manifest config.channels"
-                ));
-            }
-        }
-    }
-    for channel in &manifest.config.channels {
-        if !seen.contains(channel) {
-            problems.push(format!(
-                "missing events/9000-{channel}.json for manifest channel"
-            ));
-        }
-    }
+    let bundle =
+        bundle::load(bundle_dir, SealedPresence::Required).map_err(|e| anyhow::anyhow!("{e:#}"))?;
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut problems = bundle::validate(&bundle);
+    let manifest = &bundle.manifest;
 
     // Mode hygiene (unix; Windows locus gets DACL checks later).
     #[cfg(unix)]
     {
+        let sealed_path = bundle_dir.join("sealed.json");
         let mode = |p: &Path| -> Option<u32> {
             fs::metadata(p)
                 .ok()

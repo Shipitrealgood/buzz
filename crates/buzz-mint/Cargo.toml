@@ -16,7 +16,6 @@ anyhow = { workspace = true }
 buzz-sdk = { workspace = true }
 buzz-seal = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
-base64 = { workspace = true }
 nostr = { workspace = true }
 rpassword = "7"
 serde = { workspace = true }

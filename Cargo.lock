@@ -1027,7 +1027,6 @@ name = "buzz-mint"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64",
  "buzz-sdk",
  "buzz-seal",
  "clap",
@@ -1090,9 +1089,17 @@ name = "buzz-provision"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
+ "buzz-sdk",
+ "buzz-seal",
  "clap",
  "nostr",
+ "reqwest 0.13.4",
+ "serde_json",
+ "sqlx",
  "tempfile",
+ "tokio",
+ "uuid",
  "zeroize",
 ]
 
@@ -1256,11 +1263,13 @@ dependencies = [
 name = "buzz-seal"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "buzz-sdk",
  "nostr",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "uuid",
  "zeroize",
 ]
 
@@ -7327,6 +7336,7 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",

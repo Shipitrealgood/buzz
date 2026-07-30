@@ -19,6 +19,8 @@
 //! [`unseal`] is fail-closed with a distinct error variant, in the exact
 //! order the spec numbers them.
 
+pub mod bundle;
+
 use std::collections::BTreeMap;
 use std::fmt;
 
