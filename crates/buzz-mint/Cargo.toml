@@ -1,0 +1,28 @@
+[package]
+name = "buzz-mint"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Owner-side mint CLI for VM-deployed Buzz agents (virtual mint): agent keygen, NIP-OA attestation, seal-to-host bundle, pre-signed kind:9000 batch"
+
+[[bin]]
+name = "buzz-mint"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+buzz-sdk = { workspace = true }
+buzz-seal = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
+base64 = { workspace = true }
+nostr = { workspace = true }
+rpassword = "7"
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

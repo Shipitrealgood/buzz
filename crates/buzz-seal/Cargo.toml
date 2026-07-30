@@ -1,0 +1,16 @@
+[package]
+name = "buzz-seal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Sealed mint bundle envelope: NIP-44 v2 static-sender seal/unseal for owner→host agent-key transit (sealed-mint-bundle spec)"
+
+[dependencies]
+buzz-sdk = { workspace = true }
+nostr = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
