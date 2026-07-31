@@ -819,9 +819,15 @@ async fn full_retire_lifecycle_against_local_relay() {
             .exists(),
         "credential must be gone"
     );
-    assert!(
-        !env_dir.join(format!("{agent_name}.pub")).exists(),
-        ".pub marker must be gone"
+    // The .pub marker SURVIVES retire: it is the public record of which
+    // identity was retired here, and converged re-runs reprint the
+    // owner-half command from it.
+    assert_eq!(
+        fs::read_to_string(env_dir.join(format!("{agent_name}.pub")))
+            .expect(".pub marker must survive retire")
+            .trim(),
+        agent_pubkey,
+        ".pub marker must still record the retired identity"
     );
     assert!(
         !env_dir.join(format!("{agent_name}.env")).exists(),
