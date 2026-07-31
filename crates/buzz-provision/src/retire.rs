@@ -1,11 +1,10 @@
-//! `buzz-provision retire` — the HOST half of agent teardown (T5 #2688).
+//! `buzz-provision retire` — the HOST half of agent teardown.
 //!
-//! Symmetric inverse of `provision agent`, in the runbook's decommissioning
-//! order (agent-provisioning-runbook "Decommissioning an agent"): a stale
-//! kind:10100 outlives a dead agent and keeps it void-mentionable, so the
-//! directory retraction is not optional.
+//! Symmetric inverse of `provision agent`: a stale kind:10100 outlives a
+//! dead agent and keeps it void-mentionable, so the directory retraction is
+//! not optional.
 //!
-//! **Ordering contract (⚑ T5 amendment, virtual-mint design doc §2c.7):**
+//! **Ordering contract:**
 //!
 //! 1. HOST half FIRST (this command). Everything here authenticates as the
 //!    agent — ViaOwner virtual membership needs the credential + attestation
@@ -56,7 +55,7 @@ use crate::util::{
 pub struct RetireArgs {
     /// Agent instance name (the name given to keygen/provision).
     ///
-    /// ⚑ ORDERING CONTRACT: run this HOST half FIRST — it authenticates as
+    /// ORDERING CONTRACT: run this HOST half FIRST — it authenticates as
     /// the agent, which requires the credential and attestation to still
     /// exist. The agent's kind:0 is deliberately left alive: the relay only
     /// accepts the owner's kind:9035 archive request while the live kind:0
@@ -305,8 +304,14 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
             }
         }
     } else {
+        // A previous retire is the LIKELY explanation, but a hand-deleted
+        // credential leaves live relay state (10100 + memberships) that this
+        // command can no longer re-verify — say so, never claim convergence.
         println!(
-            "credential {} already gone — relay teardown was done by a previous run; skipping",
+            "credential {} already gone — relay teardown cannot be re-verified from here \
+             (a previous retire likely did it; if the credential was deleted by hand, the \
+             directory entry and memberships may still be live — check from a client); \
+             skipping",
             cred_path.display()
         );
         if args.dry_run {

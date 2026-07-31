@@ -38,7 +38,6 @@ use buzz_provision::bridge;
 use buzz_provision::bundle::{self, Manifest};
 use clap::Args;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
-use zeroize::Zeroizing;
 
 use crate::util::{
     config_dir, default_env_dir, ensure_dir_0700, is_canonical_64_hex, load_host_keys,
@@ -433,10 +432,8 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
 /// its pubkey, and require it to equal the manifest's agent pubkey. This is
 /// the gate every systemd action hides behind.
 fn verify_credential(cred_path: &Path, expected: &PublicKey) -> Result<Keys> {
-    let raw = Zeroizing::new(
-        fs::read(cred_path)
-            .with_context(|| format!("cannot re-read credential {}", cred_path.display()))?,
-    );
+    let raw = crate::util::read_secret_file(cred_path)
+        .with_context(|| format!("cannot re-read credential {}", cred_path.display()))?;
     if !is_canonical_64_hex(&raw) {
         bail!(
             "credential {} is not canonical 64-lowercase-hex after write — refusing to \
@@ -474,7 +471,7 @@ fn verified_auth_tag(attestation: &str, agent_pubkey: &PublicKey) -> Result<Tag>
         .map_err(|e| anyhow::anyhow!("cannot parse verified auth tag: {e}"))
 }
 
-/// The full kind:10100 content (RULED shape, P0 #2683): directory profile +
+/// The full kind:10100 content: directory profile +
 /// `channel_add_policy: owner_only` + the `host` lineage anchor.
 fn agent_profile_content(
     manifest: &Manifest,

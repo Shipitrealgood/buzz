@@ -1,12 +1,11 @@
 //! NIP-98 HTTP bridge client — the one publish/query path both mint halves
 //! share.
 //!
-//! Extracted from `buzz-provision agent` (T4) when the T4 e2e pinned the
-//! relay's submitter-identity rule (`event.pubkey` must equal the NIP-98
-//! authenticated identity, ingest.rs) and #2694 ruled that `buzz-mint attest`
-//! therefore publishes the owner-signed kind:9000 batch DIRECTLY, owner-
-//! authenticated, with fresh timestamps. One authority, two consumers — the
-//! same rule `bundle` follows for the bundle schema.
+//! Exists because the relay's submitter-identity rule (`event.pubkey` must
+//! equal the NIP-98 authenticated identity — pinned by the ceremony e2e)
+//! means `buzz-mint attest` publishes the owner-signed kind:9000 batch
+//! DIRECTLY, owner-authenticated, with fresh timestamps. One authority, two
+//! consumers — the same rule `bundle` follows for the bundle schema.
 //!
 //! Nothing here formats secret material: signing keys go into signatures
 //! only; errors carry status codes, URLs, and bounded response excerpts.
@@ -17,9 +16,10 @@ use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag};
 /// Bound on echoed relay response bodies (diagnostics only, never secrets).
 const MAX_ECHOED_BODY: usize = 500;
 
-/// Bridge-call failures. `Rejected` is the only "relay said no" variant —
-/// callers that treat rejections as warnings (attest's 9000 batch, per the
-/// #2694 amendment) can match on it; everything else is transport/protocol.
+/// Bridge-call failures. `Rejected` is the "relay said no" variant —
+/// callers that treat rejections as warnings (attest's 9000 batch) can match
+/// on it; `Dominated` is acceptance that changed nothing; everything else is
+/// transport/protocol.
 #[derive(Debug, thiserror::Error)]
 pub enum BridgeError {
     #[error("cannot sign NIP-98 auth event: {0}")]

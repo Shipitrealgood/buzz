@@ -28,7 +28,7 @@ pub const TEMPFILE_PREFIX: &str = ".buzz-provision.";
 ///
 /// Deliberately NOT env-activatable: a stray environment variable must never
 /// silently redirect the trust root (pin list + host key) at runtime
-/// (chuck post-audit T1-3).
+/// at runtime.
 pub fn config_dir(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(dir) = explicit {
         return Ok(dir.to_path_buf());
@@ -81,7 +81,7 @@ pub enum Clobber {
     /// Replace whatever is at the destination (merge-style files).
     Allow,
     /// Fail if the destination exists at rename time — closes the
-    /// check-then-write TOCTOU on refuse-if-exists paths (chuck T1-2).
+    /// check-then-write TOCTOU on refuse-if-exists paths.
     Refuse,
 }
 
@@ -126,9 +126,9 @@ pub fn write_atomic_0600(path: &Path, bytes: &[u8], clobber: Clobber) -> Result<
     Ok(())
 }
 
-/// Remove stale `.buzz-provision.*` tempfiles from `dir` (chuck T1-5: a hard
-/// crash between write and rename can orphan a 0600 tempfile holding secret
-/// material; nothing else ever sweeps them).
+/// Remove stale `.buzz-provision.*` tempfiles from `dir`: a hard crash
+/// between write and rename can orphan a 0600 tempfile holding secret
+/// material, and nothing else ever sweeps them.
 ///
 /// Only entries older than one hour are removed so a concurrent run's
 /// in-flight tempfile is never yanked out from under its rename. Best-effort:
@@ -226,10 +226,41 @@ pub fn write_owners_file(owners_path: &Path, owners: &[String]) -> Result<()> {
 /// Read and strictly validate the host key file; returns the parsed keys.
 ///
 /// The raw buffer is zeroized on drop. No error path formats file content.
+/// Open + read a secret key file with the tree's strictest at-rest
+/// discipline (the bar git-sign-nostr's key reader sets): `O_NOFOLLOW`
+/// rejects symlinks at the kernel (no check-then-open TOCTOU), `O_NONBLOCK`
+/// refuses FIFOs, and the OPEN HANDLE is fstat'd — regular file, no
+/// group/other permission bits (0600/0400 only).
+pub fn read_secret_file(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
+    use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .with_context(|| format!("cannot open {} (symlinks are refused)", path.display()))?;
+    let meta = f
+        .metadata()
+        .with_context(|| format!("cannot fstat {}", path.display()))?;
+    if !meta.is_file() {
+        bail!("{} is not a regular file", path.display());
+    }
+    let mode = meta.permissions().mode() & 0o7777;
+    if mode & 0o177 != 0 {
+        bail!(
+            "{} has mode {mode:04o} — secret key files must be 0600 or 0400 \
+             (no group/other access); refusing to read it",
+            path.display()
+        );
+    }
+    let mut raw = Vec::new();
+    f.read_to_end(&mut raw)
+        .with_context(|| format!("cannot read {}", path.display()))?;
+    Ok(Zeroizing::new(raw))
+}
+
 pub fn load_host_keys(key_path: &Path) -> Result<Keys> {
-    let raw = Zeroizing::new(
-        fs::read(key_path).with_context(|| format!("cannot read {}", key_path.display()))?,
-    );
+    let raw = read_secret_file(key_path)?;
     if !is_canonical_64_hex(&raw) {
         bail!(
             "{} is not canonical: expected exactly 64 lowercase hex bytes \

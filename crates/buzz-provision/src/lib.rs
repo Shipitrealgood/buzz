@@ -36,3 +36,22 @@ pub fn npub_string(pk: &nostr::PublicKey) -> String {
     pk.to_bech32()
         .unwrap_or_else(|_| "<bech32 encoding failed>".to_owned())
 }
+
+/// Map an error chain to the repo's documented CLI exit-code contract
+/// (buzz-cli / AGENTS.md): 0 ok, 1 input, 2 network/relay, 3 auth,
+/// 4 other, 5 write conflict (a dominated replaceable write).
+pub fn exit_code_for(err: &anyhow::Error) -> i32 {
+    for cause in err.chain() {
+        if let Some(b) = cause.downcast_ref::<bridge::BridgeError>() {
+            return match b {
+                bridge::BridgeError::Http {
+                    status: 401 | 403, ..
+                } => 3,
+                bridge::BridgeError::Dominated { .. } => 5,
+                bridge::BridgeError::Sign(_) => 4,
+                _ => 2,
+            };
+        }
+    }
+    1
+}

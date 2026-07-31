@@ -62,7 +62,7 @@ enum Command {
     /// Publish the NIP-IA kind:9035 archive request for a retired agent —
     /// the OWNER half of teardown, and the REAL revocation (run this LAST).
     ///
-    /// ⚑ ORDERING CONTRACT: run `buzz-provision retire <name>` on the HOST
+    /// ORDERING CONTRACT: run `buzz-provision retire <name>` on the HOST
     /// first — it authenticates as the agent (leaves channels, tombstones
     /// the kind:10100 directory entry) and must happen while the credential
     /// still exists. Then run this. The relay accepts the archive only while
@@ -181,8 +181,7 @@ struct RetireArgs {
 fn main() {
     // try_parse instead of parse: clap's own error rendering echoes argv
     // values verbatim, and a secret pasted without its flag prefix must not
-    // land on stderr (same measured leak channel as buzz-provision, chuck
-    // T1-4 — one redactor, all mint binaries).
+    // land on stderr — one redactor, all mint binaries.
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
@@ -203,7 +202,7 @@ fn main() {
     };
     if let Err(e) = result {
         eprintln!("error: {e:#}");
-        std::process::exit(1);
+        std::process::exit(buzz_provision::exit_code_for(&e));
     }
 }
 
@@ -787,5 +786,33 @@ mod tests {
         let nsec = Zeroizing::new(keys.secret_key().to_bech32().unwrap());
         let parsed = parse_owner_secret(nsec.as_bytes()).unwrap();
         assert_eq!(parsed.public_key(), keys.public_key());
+    }
+
+    /// Class guard (same pattern as buzz-acp/buzz-cli): any argument whose
+    /// env var smells like a credential must set hide_env_values, so a
+    /// future secret-bearing env arg cannot silently echo into --help.
+    #[test]
+    fn secret_env_args_hide_their_values_in_help() {
+        use clap::CommandFactory;
+        fn check(cmd: &clap::Command) {
+            for arg in cmd.get_arguments() {
+                if let Some(env) = arg.get_env() {
+                    let name = env.to_string_lossy().to_uppercase();
+                    if ["KEY", "SECRET", "TOKEN", "PASSWORD", "CRED", "AUTH"]
+                        .iter()
+                        .any(|k| name.contains(k))
+                    {
+                        assert!(
+                            arg.is_hide_env_values_set(),
+                            "{name} must set hide_env_values"
+                        );
+                    }
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                check(sub);
+            }
+        }
+        check(&Cli::command());
     }
 }

@@ -1075,6 +1075,7 @@ dependencies = [
  "base64",
  "buzz-sdk",
  "clap",
+ "libc",
  "nostr",
  "reqwest 0.13.4",
  "rpassword 7.5.4",

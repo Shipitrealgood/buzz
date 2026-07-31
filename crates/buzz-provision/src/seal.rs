@@ -47,7 +47,7 @@ pub const STALENESS_WARN_SECS: u64 = 30 * 24 * 60 * 60;
 ///
 /// This is the canonical-form check for secret-key material: it rejects
 /// uppercase, whitespace, CR/LF, bech32 (`nsec…`), and any trailing byte —
-/// killing the newline/CRLF class (T2-preflight M5) at the source.
+/// killing the newline/CRLF class of malformed-secret bugs at the source.
 pub fn is_canonical_64_hex(s: &[u8]) -> bool {
     s.len() == 64 && s.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
@@ -56,10 +56,11 @@ pub fn is_canonical_64_hex(s: &[u8]) -> bool {
 ///
 /// clap's own error rendering echoes argv values verbatim ("unexpected
 /// argument 'nsec1…' found") — and a secret pasted without its flag prefix
-/// would land in session transcripts (chuck post-audit T1-4, measured leak
-/// channel). Every token that looks like key material (≥32 hex chars, or a
-/// bech32 `nsec`/`npub` string) is replaced wholesale. Shared by every mint
-/// binary that parses argv (buzz-provision, buzz-mint) — one redactor, all
+/// would land in shell history and session transcripts (a measured leak
+/// channel). Every token that looks like key material is replaced
+/// wholesale: whole-token hex, a ≥32-char hex run fused inside a longer
+/// token (`x<64hex>`), or a bech32 `nsec`/`npub` string anywhere in the
+/// token. Shared by every mint binary that parses argv — one redactor, all
 /// consumers.
 pub fn redact_key_material(message: &str) -> String {
     let mut out = String::with_capacity(message.len());
@@ -76,11 +77,20 @@ pub fn redact_key_material(message: &str) -> String {
                 }
             }
             let token = &message[start..end];
-            let hexish = token.len() >= 32 && token.bytes().all(|b| b.is_ascii_hexdigit());
-            let bech32ish = (token.len() >= 20)
-                && (token.to_ascii_lowercase().starts_with("nsec1")
-                    || token.to_ascii_lowercase().starts_with("npub1"));
-            if hexish || bech32ish {
+            // A ≥32-hex RUN anywhere in the token (not whole-token hex):
+            // catches a key fused to argv junk, e.g. `x<64hex>`.
+            let hex_run = {
+                let mut run = 0usize;
+                let mut max = 0usize;
+                for b in token.bytes() {
+                    run = if b.is_ascii_hexdigit() { run + 1 } else { 0 };
+                    max = max.max(run);
+                }
+                max >= 32
+            };
+            let lower = token.to_ascii_lowercase();
+            let bech32ish = lower.contains("nsec1") || lower.contains("npub1");
+            if hex_run || bech32ish {
                 out.push_str("<redacted-key-material>");
             } else {
                 out.push_str(token);
@@ -597,4 +607,27 @@ pub fn unseal_at(
     }
 
     Ok(Unsealed { inner, warnings })
+}
+
+#[cfg(test)]
+mod redact_tests {
+    use super::*;
+
+    #[test]
+    fn redactor_catches_bare_fused_and_bech32_key_material() {
+        let hex64 = "f5c79eab2f44284ff278780c34aab621aafb149be4d7dba8f9625bfd99419733";
+        // Bare 64-hex token.
+        assert!(!redact_key_material(&format!("unexpected argument {hex64}")).contains(hex64));
+        // Key material FUSED into a mixed token (argv junk glued to the key).
+        let fused = format!("x{hex64}");
+        assert!(!redact_key_material(&format!("got {fused} here")).contains(hex64));
+        let fused = format!("key{hex64}end");
+        assert!(!redact_key_material(&fused).contains(hex64));
+        // bech32 fused mid-token.
+        let nsec = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+        assert!(!redact_key_material(&format!("argnsec={nsec}x")).contains(nsec));
+        // Ordinary words and short hex survive.
+        let msg = "error: invalid value cafe1234 for --channel";
+        assert_eq!(redact_key_material(msg), msg);
+    }
 }

@@ -163,7 +163,7 @@ struct PinOwnerAddArgs {
 fn main() {
     // try_parse instead of parse: clap's own error rendering echoes argv
     // values verbatim, and a secret pasted without its flag prefix must not
-    // land on stderr (transcripts are a real leak channel — chuck T1-4).
+    // land on stderr (shell history and transcripts are real leak channels).
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
@@ -193,7 +193,7 @@ fn main() {
     };
     if let Err(e) = result {
         eprintln!("error: {e:#}");
-        std::process::exit(1);
+        std::process::exit(buzz_provision::exit_code_for(&e));
     }
 }
 
@@ -267,7 +267,7 @@ fn host_init(args: &HostInitArgs) -> Result<()> {
 
     // Canonical 64-lowercase-hex, NO trailing newline. On the fresh-init path
     // the rename itself refuses to clobber: two racing host-inits cannot both
-    // win, so the printed pubkey always matches what is on disk (chuck T1-2).
+    // win, so the printed pubkey always matches what is on disk.
     let clobber = if args.force {
         Clobber::Allow
     } else {
@@ -517,5 +517,33 @@ mod tests {
         let bogus = "NSEC1THISLOOKSLIKEASECRETVALUETHATMUSTNOTAPPEARINERRORS000000000";
         let err = validate_pubkey_arg(bogus, "--allow-owner").unwrap_err();
         assert!(!format!("{err:#}").contains(bogus));
+    }
+
+    /// Class guard (same pattern as buzz-acp/buzz-cli): any argument whose
+    /// env var smells like a credential must set hide_env_values, so a
+    /// future secret-bearing env arg cannot silently echo into --help.
+    #[test]
+    fn secret_env_args_hide_their_values_in_help() {
+        use clap::CommandFactory;
+        fn check(cmd: &clap::Command) {
+            for arg in cmd.get_arguments() {
+                if let Some(env) = arg.get_env() {
+                    let name = env.to_string_lossy().to_uppercase();
+                    if ["KEY", "SECRET", "TOKEN", "PASSWORD", "CRED", "AUTH"]
+                        .iter()
+                        .any(|k| name.contains(k))
+                    {
+                        assert!(
+                            arg.is_hide_env_values_set(),
+                            "{name} must set hide_env_values"
+                        );
+                    }
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                check(sub);
+            }
+        }
+        check(&super::Cli::command());
     }
 }
