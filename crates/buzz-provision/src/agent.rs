@@ -389,7 +389,8 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
     // ── Phase 6: systemd unit + journal verification. ──
     if !args.no_systemd {
         let unit = crate::systemd::unit_name(name);
-        if !crate::systemd::unit_exists(&unit)? {
+        let unit_def = crate::systemd::unit_definition(&unit)?;
+        if unit_def.is_empty() {
             bail!(
                 "unit template buzz-agent@.service is not installed — provision publishes \
                  identity but cannot supervise without it. Install the template at \
@@ -398,6 +399,20 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
                  LoadCredential the agent key), run systemctl --user daemon-reload, \
                  then re-run provision; the published events are idempotent",
                 env_path.display(),
+                env_dir.join(format!("{name}.local.env")).display()
+            );
+        }
+        // The env-ownership split only works when the installed template
+        // actually reads the operator file — say so loudly when it does not,
+        // or the operator's keys are silently ignored.
+        if !unit_def.contains(".local.env") {
+            eprintln!(
+                "warning: the installed unit template does not read {name}.local.env — \
+                 operator-owned keys placed there will be IGNORED until the template gains \
+                 a second line:\n\
+                 warning:   EnvironmentFile=-{}\n\
+                 warning: (add it after the generated EnvironmentFile= line, then \
+                 systemctl --user daemon-reload)",
                 env_dir.join(format!("{name}.local.env")).display()
             );
         }

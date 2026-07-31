@@ -219,7 +219,8 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
                 eprintln!("warning: dry-run membership discovery failed ({e}) — plan shown without channel list");
                 Vec::new()
             }
-            Err(e) => return Err(anyhow::anyhow!("membership discovery failed: {e}")),
+            // Wrap, never format: exit_code_for downcasts the chain.
+            Err(e) => return Err(anyhow::Error::new(e).context("membership discovery failed")),
         };
 
         // Replaceable-tie guard: sign the tombstone strictly after the live
@@ -299,7 +300,9 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
                     }
                 }
                 Err(e) => {
-                    return Err(anyhow::anyhow!("publishing {} failed: {e}", p.label));
+                    // Wrap, never format: exit_code_for downcasts the chain.
+                    let label = p.label.clone();
+                    return Err(anyhow::Error::new(e).context(format!("publishing {label} failed")));
                 }
             }
         }

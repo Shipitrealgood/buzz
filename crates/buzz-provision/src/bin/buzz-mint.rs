@@ -189,10 +189,13 @@ fn main() {
             let rendered = redact_key_material(&e.render().to_string());
             if is_error {
                 eprint!("{rendered}");
-            } else {
-                print!("{rendered}");
+                // Repo CLI contract: usage/input errors are exit 1 (clap's
+                // own convention of 2 collides with 2 = network/relay).
+                std::process::exit(1);
             }
-            std::process::exit(e.exit_code());
+            // --help / --version go to stdout with exit code 0.
+            print!("{rendered}");
+            std::process::exit(0);
         }
     };
     let result = match cli.command {
@@ -633,16 +636,17 @@ fn retire(args: &RetireArgs) -> Result<()> {
             Ok(())
         }
         Err(e) => {
-            bail!(
-                "kind:9035 archive request NOT accepted: {e}\n\
+            // Wrap, never format: exit_code_for downcasts the chain.
+            Err(anyhow::Error::new(e).context(
+                "kind:9035 archive request NOT accepted.\n\
                  The relay's owner consent path requires (a) this owner to be a relay \
                  member, (b) the request to carry exactly one fresh auth tag naming this \
                  owner, and (c) the agent's LIVE kind:0 to still attest this owner — if \
                  the kind:0 was deleted or replaced, owner revocation is no longer \
                  possible from here (a relay owner/admin can still archive it). \
                  Run the HOST half (`buzz-provision retire`) before, not after, and \
-                 never remove the agent's kind:0."
-            )
+                 never remove the agent's kind:0.",
+            ))
         }
     }
 }

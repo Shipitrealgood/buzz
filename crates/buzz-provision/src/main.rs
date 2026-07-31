@@ -171,11 +171,13 @@ fn main() {
             let rendered = redact_key_material(&e.render().to_string());
             if is_error {
                 eprint!("{rendered}");
-            } else {
-                // --help / --version go to stdout with exit code 0.
-                print!("{rendered}");
+                // Repo CLI contract: usage/input errors are exit 1 (clap's
+                // own convention of 2 collides with 2 = network/relay).
+                std::process::exit(1);
             }
-            std::process::exit(e.exit_code());
+            // --help / --version go to stdout with exit code 0.
+            print!("{rendered}");
+            std::process::exit(0);
         }
     };
     let result = match cli.command {

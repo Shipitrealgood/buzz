@@ -71,11 +71,20 @@ pub fn guard_live_unit(name: &str, forced: bool, override_flag: Option<&str>) ->
 /// Does the unit resolve to a loadable definition? (`systemctl cat` exits
 /// non-zero for units with no unit file — including uninstantiable templates.)
 pub fn unit_exists(unit: &str) -> Result<bool> {
+    Ok(!unit_definition(unit)?.is_empty())
+}
+
+/// The unit's rendered definition text, or `None` when it has no unit file.
+pub fn unit_definition(unit: &str) -> Result<String> {
     let out = Command::new("systemctl")
         .args(["--user", "cat", "--", unit])
         .output()
         .context("cannot run systemctl --user")?;
-    Ok(out.status.success())
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Ok(String::new())
+    }
 }
 
 /// Run `systemctl --user <args>`; non-zero exit is a hard error carrying the

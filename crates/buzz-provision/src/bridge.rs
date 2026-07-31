@@ -61,6 +61,9 @@ pub fn client() -> Result<reqwest::blocking::Client, BridgeError> {
     reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .connect_timeout(std::time::Duration::from_secs(15))
+        // The bridge talks to exactly one relay origin: never follow a
+        // redirect (which would re-send Authorization/x-auth-tag elsewhere).
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| BridgeError::Transport {
             method: "INIT",
