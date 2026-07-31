@@ -30,7 +30,6 @@ use buzz_provision::bridge::{self, BridgeError};
 use buzz_provision::bundle::{self, BundleMode, Manifest, ManifestConfig, MANIFEST_VERSION};
 use buzz_provision::{is_canonical_64_hex, redact_key_material};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use nostr::nips::nip19::ToBech32;
 use nostr::{Event, Keys, PublicKey, SecretKey};
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -305,39 +304,14 @@ fn validate_name(name: &str) -> Result<()> {
     bundle::validate_agent_name(name).map_err(|e| anyhow::anyhow!("--name: {e}"))
 }
 
-/// Validate a `--relay-url`: ws/wss scheme, single line (the value is later
-/// written verbatim into an `EnvironmentFile=` line host-side, so a newline
-/// here would be an env-injection vector).
+/// One authority for relay-URL validation (shared bundle module).
 fn validate_relay_url(s: &str) -> Result<()> {
-    if !(s.starts_with("ws://") || s.starts_with("wss://")) {
-        bail!("invalid --relay-url {s:?}: expected a ws:// or wss:// URL");
-    }
-    if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        bail!("invalid --relay-url: must not contain whitespace or control characters");
-    }
-    Ok(())
+    bundle::validate_relay_url(s).map_err(|e| anyhow::anyhow!("--relay-url: {e}"))
 }
 
-/// Strictly validate a 64-lowercase-hex PUBLIC key argument.
-///
-/// The value is NEVER echoed back: a mistakenly pasted secret key is
-/// indistinguishable from a public key (both are 64 hex chars), so no error
-/// path may reproduce the input. `what` names the argument; `hint` says
-/// where the right value comes from.
+/// One authority for pubkey-argument validation (shared lib validator).
 fn validate_pubkey_arg(s: &str, what: &str, hint: &str) -> Result<PublicKey> {
-    if !is_canonical_64_hex(s.as_bytes()) {
-        bail!(
-            "invalid {what} value (got {} chars): expected a PUBLIC key as exactly \
-             64 lowercase hex characters, {hint} (value withheld from this message on purpose)",
-            s.len()
-        );
-    }
-    PublicKey::from_hex(s).map_err(|_| {
-        anyhow::anyhow!(
-            "invalid {what} value: not a valid x-only secp256k1 public key \
-             (value withheld from this message on purpose)"
-        )
-    })
+    buzz_provision::validate_pubkey_arg(s, what, Some(hint)).map_err(|e| anyhow::anyhow!(e))
 }
 
 fn validate_host_pubkey(s: &str) -> Result<PublicKey> {
@@ -526,10 +500,10 @@ fn attest(args: &AttestArgs) -> Result<()> {
         args.name
     );
     println!("agent pubkey (hex):  {}", agent_pubkey.to_hex());
-    match agent_pubkey.to_bech32() {
-        Ok(npub) => println!("agent pubkey (npub): {npub}"),
-        Err(_) => println!("agent pubkey (npub): <bech32 encoding failed>"),
-    }
+    println!(
+        "agent pubkey (npub): {}",
+        buzz_provision::npub_string(&agent_pubkey)
+    );
     println!("owner pubkey:        {}", owner_pubkey.to_hex());
     println!("host pubkey:         {}", host_pubkey.to_hex());
     println!("bundle: {}", bundle_dir.display());
@@ -575,30 +549,25 @@ fn build_retire_archive_request(
     reason: &str,
 ) -> Result<Event> {
     // FRESH auth tag at request-build time — native's delete path also mints
-    // a new tag rather than reusing a stored one, and the flush loop re-signs
-    // with a fresh created_at because of the relay's ±120s window on 9035s
-    // (persona_events.rs re-sign-before-publish pattern). Here build and
-    // publish are one step, so signing now IS the fresh signature.
+    // a new tag rather than reusing a stored one, because of the relay's
+    // ±120s window on 9035s. Here build and publish are one step, so signing
+    // now IS the fresh signature.
     let attestation = buzz_sdk::nip_oa::compute_auth_tag(owner_keys, agent_pubkey, "")
         .map_err(|e| anyhow::anyhow!("cannot compute NIP-OA auth tag: {e}"))?;
-    let auth_tag = buzz_sdk::nip_oa::parse_auth_tag(&attestation)
-        .map_err(|e| anyhow::anyhow!("cannot parse freshly-minted auth tag: {e}"))?;
-    let tags = vec![
-        nostr::Tag::parse(["-"]).map_err(|e| anyhow::anyhow!("cannot build protected tag: {e}"))?,
-        nostr::Tag::parse(["p", &agent_pubkey.to_hex()])
-            .map_err(|e| anyhow::anyhow!("cannot build p tag: {e}"))?,
-        nostr::Tag::parse(["reason", reason])
-            .map_err(|e| anyhow::anyhow!("cannot build reason tag: {e}"))?,
-        auth_tag,
-    ];
-    // `.allow_self_tagging()` mirrors the desktop wire builder: our p tag
-    // names the agent (never the owner signer), but the builder must never
-    // silently reshape the wire form either way.
-    nostr::EventBuilder::new(nostr::Kind::Custom(9035), "")
-        .tags(tags)
-        .allow_self_tagging()
-        .sign_with_keys(owner_keys)
-        .map_err(|e| anyhow::anyhow!("cannot sign kind:9035 archive request: {e}"))
+    let auth_parts: [String; 4] = serde_json::from_str::<Vec<String>>(&attestation)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or_else(|| anyhow::anyhow!("freshly-minted auth tag is not a 4-element tag"))?;
+    buzz_sdk::builders::build_archive_identity_request(
+        &agent_pubkey.to_hex(),
+        "",
+        Some(reason),
+        None,
+        Some(&auth_parts),
+    )
+    .map_err(|e| anyhow::anyhow!("cannot build kind:9035 archive request: {e}"))?
+    .sign_with_keys(owner_keys)
+    .map_err(|e| anyhow::anyhow!("cannot sign kind:9035 archive request: {e}"))
 }
 
 /// Validate a `--reason` code: short single token, no whitespace/control
@@ -716,6 +685,7 @@ fn inspect(bundle_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nostr::nips::nip19::ToBech32;
 
     #[test]
     fn name_validation() {

@@ -138,9 +138,7 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
         .context("no relay URL: pass --relay-url (the manifest carries none)")?
         .trim_end_matches('/')
         .to_owned();
-    if !(relay_url.starts_with("ws://") || relay_url.starts_with("wss://")) {
-        bail!("relay URL must be ws:// or wss:// (got a different scheme)");
-    }
+    bundle::validate_relay_url(&relay_url).map_err(|e| anyhow::anyhow!(e))?;
     let harness_cmd = manifest
         .config
         .harness_cmd

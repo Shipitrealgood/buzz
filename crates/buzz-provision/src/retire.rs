@@ -181,9 +181,7 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
             .context("no relay URL: pass --relay-url (no BUZZ_RELAY_URL in the env file)")?
             .trim_end_matches('/')
             .to_owned();
-        if !(relay_url.starts_with("ws://") || relay_url.starts_with("wss://")) {
-            bail!("relay URL must be ws:// or wss:// (got a different scheme)");
-        }
+        buzz_provision::bundle::validate_relay_url(&relay_url).map_err(|e| anyhow::anyhow!(e))?;
 
         // Host lineage for the tombstone: this host's own identity if
         // initialized, else the env-file comment, else omitted.

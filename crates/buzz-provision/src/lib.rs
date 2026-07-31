@@ -26,4 +26,13 @@ pub mod bridge;
 pub mod bundle;
 pub mod seal;
 
-pub use seal::{is_canonical_64_hex, redact_key_material};
+pub use seal::{is_canonical_64_hex, redact_key_material, validate_pubkey_arg};
+
+/// Render a pubkey's npub form for operator output, with a printable
+/// fallback (bech32 encoding of a valid key cannot realistically fail, but
+/// no output path may panic).
+pub fn npub_string(pk: &nostr::PublicKey) -> String {
+    use nostr::nips::nip19::ToBech32;
+    pk.to_bech32()
+        .unwrap_or_else(|_| "<bech32 encoding failed>".to_owned())
+}

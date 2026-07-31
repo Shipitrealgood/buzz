@@ -93,6 +93,33 @@ pub fn redact_key_material(message: &str) -> String {
     out
 }
 
+/// Strictly validate a 64-lowercase-hex PUBLIC key argument.
+///
+/// The value is NEVER echoed back: a mistakenly pasted secret key is
+/// indistinguishable from a public key (both are 64 hex chars), so no error
+/// path may reproduce the input. `what` names the argument; `hint`, when
+/// given, says where the right value comes from.
+pub fn validate_pubkey_arg(
+    s: &str,
+    what: &str,
+    hint: Option<&str>,
+) -> Result<nostr::PublicKey, String> {
+    if !is_canonical_64_hex(s.as_bytes()) {
+        let hint = hint.map(|h| format!(", {h}")).unwrap_or_default();
+        return Err(format!(
+            "invalid {what} value (got {} chars): expected a PUBLIC key as exactly \
+             64 lowercase hex characters{hint} (value withheld from this message on purpose)",
+            s.len()
+        ));
+    }
+    nostr::PublicKey::from_hex(s).map_err(|_| {
+        format!(
+            "invalid {what} value: not a valid x-only secp256k1 public key \
+             (value withheld from this message on purpose)"
+        )
+    })
+}
+
 // ─── Secret newtypes ─────────────────────────────────────────────────────────
 
 /// An agent secret key in canonical form: exactly 64 lowercase hex chars,

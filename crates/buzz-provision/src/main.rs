@@ -28,7 +28,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
-use nostr::nips::nip19::ToBech32;
 use nostr::Keys;
 use zeroize::Zeroizing;
 
@@ -200,10 +199,10 @@ fn main() {
 fn print_identity(keys: &Keys, key_path: &Path, owners_path: &Path, owners: &[String]) {
     let pubkey = keys.public_key();
     println!("host pubkey (hex):  {}", pubkey.to_hex());
-    match pubkey.to_bech32() {
-        Ok(npub) => println!("host pubkey (npub): {npub}"),
-        Err(_) => println!("host pubkey (npub): <bech32 encoding failed>"),
-    }
+    println!(
+        "host pubkey (npub): {}",
+        buzz_provision::npub_string(&pubkey)
+    );
     println!("host key:           {} (0600)", key_path.display());
     println!("allowed owners:     {}", owners_path.display());
     println!("pinned owners ({}):", owners.len());
@@ -429,10 +428,10 @@ fn keygen(args: &KeygenArgs) -> Result<()> {
 
     println!("agent {name:?}: key born on this host");
     println!("agent pubkey (hex):  {}", pubkey.to_hex());
-    match pubkey.to_bech32() {
-        Ok(npub) => println!("agent pubkey (npub): {npub}"),
-        Err(_) => println!("agent pubkey (npub): <bech32 encoding failed>"),
-    }
+    println!(
+        "agent pubkey (npub): {}",
+        buzz_provision::npub_string(&pubkey)
+    );
     println!(
         "credential:          {} (0600; never printed, never leaves this host)",
         cred_path.display()

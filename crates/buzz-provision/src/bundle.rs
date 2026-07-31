@@ -107,6 +107,23 @@ pub fn validate_agent_name(name: &str) -> Result<(), String> {
     }
 }
 
+/// Validate a relay URL: ws/wss scheme, single line — the value is later
+/// written verbatim into an `EnvironmentFile=` line host-side, so a newline
+/// or control character here would be an env-injection vector.
+pub fn validate_relay_url(s: &str) -> Result<(), String> {
+    if !(s.starts_with("ws://") || s.starts_with("wss://")) {
+        return Err(format!(
+            "invalid relay URL {s:?}: expected a ws:// or wss:// URL"
+        ));
+    }
+    if s.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(
+            "invalid relay URL: must not contain whitespace or control characters".to_owned(),
+        );
+    }
+    Ok(())
+}
+
 /// A structurally loaded (not yet validated) bundle.
 #[derive(Debug)]
 pub struct LoadedBundle {

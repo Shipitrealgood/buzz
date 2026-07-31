@@ -44,25 +44,10 @@ pub fn is_canonical_64_hex(s: &[u8]) -> bool {
     buzz_provision::is_canonical_64_hex(s)
 }
 
-/// Strictly validate a public-key argument.
-///
-/// The value is NEVER echoed back in errors: a mistakenly pasted secret key
-/// is indistinguishable from a public key (both are 64 hex chars), so no
-/// error path may reproduce the input. `what` names the argument in errors.
+/// Strictly validate a public-key argument (one authority: the lib
+/// validator; the value is never echoed back in errors).
 pub fn validate_pubkey_arg(s: &str, what: &str) -> Result<PublicKey> {
-    if !is_canonical_64_hex(s.as_bytes()) {
-        bail!(
-            "invalid {what} value (got {} chars): expected a PUBLIC key \
-             as exactly 64 lowercase hex characters (no npub/nsec bech32, no uppercase)",
-            s.len()
-        );
-    }
-    PublicKey::from_hex(s).map_err(|_| {
-        anyhow::anyhow!(
-            "invalid {what} value: not a valid x-only secp256k1 public key \
-             (value withheld from this message on purpose)"
-        )
-    })
+    buzz_provision::validate_pubkey_arg(s, what, None).map_err(|e| anyhow::anyhow!(e))
 }
 
 /// Ensure `dir` exists with mode 0700.
