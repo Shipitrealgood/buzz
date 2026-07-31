@@ -132,6 +132,18 @@ fn make_a_bundle(
     channels: &[Uuid],
     owner: Option<&Keys>, // override attester (foreign-owner tests)
 ) -> PathBuf {
+    make_a_bundle_for_host(host, name, agent_pubkey, channels, owner, host.host_pubkey)
+}
+
+/// Like [`make_a_bundle`] with an explicit manifest host (wrong-host tests).
+fn make_a_bundle_for_host(
+    host: &TestHost,
+    name: &str,
+    agent_pubkey: PublicKey,
+    channels: &[Uuid],
+    owner: Option<&Keys>,
+    manifest_host: PublicKey,
+) -> PathBuf {
     let owner = owner.unwrap_or(&host.owner);
     let attestation = buzz_sdk::nip_oa::compute_auth_tag(owner, &agent_pubkey, "").unwrap();
     let manifest = Manifest {
@@ -139,7 +151,7 @@ fn make_a_bundle(
         name: name.to_owned(),
         agent_pubkey,
         owner_pubkey: owner.public_key(),
-        host_pubkey: host.host_pubkey,
+        host_pubkey: manifest_host,
         attestation,
         created_at: nostr::Timestamp::now().as_secs(),
         mode: BundleMode::A,
@@ -235,6 +247,28 @@ fn a_mode_missing_credential_fails_closed_before_any_publish() {
         !host.config_dir.join("creds").join("ghost.nsec").exists(),
         "A-mode must never create a credential"
     );
+}
+
+#[test]
+fn bundle_attested_for_another_host_fails_closed() {
+    let host = init_host();
+    let agent_pubkey = run_keygen(&host, "misdelivered");
+    let elsewhere = Keys::generate().public_key();
+    let bundle = make_a_bundle_for_host(&host, "misdelivered", agent_pubkey, &[], None, elsewhere);
+
+    // NOT a dry run: the host binding must refuse BEFORE any publish — a
+    // misdirected bundle would otherwise provision a correctly-owned agent
+    // carrying a FALSE host lineage claim.
+    let out = run_agent(&host, &bundle, &[]);
+    assert!(!out.status.success());
+    let se = stderr(&out);
+    assert!(
+        se.contains("not THIS host") && se.contains(&elsewhere.to_hex()),
+        "must name the host mismatch: {se}"
+    );
+    assert!(!se.contains("publishing"), "must fail BEFORE publish: {se}");
+    // No override: the same run with any flag combination still refuses is
+    // guaranteed structurally — provision has no bypass flag at all.
 }
 
 #[test]

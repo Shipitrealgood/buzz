@@ -223,33 +223,14 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
             Err(e) => return Err(anyhow::anyhow!("membership discovery failed: {e}")),
         };
 
-        // Replaceable-tie guard: a tombstone signed in the SAME second as
-        // the live 10100 loses NIP-01's equal-created_at tie-break (lowest
-        // id wins) and silently fails to replace it. Read the live entry
-        // and sign strictly after it (measured against the local relay:
-        // provision→retire within one second reproduces the tie).
-        let live_10100_created_at = bridge::query_events(
+        // Replaceable-tie guard: sign the tombstone strictly after the live
+        // 10100 (one authority for replaceable timestamps — bridge).
+        let tombstone_created_at = bridge::replaceable_created_at(
             &client,
             &http_base,
             &agent_keys,
             Some(&attestation),
-            &serde_json::json!({
-                "kinds": [10100],
-                "authors": [agent_keys.public_key().to_hex()],
-                "limit": 1,
-            }),
-        )
-        .ok()
-        .and_then(|events| {
-            events
-                .first()
-                .and_then(|e| e.get("created_at"))
-                .and_then(|t| t.as_u64())
-        });
-        let tombstone_created_at = Timestamp::from(
-            Timestamp::now()
-                .as_secs()
-                .max(live_10100_created_at.map_or(0, |t| t + 1)),
+            10100,
         );
 
         let prepared = build_retire_events(

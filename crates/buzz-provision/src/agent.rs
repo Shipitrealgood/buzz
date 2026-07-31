@@ -175,6 +175,19 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
     }
     let host_keys = load_host_keys(&key_path)?;
     let host_pubkey = host_keys.public_key();
+    // The bundle must have been attested FOR this host: the published `host`
+    // lineage is exactly the fact later trust (re-homing, noded) reads, so a
+    // misdirected bundle must refuse rather than publish a false claim.
+    // Fail-closed, no override (mirrors the credential/pubkey-mismatch rule).
+    if manifest.host_pubkey != host_pubkey {
+        bail!(
+            "manifest host_pubkey {} is not THIS host ({}) — the bundle was attested for a \
+             different host (owner typo in --host, or the bundle was copied to the wrong \
+             machine). Re-run `buzz-mint attest` with this host's pubkey",
+            manifest.host_pubkey.to_hex(),
+            host_pubkey.to_hex()
+        );
+    }
 
     let mut pinned_hex: Vec<String> = if owners_path.exists() {
         merge_owners(&owners_path, &[])?
@@ -252,11 +265,32 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
 
     // ── Phase 4: construct identity events (ordering contract: kind:0
     // before kind:10100 — the directory must never reference an agent
-    // without a resolvable owner).
+    // without a resolvable owner). Both are REPLACEABLE, so their
+    // created_at comes from the bridge's tie-break authority (strictly
+    // after the live head): a scripted retire→re-provision inside one
+    // second must not lose the same-second lowest-id race. Dry runs sign
+    // at now — they never touch the network.
+    let http_base = bridge::http_base_url(&relay_url);
+    let client = bridge::client().map_err(|e| anyhow::anyhow!("cannot build HTTP client: {e}"))?;
+    let ts_for = |kind: u16| -> Timestamp {
+        if args.dry_run {
+            Timestamp::now()
+        } else {
+            bridge::replaceable_created_at(
+                &client,
+                &http_base,
+                &agent_keys,
+                Some(&manifest.attestation),
+                kind,
+            )
+        }
+    };
+
     let auth_tag = verified_auth_tag(&manifest.attestation, &manifest.agent_pubkey)?;
     let kind0 = buzz_sdk::builders::build_profile(Some(name), Some(name), None, None, None)
         .map_err(|e| anyhow::anyhow!("cannot build kind:0: {e}"))?
         .tags([auth_tag.clone()])
+        .custom_created_at(ts_for(0))
         .sign_with_keys(&agent_keys)
         .context("cannot sign kind:0")?;
 
@@ -268,6 +302,7 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
     );
     let kind10100 = EventBuilder::new(Kind::Custom(10100), content_10100)
         .tags([auth_tag])
+        .custom_created_at(ts_for(10100))
         .sign_with_keys(&agent_keys)
         .context("cannot sign kind:10100")?;
 
@@ -302,8 +337,6 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
 
     // ── Phase 5: publish over the NIP-98 HTTP bridge (shared bridge client
     // — the same code path buzz-mint attest publishes with). ──
-    let http_base = bridge::http_base_url(&relay_url);
-    let client = bridge::client().map_err(|e| anyhow::anyhow!("cannot build HTTP client: {e}"))?;
     let mut published: Vec<(String, String)> = Vec::new();
     for p in &prepared {
         let receipt = bridge::post_event(
