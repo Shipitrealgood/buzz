@@ -21,12 +21,13 @@
 
 mod agent;
 mod retire;
+mod systemd;
 mod util;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use nostr::Keys;
 use zeroize::Zeroizing;
@@ -348,6 +349,13 @@ fn keygen(args: &KeygenArgs) -> Result<()> {
         "<host-pubkey>".to_owned()
     };
 
+    if cred_path.exists() && args.force {
+        // Replacing a LIVE agent's credential is never a one-flag accident:
+        // the unit would come back as a different identity on next restart.
+        // Read-only probe, no bypass — stop the unit (or retire) first.
+        systemd::guard_live_unit(name, false, None)
+            .context("keygen --force would replace a running agent's credential")?;
+    }
     if cred_path.exists() && !args.force {
         // Non-steering refusal: the right next step for an existing key is
         // attesting it, not --force. Print the EXISTING pubkey so the owner

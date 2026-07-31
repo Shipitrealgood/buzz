@@ -367,13 +367,13 @@ pub fn provision_agent(args: &AgentArgs) -> Result<()> {
 
     // ── Phase 6: systemd unit + journal verification. ──
     if !args.no_systemd {
-        let unit = format!("buzz-agent@{name}.service");
+        let unit = crate::systemd::unit_name(name);
         let since = Timestamp::now().as_secs().saturating_sub(1);
-        systemctl_user(&["daemon-reload"])?;
-        systemctl_user(&["enable", &unit])?;
+        crate::systemd::systemctl_user(&["daemon-reload"])?;
+        crate::systemd::systemctl_user(&["enable", &unit])?;
         // restart, not start: LoadCredential snapshots at unit start, so a
         // re-provisioned credential is only picked up by a fresh start.
-        systemctl_user(&["restart", &unit])?;
+        crate::systemd::systemctl_user(&["restart", &unit])?;
         verify_journal(
             &unit,
             since,
@@ -516,25 +516,6 @@ fn render_env_file(
     // the quoting; systemd EnvironmentFile= reads it verbatim).
     out.push_str(&format!("BUZZ_AUTH_TAG={}\n", manifest.attestation));
     Ok(out)
-}
-
-/// Run `systemctl --user <args>`; non-zero exit is a hard error carrying the
-/// command's stderr.
-fn systemctl_user(args: &[&str]) -> Result<()> {
-    let out = Command::new("systemctl")
-        .arg("--user")
-        .args(args)
-        .output()
-        .context("cannot run systemctl --user (is a user manager available?)")?;
-    if !out.status.success() {
-        bail!(
-            "systemctl --user {} failed ({}): {}",
-            args.join(" "),
-            out.status,
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-    Ok(())
 }
 
 /// Poll the user journal for the three health markers, failing loud with a

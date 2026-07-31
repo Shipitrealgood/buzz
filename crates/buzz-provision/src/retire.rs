@@ -40,7 +40,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use buzz_provision::bridge;
@@ -75,8 +74,9 @@ pub struct RetireArgs {
     #[arg(long = "dry-run")]
     dry_run: bool,
 
-    /// Skip every systemd interaction (unit stop/disable AND the
-    /// runtime-active guard). For hosts managed out-of-band and for tests.
+    /// Skip unit stop/disable. The read-only live-unit guard STILL runs —
+    /// use --force-live to retire a running agent. For hosts managed
+    /// out-of-band and for tests.
     #[arg(long = "no-systemd")]
     no_systemd: bool,
 
@@ -150,11 +150,10 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
         EnvConfig::default()
     };
 
-    // ── Runtime-active guard, BEFORE anything else moves. ──
-    if !args.no_systemd {
-        let state = unit_active_state(name)?;
-        live_guard_decision(name, &state, args.force_live)?;
-    }
+    // ── Runtime-active guard, BEFORE anything else moves. Always runs —
+    // the probe is read-only, so --no-systemd (which only skips unit
+    // MUTATIONS) does not bypass it.
+    crate::systemd::guard_live_unit(name, args.force_live, Some("--force-live"))?;
 
     // ── Relay half (as the agent — needs credential + attestation). ──
     let mut agent_pubkey_hex: Option<String> = cfg.agent_pubkey.clone();
@@ -340,9 +339,9 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
     // ── systemd: stop + disable, only if the unit exists. ──
     if !args.no_systemd {
         let unit = format!("buzz-agent@{name}.service");
-        if unit_exists(&unit)? {
-            systemctl_user_tolerant(&["stop", &unit])?;
-            systemctl_user_tolerant(&["disable", &unit])?;
+        if crate::systemd::unit_exists(&unit)? {
+            crate::systemd::systemctl_user_tolerant(&["stop", &unit])?;
+            crate::systemd::systemctl_user_tolerant(&["disable", &unit])?;
             println!("unit {unit}: stopped + disabled");
         } else {
             println!("unit {unit}: not present — nothing to stop");
@@ -546,71 +545,6 @@ fn leave_channel_of(event: &Event) -> Option<uuid::Uuid> {
 /// `systemctl --user is-active` state for the instance unit. `inactive` /
 /// `failed` / unknown all report as their literal state string; only a
 /// spawn failure is an error.
-fn unit_active_state(name: &str) -> Result<String> {
-    let unit = format!("buzz-agent@{name}.service");
-    let out = Command::new("systemctl")
-        .args(["--user", "is-active", &unit])
-        .output()
-        .context(
-            "cannot run systemctl --user (no user manager? use --no-systemd on hosts \
-             managed out-of-band)",
-        )?;
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
-}
-
-/// The runtime-active guard, pure and unit-testable: refuse to retire a unit
-/// that is currently running unless --force-live makes it a conscious
-/// decision. This is what stands between a mistyped name and a live
-/// production agent.
-fn live_guard_decision(name: &str, state: &str, force_live: bool) -> Result<()> {
-    let live = matches!(state, "active" | "activating" | "reloading");
-    if live && !force_live {
-        bail!(
-            "buzz-agent@{name}.service is currently {state} — refusing to retire a RUNNING \
-             agent without --force-live.\n\
-             If this is really the agent you mean to tear down, either stop it first \
-             (systemctl --user stop buzz-agent@{name}) or re-run with --force-live."
-        );
-    }
-    if live {
-        eprintln!("warning: --force-live: retiring {name:?} while its unit is {state}");
-    }
-    Ok(())
-}
-
-/// Does the unit resolve to a loadable definition? (`systemctl cat` exits
-/// non-zero for units with no unit file — including uninstantiable templates.)
-fn unit_exists(unit: &str) -> Result<bool> {
-    let out = Command::new("systemctl")
-        .args(["--user", "cat", "--", unit])
-        .output()
-        .context("cannot run systemctl --user")?;
-    Ok(out.status.success())
-}
-
-/// Run `systemctl --user <args>`, tolerating "not loaded"-class failures
-/// (converged states on re-runs) but failing loud on anything else.
-fn systemctl_user_tolerant(args: &[&str]) -> Result<()> {
-    let out = Command::new("systemctl")
-        .arg("--user")
-        .args(args)
-        .output()
-        .context("cannot run systemctl --user")?;
-    if out.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if stderr.contains("not loaded") || stderr.contains("does not exist") {
-        return Ok(());
-    }
-    bail!(
-        "systemctl --user {} failed ({}): {}",
-        args.join(" "),
-        out.status,
-        stderr.trim()
-    );
-}
-
 fn print_summary(
     name: &str,
     agent_pubkey_hex: Option<&str>,
@@ -725,16 +659,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn live_guard_refuses_active_without_force() {
-        assert!(live_guard_decision("x", "active", false).is_err());
-        assert!(live_guard_decision("x", "activating", false).is_err());
-        assert!(live_guard_decision("x", "reloading", false).is_err());
-        assert!(live_guard_decision("x", "active", true).is_ok());
-        assert!(live_guard_decision("x", "inactive", false).is_ok());
-        assert!(live_guard_decision("x", "failed", false).is_ok());
-        assert!(live_guard_decision("x", "", false).is_ok());
-    }
+    // The live-unit guard's decision table is tested where it lives now:
+    // crate::systemd::tests.
 
     #[test]
     fn env_config_parses_provisioned_file() {
