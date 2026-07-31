@@ -203,7 +203,7 @@ fn a_mode_happy_path_provisions_from_keygen_credential() {
 
     // Real run against an unreachable relay: fails AT PUBLISH — everything
     // before (credential + pinning + env) already held.
-    let out = run_agent(&host, &bundle, &["--force"]);
+    let out = run_agent(&host, &bundle, &[]);
     assert!(!out.status.success());
     assert!(
         stderr(&out).contains("publishing"),
@@ -255,11 +255,17 @@ fn a_mode_wrong_credential_pubkey_mismatch_fails_closed() {
     );
     assert!(!se.contains("publishing"), "must fail BEFORE publish: {se}");
 
-    // --force must NOT bypass the identity gate either.
+    // There is no flag that bypasses the identity gate: provision has no
+    // --force at all (credential replacement is keygen's, guarded there).
     let out = run_agent(&host, &bundle, &["--force"]);
     assert!(
         !out.status.success(),
-        "--force must not bypass pubkey verification"
+        "provision must not accept a --force flag"
+    );
+    assert!(
+        stderr(&out).contains("--force"),
+        "clap must reject the unknown flag: {}",
+        stderr(&out)
     );
 }
 
@@ -320,7 +326,7 @@ fn a_mode_bundle_carrying_sealed_or_events_is_refused() {
         ev.as_json(),
     )
     .unwrap();
-    let out = run_agent(&host, &bundle, &["--dry-run", "--force"]);
+    let out = run_agent(&host, &bundle, &["--dry-run"]);
     assert!(!out.status.success());
     assert!(
         stderr(&out).contains("A-mode"),
@@ -351,25 +357,42 @@ fn tampered_manifest_pubkey_fails_bundle_validation() {
 }
 
 #[test]
-fn existing_env_file_refuses_without_force() {
+fn reprovision_regenerates_env_and_never_touches_operator_file() {
     let host = init_host();
     let agent_pubkey = run_keygen(&host, "clobber");
     let bundle = make_a_bundle(&host, "clobber", agent_pubkey, &[], None);
 
+    // Operator-owned file exists BEFORE provision, holding keys provision
+    // cannot express — the two-writers-two-files ownership boundary.
+    fs::create_dir_all(&host.env_dir).unwrap();
+    let local_path = host.env_dir.join("clobber.local.env");
+    let local_content = "BUZZ_ACP_AGENT_ARGS=acp,--custom
+BUZZ_ACP_MULTIPLE_EVENT_HANDLING=queue
+";
+    fs::write(&local_path, local_content).unwrap();
+
     assert!(run_agent(&host, &bundle, &["--dry-run"]).status.success());
     let env_path = host.env_dir.join("clobber.env");
-    let before = fs::read_to_string(&env_path).unwrap();
+    let first = fs::read_to_string(&env_path).unwrap();
+    assert!(
+        first.contains(".local.env"),
+        "generated header must route operators to the local file: {first}"
+    );
 
+    // Re-provision needs no flag: provision regenerates its OWN file…
     let out = run_agent(&host, &bundle, &["--dry-run"]);
     assert!(
-        !out.status.success(),
-        "second run must refuse to clobber env"
+        out.status.success(),
+        "re-provision must be idempotent: {}",
+        stderr(&out)
     );
-    assert!(stderr(&out).contains("--force"));
-    assert_eq!(fs::read_to_string(&env_path).unwrap(), before);
+    assert_eq!(fs::read_to_string(&env_path).unwrap(), first);
 
-    let out = run_agent(&host, &bundle, &["--dry-run", "--force"]);
-    assert!(out.status.success(), "--force must allow: {}", stderr(&out));
+    // …and the operator file is byte-identical (tooling never writes it),
+    // with its keys absent from the generated file.
+    assert_eq!(fs::read_to_string(&local_path).unwrap(), local_content);
+    assert!(!first.contains("BUZZ_ACP_AGENT_ARGS"));
+    assert!(!first.contains("BUZZ_ACP_MULTIPLE_EVENT_HANDLING"));
 }
 
 #[test]

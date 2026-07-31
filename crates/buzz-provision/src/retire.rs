@@ -19,8 +19,9 @@
 //!      client mentionability contract (`agentAutocompleteEligibility.ts`)
 //!      renders `respond_to != anyone/allowlist` + no shared channels as
 //!      never-mentionable;
-//!    - stop + disable the systemd unit; delete the credential, remove the
-//!      `.pub` marker, archive the env file as `<name>.env.retired`.
+//!    - stop + disable the systemd unit; delete the credential and archive
+//!      the env file as `<name>.env.retired`. The `.pub` marker stays: it
+//!      is the public record of which identity was retired here.
 //!
 //!    **The agent's kind:0 is NEVER touched here.** The owner's NIP-IA
 //!    archive request is only accepted while the target's LIVE kind:0
@@ -97,14 +98,15 @@ pub struct RetireArgs {
     config_dir: Option<PathBuf>,
 }
 
-/// Config recovered from the (secret-free) env file or its `.retired`
-/// archive — everything the relay half needs besides the credential.
+/// Config recovered from the (secret-free, provision-owned) env file or its
+/// `.retired` archive — everything the relay half needs besides the
+/// credential. Only real KEY=VALUE lines are read (single-writer file:
+/// provision generates it, retire parses it). Identity comes from the
+/// `<name>.pub` marker and the host key, never from comments.
 #[derive(Default)]
 struct EnvConfig {
     relay_url: Option<String>,
     auth_tag: Option<String>,
-    agent_pubkey: Option<String>,
-    host_pubkey: Option<String>,
 }
 
 /// A constructed teardown event plus how we refer to it in output.
@@ -155,14 +157,20 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
     // MUTATIONS) does not bypass it.
     crate::systemd::guard_live_unit(name, args.force_live, Some("--force-live"))?;
 
+    // Identity record: the <name>.pub marker written at keygen/provision.
+    let marker_pubkey: Option<String> = fs::read_to_string(&pub_path)
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
+
     // ── Relay half (as the agent — needs credential + attestation). ──
-    let mut agent_pubkey_hex: Option<String> = cfg.agent_pubkey.clone();
+    let mut agent_pubkey_hex: Option<String> = marker_pubkey.clone();
     let mut left_channels: Vec<uuid::Uuid> = Vec::new();
     let mut already_left: Vec<uuid::Uuid> = Vec::new();
     let mut published: Vec<(String, String)> = Vec::new();
 
     if cred_exists {
-        let agent_keys = load_agent_credential(&cred_path, cfg.agent_pubkey.as_deref())?;
+        let agent_keys = load_agent_credential(&cred_path, marker_pubkey.as_deref())?;
         agent_pubkey_hex = Some(agent_keys.public_key().to_hex());
 
         let attestation = cfg.auth_tag.clone().with_context(|| {
@@ -183,11 +191,10 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
         buzz_provision::bundle::validate_relay_url(&relay_url).map_err(|e| anyhow::anyhow!(e))?;
 
         // Host lineage for the tombstone: this host's own identity if
-        // initialized, else the env-file comment, else omitted.
+        // initialized, else omitted.
         let host_hex = load_host_keys(&cfg_dir.join(HOST_KEY_FILE))
             .ok()
-            .map(|k| k.public_key().to_hex())
-            .or_else(|| cfg.host_pubkey.clone());
+            .map(|k| k.public_key().to_hex());
 
         let http_base = bridge::http_base_url(&relay_url);
         let client =
@@ -348,17 +355,15 @@ pub fn retire(args: &RetireArgs) -> Result<()> {
         }
     }
 
-    // ── Files: credential shredded, .pub removed, env archived. The
-    // manifest/bundle dirs are deliberately untouched (public lineage
-    // record), and so is anything under creds/ belonging to other agents. ──
+    // ── Files: credential shredded, env archived. The `.pub` marker STAYS —
+    // it is the public identity record of what was retired here, and the
+    // owner-half command is reprinted from it on converged re-runs. The
+    // manifest/bundle dirs are likewise untouched (public lineage record),
+    // and so is anything under creds/ belonging to other agents. The
+    // operator's `<name>.local.env` is never touched by tooling. ──
     if cred_exists {
         shred_file(&cred_path).context("cannot shred agent credential")?;
         println!("credential:     {} shredded", cred_path.display());
-    }
-    if pub_path.exists() {
-        fs::remove_file(&pub_path)
-            .with_context(|| format!("cannot remove {}", pub_path.display()))?;
-        println!("pubkey marker:  {} removed", pub_path.display());
     }
     if env_exists {
         // Same-directory rename: atomic, preserves the 0600 mode. The file
@@ -401,27 +406,23 @@ fn parse_env_config(path: &Path) -> Result<EnvConfig> {
             cfg.relay_url = Some(v.to_owned());
         } else if let Some(v) = line.strip_prefix("BUZZ_AUTH_TAG=") {
             cfg.auth_tag = Some(v.to_owned());
-        } else if let Some(v) = line.strip_prefix("# agent pubkey: ") {
-            cfg.agent_pubkey = Some(v.trim().to_owned());
-        } else if let Some(v) = line.strip_prefix("# host (lineage): ") {
-            cfg.host_pubkey = Some(v.trim().to_owned());
         }
     }
     Ok(cfg)
 }
 
-/// Load + verify the agent credential; when the env file recorded the agent
-/// pubkey, the derived key must match (never tear down the wrong identity
-/// because a credential was swapped under an instance name).
+/// Load + verify the agent credential; when the `<name>.pub` marker recorded
+/// the agent pubkey, the derived key must match (never tear down the wrong
+/// identity because a credential was swapped under an instance name).
 fn load_agent_credential(cred_path: &Path, expected_hex: Option<&str>) -> Result<Keys> {
     // Same canonical-hex discipline as every other credential read.
     let keys = load_host_keys(cred_path)
         .with_context(|| format!("credential {} is not usable", cred_path.display()))?;
     if let Some(expected) = expected_hex {
-        let expected: PublicKey = validate_pubkey_arg(expected, "env-file agent pubkey")?;
+        let expected: PublicKey = validate_pubkey_arg(expected, "pub-marker agent pubkey")?;
         if keys.public_key() != expected {
             bail!(
-                "credential {} derives to {} but the env file records agent pubkey {} — \
+                "credential {} derives to {} but the pub marker records agent pubkey {} — \
                  refusing to tear down a mismatched identity",
                 cred_path.display(),
                 keys.public_key().to_hex(),
@@ -666,20 +667,12 @@ mod tests {
     fn env_config_parses_provisioned_file() {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("t.env");
-        let agent = "a".repeat(64);
-        let host = "b".repeat(64);
         std::fs::write(
             &p,
-            format!(
-                "# teacup agent — generated by buzz-provision agent; DO NOT add secrets here.\n\
-                 # agent pubkey: {agent}\n\
-                 # owner pubkey: {}\n\
-                 # host (lineage): {host}\n\
-                 BUZZ_RELAY_URL=ws://localhost:3033\n\
-                 BUZZ_ACP_AGENT_COMMAND=/usr/bin/true\n\
-                 BUZZ_AUTH_TAG=[\"auth\",\"x\",\"\",\"sig==\"]\n",
-                "c".repeat(64)
-            ),
+            "# teacup agent — GENERATED by buzz-provision; regenerated on every run.\n\
+             BUZZ_RELAY_URL=ws://localhost:3033\n\
+             BUZZ_ACP_AGENT_COMMAND=/usr/bin/true\n\
+             BUZZ_AUTH_TAG=[\"auth\",\"x\",\"\",\"sig==\"]\n",
         )
         .unwrap();
         let cfg = parse_env_config(&p).unwrap();
@@ -688,8 +681,6 @@ mod tests {
             cfg.auth_tag.as_deref(),
             Some("[\"auth\",\"x\",\"\",\"sig==\"]")
         );
-        assert_eq!(cfg.agent_pubkey.as_deref(), Some(agent.as_str()));
-        assert_eq!(cfg.host_pubkey.as_deref(), Some(host.as_str()));
     }
 
     #[test]

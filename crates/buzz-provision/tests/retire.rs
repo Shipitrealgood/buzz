@@ -262,10 +262,14 @@ fn already_retired_state_converges_without_relay_access() {
     let retired = ctx.env_dir.join("teacup.env.retired");
     fs::write(
         &retired,
-        format!(
-            "# agent pubkey: {}\nBUZZ_RELAY_URL=ws://127.0.0.1:1\nBUZZ_AUTH_TAG={attestation}\n",
-            agent.public_key().to_hex()
-        ),
+        format!("BUZZ_RELAY_URL=ws://127.0.0.1:1\nBUZZ_AUTH_TAG={attestation}\n"),
+    )
+    .unwrap();
+    // The .pub marker survives retire — it is the identity record the
+    // owner-half command is reprinted from.
+    fs::write(
+        ctx.env_dir.join("teacup.pub"),
+        format!("{}\n", agent.public_key().to_hex()),
     )
     .unwrap();
     fs::set_permissions(&retired, fs::Permissions::from_mode(0o600)).unwrap();
