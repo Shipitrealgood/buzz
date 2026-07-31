@@ -132,6 +132,18 @@ jobs:
           cargo build --release --target "$TARGET" -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
           ./scripts/bundle-sidecars.sh "$TARGET"
 
+      - name: Build buzz-mint (fork-only)
+        shell: bash
+        run: cargo build --release --target "$TARGET" -p buzz-provision --bin buzz-mint
+
+      - name: Upload buzz-mint binary (fork-only)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: buzz-mint-windows-${{ github.sha }}
+          path: target/${{ env.TARGET }}/release/buzz-mint.exe
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Build Windows NSIS installer (unsigned)
         shell: bash
         run: cd desktop && pnpm tauri build --target "$TARGET" --bundles nsis --config src-tauri/tauri.canary.conf.json
