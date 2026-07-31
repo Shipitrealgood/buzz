@@ -2,7 +2,7 @@
 //! 0600 writes, owner-pin parsing, host-key loading, tempfile sweeping, and
 //! argv redaction.
 //!
-//! Key-handling rules (binding, sealed-mint-bundle spec): no function here
+//! Key-handling rules (binding): no function here
 //! ever formats secret material into an error, log, or stdout surface —
 //! pubkeys, paths, and lengths only.
 

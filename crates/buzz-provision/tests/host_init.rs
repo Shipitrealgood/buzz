@@ -143,8 +143,8 @@ fn force_rotates_key_and_prints_loud_warning() {
     let se = stderr(&out);
     assert!(se.contains("WARNING"), "rotation must warn loudly: {se}");
     assert!(
-        se.contains("orphan"),
-        "warning must mention orphaned blobs: {se}"
+        se.contains("lineage"),
+        "warning must name the lineage consequence: {se}"
     );
 
     // Printed pubkey matches the NEW key.

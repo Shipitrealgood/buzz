@@ -1,24 +1,23 @@
 //! buzz-provision — host-side half of the Buzz virtual mint.
 //!
-//! `host-init` mints this VM's host identity: the keypair every sealed mint
-//! bundle is encrypted to (the seal target), the lineage anchor agents carry
-//! ("lives-on this host pubkey"), and the pre-staged noded identity. It also
-//! writes the allowed-owners pin file: only sealed bundles attested by a
+//! `host-init` mints this VM's host identity: the lineage anchor agents
+//! carry ("lives-on this host pubkey") and the pre-staged noded identity.
+//! It also writes the allowed-owners pin file: only bundles attested by a
 //! pinned owner will ever be accepted by `buzz-provision agent`.
 //!
 //! `pin-owner add` appends an owner to the pin list without touching the
 //! host key (owner trust and host identity are independent lifecycles).
 //!
-//! `agent` consumes a `buzz-mint` bundle end-to-end: unseal → credential →
-//! secret-free env file → identity events → systemd unit → journal verify →
-//! shred. See [`agent`].
+//! `keygen` births an agent keypair straight into its credential file;
+//! `agent` consumes a `buzz-mint attest` bundle end-to-end: credential
+//! verification → secret-free env file → identity events → systemd unit →
+//! journal verify. See [`agent`].
 //!
-//! Key-handling rules (binding, from the sealed-mint-bundle spec):
-//! secrets are canonical 64-lowercase-hex, no trailing newline; they are
-//! held only in [`zeroize::Zeroizing`] buffers, never formatted, never
-//! printed, never logged. Every output surface carries pubkeys and paths
-//! only — including clap's own argv errors, which are redacted before they
-//! reach stderr.
+//! Key-handling rules (binding): secrets are canonical 64-lowercase-hex, no
+//! trailing newline; they are held only in [`zeroize::Zeroizing`] buffers,
+//! never formatted, never printed, never logged. Every output surface
+//! carries pubkeys and paths only — including clap's own argv errors, which
+//! are redacted before they reach stderr.
 
 mod agent;
 mod retire;
@@ -54,28 +53,26 @@ struct Cli {
 enum Command {
     /// Mint this host's identity keypair and pin the allowed owner(s).
     ///
-    /// The printed host pubkey is the seal target for `buzz-mint` and the
-    /// lineage anchor for every agent provisioned on this host. The secret
-    /// key never leaves `host.key` and is never printed.
+    /// The printed host pubkey is the lineage anchor for every agent
+    /// provisioned on this host (`buzz-mint attest --host` names it). The
+    /// secret key never leaves `host.key` and is never printed.
     HostInit(HostInitArgs),
     /// Manage the allowed-owners pin list without touching the host key.
     #[command(subcommand)]
     PinOwner(PinOwnerCommand),
-    /// Birth an agent keypair on this host (Design A — the default mint).
+    /// Birth an agent keypair on this host.
     ///
     /// The secret is written straight into its credential file and never
     /// exists anywhere else; the printed PUBLIC key is what the owner
     /// attests with `buzz-mint attest`. Nothing is published here.
     Keygen(KeygenArgs),
-    /// Provision an agent from a buzz-mint bundle directory (both modes).
+    /// Provision an agent from a buzz-mint bundle directory.
     ///
-    /// A-mode (default mint): validates the manifest against the keygen-born
-    /// credential (fail-closed, owner-pinned), writes the secret-free env
-    /// file, publishes kind:0 → kind:10100, verifies channel memberships
-    /// (the owner already published the 9000s at attest time), and enables +
-    /// verifies the buzz-agent@<name> unit. B-mode: additionally unseals the
-    /// sealed bundle first, submits the pre-signed 9000 batch, and shreds
-    /// sealed.json.
+    /// Validates the manifest against the keygen-born credential
+    /// (fail-closed, owner-pinned), writes the secret-free env file,
+    /// publishes kind:0 → kind:10100, verifies channel memberships (the
+    /// owner already published the 9000s at attest time), and enables +
+    /// verifies the buzz-agent@<name> unit.
     Agent(agent::AgentArgs),
     /// Retire an agent — the HOST half of teardown (run this FIRST).
     ///
@@ -93,7 +90,7 @@ enum Command {
 struct HostInitArgs {
     /// Pin an owner PUBLIC key (exactly 64 lowercase hex). Repeatable.
     ///
-    /// Only sealed mint bundles attested by a pinned owner are accepted at
+    /// Only mint bundles attested by a pinned owner are accepted at
     /// provision time. There is no default owner. If the pin file already
     /// exists, new owners are appended (deduplicated), never clobbered.
     #[arg(long = "allow-owner", value_name = "PUBKEY_64HEX")]
@@ -101,14 +98,14 @@ struct HostInitArgs {
 
     /// Rotate to a NEW host identity even if one already exists.
     ///
-    /// DANGER: every blob previously sealed to the old host pubkey becomes
-    /// permanently unopenable.
+    /// DANGER: the published `host` lineage of every agent provisioned
+    /// under the old identity stops matching this host.
     #[arg(long)]
     force: bool,
 
     /// Print the existing host pubkey and pinned owners; touch nothing.
     ///
-    /// This is what `buzz-mint` users run to obtain the seal target.
+    /// This is what `buzz-mint attest --host` names as the lineage anchor.
     #[arg(long, conflicts_with_all = ["allow_owner", "force"])]
     show: bool,
 
@@ -227,7 +224,7 @@ fn host_init(args: &HostInitArgs) -> Result<()> {
     if new_owners.is_empty() {
         bail!(
             "at least one --allow-owner <owner pubkey, 64 lowercase hex> is required; \
-             there is no default owner (the pin list is what stops rogue sealed blobs)"
+             there is no default owner (the pin list is what stops foreign manifests)"
         );
     }
 
@@ -241,8 +238,8 @@ fn host_init(args: &HostInitArgs) -> Result<()> {
             "host key already exists at {} — refusing to overwrite.\n\
              To print the existing identity:  buzz-provision host-init --show\n\
              To pin an additional owner:      buzz-provision pin-owner add <owner pubkey>\n\
-             Rotating to a NEW host identity (--force) is almost never what you want: it \
-             permanently orphans every blob sealed to the current host pubkey.",
+             Rotating to a NEW host identity (--force) is almost never what you want: the \
+             published `host` lineage of every agent provisioned here stops matching.",
             key_path.display()
         );
     }
@@ -281,9 +278,9 @@ fn host_init(args: &HostInitArgs) -> Result<()> {
     if rotating {
         eprintln!(
             "WARNING: --force minted a NEW host identity.\n\
-             WARNING: every blob previously sealed to the OLD host pubkey is now \
-             permanently unopenable (orphaned).\n\
-             WARNING: re-mint every agent against the new host pubkey printed below."
+             WARNING: the published `host` lineage of every agent provisioned under \
+             the OLD identity no longer matches this host.\n\
+             WARNING: re-attest every agent against the new host pubkey printed below."
         );
     }
 

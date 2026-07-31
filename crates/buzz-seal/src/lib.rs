@@ -1,10 +1,17 @@
-//! buzz-seal — the sealed mint bundle envelope (seal/unseal pair).
+//! buzz-seal — mint bundle schema, bridge client, and the sealed-envelope
+//! seal/unseal pair.
 //!
-//! Implements `docs/sealed-mint-bundle-spec.md` (buzz-agents): move exactly
-//! one secret bundle owner→host, once, over an untrusted channel, such that
-//! only the target host can open it, the host can prove it came from the
-//! owner who signed the attestation, and the pieces inside cannot be
-//! mixed-and-matched across agents or hosts.
+//! **The seal/unseal machinery has no CLI caller**: the sealed-key mint mode
+//! (B-mode) was removed — its provision path could never converge against
+//! the relay, and the key-born-on-host ceremony covers every supported
+//! locus. The envelope primitive is retained as a library because it is the
+//! right tool for problems that still exist: sealed API-key delivery (real
+//! secrets that must reach a host), host→host re-homing, and sealed
+//! noded-spec content. Its requirement: move exactly one secret bundle
+//! owner→host, once, over an untrusted channel, such that only the target
+//! host can open it, the host can prove it came from the owner who signed
+//! the attestation, and the pieces inside cannot be mixed-and-matched
+//! across agents or hosts.
 //!
 //! Primitive: **NIP-44 v2 with a static sender key** — the same primitive the
 //! Tamarin-proved NIP-AB pairing flow uses for `PayloadType::Nsec`, minus the

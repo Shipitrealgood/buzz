@@ -77,27 +77,26 @@ fn assert_no_secret_leak(secret_hex: &str, surfaces: &[&str]) {
     }
 }
 
-/// Mint a full bundle with two channels + a sealed api key; return
-/// (owner, host, bundle_dir, stdout, stderr).
-fn mint_full(tmp: &Path) -> (Owner, Keys, PathBuf, String, String) {
+/// Attest a host-born agent key with no channels (no network needed);
+/// return (owner, host, agent, bundle_dir, stdout, stderr).
+fn attest_full(tmp: &Path) -> (Owner, Keys, Keys, PathBuf, String, String) {
     let owner = owner_key_file(tmp, 0o600, true);
     let host = Keys::generate();
+    let agent = Keys::generate();
     let out = run(&[
-        "new",
+        "attest",
         "--name",
         "teacup",
+        "--agent",
+        &agent.public_key().to_hex(),
         "--host",
         &host.public_key().to_hex(),
-        "--channel",
-        CHAN_A,
-        "--channel",
-        CHAN_B,
         "--respond-to",
         "anyone",
         "--harness-cmd",
         "sprig acp --harness claude-code",
-        "--seal-env",
-        "FAKE_PROVIDER_KEY=sk-test-e2e-000111222333",
+        "--relay-url",
+        "ws://127.0.0.1:9",
         "--out",
         tmp.to_str().unwrap(),
         "--owner-key-file",
@@ -105,8 +104,8 @@ fn mint_full(tmp: &Path) -> (Owner, Keys, PathBuf, String, String) {
     ]);
     let so = stdout(&out);
     let se = stderr(&out);
-    assert!(out.status.success(), "mint failed: {se}");
-    (owner, host, tmp.join("teacup-mint"), so, se)
+    assert!(out.status.success(), "attest failed: {se}");
+    (owner, host, agent, tmp.join("teacup-mint"), so, se)
 }
 
 #[test]
@@ -114,12 +113,17 @@ fn owner_key_file_must_not_be_group_world_accessible() {
     let tmp = tempfile::tempdir().unwrap();
     let owner = owner_key_file(tmp.path(), 0o644, false);
     let host = Keys::generate();
+    let agent = Keys::generate();
     let out = run(&[
-        "new",
+        "attest",
         "--name",
         "leaky",
+        "--agent",
+        &agent.public_key().to_hex(),
         "--host",
         &host.public_key().to_hex(),
+        "--relay-url",
+        "ws://127.0.0.1:9",
         "--out",
         tmp.path().to_str().unwrap(),
         "--owner-key-file",
@@ -142,22 +146,22 @@ fn owner_key_file_must_not_be_group_world_accessible() {
 #[test]
 fn full_mint_bundle_structure_consistency_and_no_secret_output() {
     let tmp = tempfile::tempdir().unwrap();
-    let (owner, host, bundle, so, se) = mint_full(tmp.path());
+    let (owner, host, agent, bundle, so, se) = attest_full(tmp.path());
 
-    // ── Structure + modes.
+    // ── Structure: manifest-only, everything public.
     assert!(bundle.is_dir());
     #[cfg(unix)]
-    {
-        assert_eq!(mode_of(&bundle), 0o700, "bundle dir mode");
-        assert_eq!(mode_of(&bundle.join("sealed.json")), 0o600, "sealed mode");
-        assert_eq!(mode_of(&bundle.join("events")), 0o700, "events dir mode");
-    }
+    assert_eq!(mode_of(&bundle), 0o700, "bundle dir mode");
+    assert!(!bundle.join("sealed.json").exists(), "nothing is sealed");
+    assert!(!bundle.join("events").exists(), "no pre-signed events");
 
     // ── Manifest fields.
     let manifest: Value =
         serde_json::from_str(&fs::read_to_string(bundle.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["v"], 1);
     assert_eq!(manifest["name"], "teacup");
+    assert_eq!(manifest["mode"], "a");
+    assert_eq!(manifest["agent_pubkey"], agent.public_key().to_hex());
     assert_eq!(manifest["owner_pubkey"], owner.keys.public_key().to_hex());
     assert_eq!(manifest["host_pubkey"], host.public_key().to_hex());
     assert_eq!(manifest["config"]["respond_to"], "anyone");
@@ -165,94 +169,26 @@ fn full_mint_bundle_structure_consistency_and_no_secret_output() {
         manifest["config"]["harness_cmd"],
         "sprig acp --harness claude-code"
     );
-    assert_eq!(manifest["config"]["channels"].as_array().unwrap().len(), 2);
+    assert_eq!(manifest["config"]["relay_url"], "ws://127.0.0.1:9");
 
-    // ── Envelope agrees with manifest; unseal proves the sealed payload.
-    let envelope: buzz_seal::Envelope =
-        serde_json::from_str(&fs::read_to_string(bundle.join("sealed.json")).unwrap()).unwrap();
-    assert_eq!(
-        envelope.agent_pubkey.to_hex(),
-        manifest["agent_pubkey"].as_str().unwrap(),
-        "manifest/envelope agent_pubkey agreement"
-    );
-    assert_eq!(envelope.owner_pubkey, owner.keys.public_key());
-    assert_eq!(envelope.host_pubkey, host.public_key());
-    let unsealed = buzz_seal::unseal(&host, &envelope, &[owner.keys.public_key()])
-        .expect("host must be able to unseal the bundle");
-    assert!(unsealed.warnings.is_empty());
-    let agent_sk = Zeroizing::new(unsealed.inner.agent_sk.expose_canonical_hex().to_owned());
-    assert_eq!(agent_sk.len(), 64);
-    assert_eq!(
-        unsealed.inner.agent_pubkey.to_hex(),
-        manifest["agent_pubkey"].as_str().unwrap()
-    );
-    assert_eq!(
-        unsealed
-            .inner
-            .api_keys
-            .as_ref()
-            .unwrap()
-            .get("FAKE_PROVIDER_KEY")
-            .unwrap()
-            .expose(),
-        "sk-test-e2e-000111222333"
-    );
-    // Attestation in manifest == attestation sealed inside.
-    assert_eq!(
+    // ── Attestation verifies for the agent and resolves to the owner.
+    let attester = buzz_sdk::nip_oa::verify_auth_tag(
         manifest["attestation"].as_str().unwrap(),
-        unsealed.inner.attestation
-    );
-
-    // ── 9000 events: shape, signature, signer.
-    let agent_pk = PublicKey::from_hex(manifest["agent_pubkey"].as_str().unwrap()).unwrap();
-    for chan in [CHAN_A, CHAN_B] {
-        let path = bundle.join("events").join(format!("9000-{chan}.json"));
-        let event = Event::from_json(fs::read_to_string(&path).unwrap()).unwrap();
-        event.verify().expect("valid id + signature");
-        assert_eq!(event.kind.as_u16(), 9000);
-        assert_eq!(event.pubkey, owner.keys.public_key(), "signed by owner");
-        let tag = |name: &str| -> Vec<String> {
-            event
-                .tags
-                .iter()
-                .map(|t| t.as_slice().to_vec())
-                .find(|s| s.first().map(String::as_str) == Some(name))
-                .unwrap_or_default()
-        };
-        assert_eq!(tag("h"), vec!["h".to_string(), chan.to_string()]);
-        assert_eq!(tag("p"), vec!["p".to_string(), agent_pk.to_hex()]);
-        assert_eq!(tag("role"), vec!["role".to_string(), "bot".to_string()]);
-    }
+        &agent.public_key(),
+    )
+    .expect("attestation must verify for the agent pubkey");
+    assert_eq!(attester, owner.keys.public_key());
 
     // ── stdout announces pubkeys + bundle, never secrets.
-    assert!(so.contains(&agent_pk.to_hex()));
+    assert!(so.contains(&agent.public_key().to_hex()));
     assert!(so.contains("npub"));
     assert!(so.contains("teacup-mint"));
 
-    // ── No secret on ANY surface: process output, manifest, event files.
+    // ── No secret on ANY surface: process output, manifest.
     let manifest_raw = fs::read_to_string(bundle.join("manifest.json")).unwrap();
-    let sealed_raw = fs::read_to_string(bundle.join("sealed.json")).unwrap();
-    let ev_a =
-        fs::read_to_string(bundle.join("events").join(format!("9000-{CHAN_A}.json"))).unwrap();
-    let ev_b =
-        fs::read_to_string(bundle.join("events").join(format!("9000-{CHAN_B}.json"))).unwrap();
     let owner_sk = Zeroizing::new(owner.keys.secret_key().to_secret_hex());
-    let surfaces = [
-        so.as_str(),
-        se.as_str(),
-        manifest_raw.as_str(),
-        sealed_raw.as_str(),
-        ev_a.as_str(),
-        ev_b.as_str(),
-    ];
-    assert_no_secret_leak(&agent_sk, &surfaces);
+    let surfaces = [so.as_str(), se.as_str(), manifest_raw.as_str()];
     assert_no_secret_leak(&owner_sk, &surfaces);
-    for s in surfaces {
-        assert!(
-            !s.contains("sk-test-e2e-000111222333"),
-            "sealed api key appeared in a plaintext surface"
-        );
-    }
 }
 
 #[test]
@@ -260,13 +196,18 @@ fn stdin_pipe_owner_key_works_and_never_echoes() {
     let tmp = tempfile::tempdir().unwrap();
     let owner = Keys::generate();
     let host = Keys::generate();
+    let agent = Keys::generate();
     let mut child = Command::new(env!("CARGO_BIN_EXE_buzz-mint"))
         .args([
-            "new",
+            "attest",
             "--name",
             "pipestream",
+            "--agent",
+            &agent.public_key().to_hex(),
             "--host",
             &host.public_key().to_hex(),
+            "--relay-url",
+            "ws://127.0.0.1:9",
             "--out",
             tmp.path().to_str().unwrap(),
         ])
@@ -302,10 +243,15 @@ fn refuses_existing_bundle_dir_and_bad_host_key() {
     let tmp = tempfile::tempdir().unwrap();
     let owner = owner_key_file(tmp.path(), 0o600, false);
     let host = Keys::generate();
+    let agent = Keys::generate();
     let base = [
-        "new".to_string(),
+        "attest".to_string(),
         "--name".into(),
         "dupe".into(),
+        "--agent".into(),
+        agent.public_key().to_hex(),
+        "--relay-url".into(),
+        "ws://127.0.0.1:9".into(),
         "--out".into(),
         tmp.path().to_str().unwrap().into(),
         "--owner-key-file".into(),
@@ -332,15 +278,14 @@ fn refuses_existing_bundle_dir_and_bad_host_key() {
 #[test]
 fn inspect_accepts_fresh_bundle_and_catches_tampering() {
     let tmp = tempfile::tempdir().unwrap();
-    let (_owner, _host, bundle, _so, _se) = mint_full(tmp.path());
+    let (_owner, _host, _agent, bundle, _so, _se) = attest_full(tmp.path());
 
     // Fresh bundle passes with no secret input.
     let out = run(&["inspect", bundle.to_str().unwrap()]);
     assert!(out.status.success(), "stderr: {}", stderr(&out));
     assert!(stdout(&out).contains("inspect: OK"));
 
-    // Tamper 1: swap manifest agent_pubkey ⇒ envelope disagreement +
-    // attestation failure.
+    // Tamper 1: swap manifest agent_pubkey ⇒ attestation failure.
     let manifest_path = bundle.join("manifest.json");
     let original = fs::read_to_string(&manifest_path).unwrap();
     let mut manifest: Value = serde_json::from_str(&original).unwrap();
@@ -353,28 +298,33 @@ fn inspect_accepts_fresh_bundle_and_catches_tampering() {
     let out = run(&["inspect", bundle.to_str().unwrap()]);
     assert!(!out.status.success(), "tampered manifest must fail");
     let se = stderr(&out);
-    assert!(se.contains("agent_pubkey disagrees"), "got: {se}");
     assert!(se.contains("attestation"), "got: {se}");
 
-    // Tamper 2: restore manifest, break one 9000 signature byte-for-byte.
+    // Tamper 2: restore manifest, add a sealed-era artifact ⇒ ceremony
+    // violation.
     fs::write(&manifest_path, &original).unwrap();
-    let ev_path = bundle.join("events").join(format!("9000-{CHAN_A}.json"));
-    let mut ev: Value = serde_json::from_str(&fs::read_to_string(&ev_path).unwrap()).unwrap();
-    ev["content"] = Value::String("tampered".into());
-    fs::write(&ev_path, ev.to_string()).unwrap();
+    fs::write(bundle.join("sealed.json"), "{}").unwrap();
     let out = run(&["inspect", bundle.to_str().unwrap()]);
     assert!(!out.status.success());
     assert!(
-        stderr(&out).contains("id/signature invalid"),
+        stderr(&out).contains("sealed.json"),
         "got: {}",
         stderr(&out)
     );
 
-    // Tamper 3: drop an event file ⇒ missing-channel finding.
-    fs::remove_file(&ev_path).unwrap();
+    // Tamper 3: a sealed-era (B-mode) manifest is refused outright with a
+    // route to the current ceremony.
+    fs::remove_file(bundle.join("sealed.json")).unwrap();
+    let mut manifest: Value = serde_json::from_str(&original).unwrap();
+    manifest["mode"] = Value::String("b".into());
+    fs::write(&manifest_path, manifest.to_string()).unwrap();
     let out = run(&["inspect", bundle.to_str().unwrap()]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains(&format!("missing events/9000-{CHAN_A}.json")));
+    assert!(
+        stderr(&out).contains("sealed key transit was removed"),
+        "got: {}",
+        stderr(&out)
+    );
 }
 
 // ─── attest (Design A) ───────────────────────────────────────────────────────
