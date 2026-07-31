@@ -34,8 +34,8 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use buzz_seal::bridge;
-use buzz_seal::bundle::{self, Manifest};
+use buzz_provision::bridge;
+use buzz_provision::bundle::{self, Manifest};
 use clap::Args;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use zeroize::Zeroizing;

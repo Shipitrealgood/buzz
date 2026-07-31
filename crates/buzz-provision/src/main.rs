@@ -328,7 +328,7 @@ fn print_attest_command(name: &str, agent_pubkey_hex: &str, host_hex: &str) {
 fn keygen(args: &KeygenArgs) -> Result<()> {
     // Validate before touching disk. The name becomes a filename and a
     // systemd instance name — same rule the bundle schema enforces.
-    buzz_seal::bundle::validate_agent_name(&args.name)
+    buzz_provision::bundle::validate_agent_name(&args.name)
         .map_err(|e| anyhow::anyhow!("--name: {e}"))?;
     let name = args.name.as_str();
 

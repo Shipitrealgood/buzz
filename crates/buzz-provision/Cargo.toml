@@ -5,22 +5,28 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Host-side provisioning CLI for VM-deployed Buzz agents (virtual mint): host identity, owner pinning, credential fallout"
+description = "The Buzz virtual mint: provision relay-native agents on a self-hosted VM (host-side buzz-provision + owner-side buzz-mint)"
 
 [[bin]]
 name = "buzz-provision"
 path = "src/main.rs"
 
+[[bin]]
+name = "buzz-mint"
+path = "src/bin/buzz-mint.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
 buzz-sdk = { workspace = true }
-buzz-seal = { workspace = true }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 nostr = { workspace = true }
 reqwest = { workspace = true, features = ["blocking"] }
+rpassword = "7"
+serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = "3"
+thiserror = { workspace = true }
 uuid = { workspace = true }
 zeroize = { workspace = true }
 

@@ -13,7 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use buzz_seal::bundle::{BundleMode, Manifest, ManifestConfig};
+use buzz_provision::bundle::{BundleMode, Manifest, ManifestConfig};
 use nostr::{JsonUtil, Keys, PublicKey};
 use uuid::Uuid;
 

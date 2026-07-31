@@ -43,8 +43,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use buzz_seal::bridge;
-use buzz_seal::bundle;
+use buzz_provision::bridge;
+use buzz_provision::bundle;
 use clap::Args;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, Tag, Timestamp};
 

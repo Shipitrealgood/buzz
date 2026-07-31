@@ -1,5 +1,4 @@
-//! buzz-seal — mint bundle schema, bridge client, and the sealed-envelope
-//! seal/unseal pair.
+//! Secret-handling primitives and the sealed-envelope seal/unseal pair.
 //!
 //! **The seal/unseal machinery has no CLI caller**: the sealed-key mint mode
 //! (B-mode) was removed — its provision path could never converge against
@@ -25,9 +24,6 @@
 //! formatted, and never echoed by any error path. Every fallible step of
 //! [`unseal`] is fail-closed with a distinct error variant, in the exact
 //! order the spec numbers them.
-
-pub mod bridge;
-pub mod bundle;
 
 use std::collections::BTreeMap;
 use std::fmt;

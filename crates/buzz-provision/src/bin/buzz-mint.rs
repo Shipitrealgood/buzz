@@ -26,9 +26,9 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use buzz_seal::bridge::{self, BridgeError};
-use buzz_seal::bundle::{self, BundleMode, Manifest, ManifestConfig, MANIFEST_VERSION};
-use buzz_seal::{is_canonical_64_hex, redact_key_material};
+use buzz_provision::bridge::{self, BridgeError};
+use buzz_provision::bundle::{self, BundleMode, Manifest, ManifestConfig, MANIFEST_VERSION};
+use buzz_provision::{is_canonical_64_hex, redact_key_material};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use nostr::nips::nip19::ToBech32;
 use nostr::{Event, Keys, PublicKey, SecretKey};
@@ -300,7 +300,7 @@ fn read_owner_keys(owner_key_file: Option<&Path>) -> Result<Keys> {
 // ─── Validation helpers ──────────────────────────────────────────────────────
 
 /// Bundle dirs are created from the name: keep it path-safe and unit-safe.
-/// Shared rule with the provision-side consumer (buzz_seal::bundle).
+/// Shared rule with the provision-side consumer (buzz_provision::bundle).
 fn validate_name(name: &str) -> Result<()> {
     bundle::validate_agent_name(name).map_err(|e| anyhow::anyhow!("--name: {e}"))
 }

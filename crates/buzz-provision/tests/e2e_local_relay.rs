@@ -24,7 +24,7 @@
 //!
 //! ```text
 //! docker compose up -d postgres redis        # repo root
-//! cargo build -p buzz-relay -p buzz-mint -p buzz-provision
+//! cargo build -p buzz-relay -p buzz-provision
 //! cargo test -p buzz-provision --test e2e_local_relay -- --ignored --nocapture
 //! ```
 //!
@@ -327,7 +327,7 @@ async fn full_design_a_ceremony_against_local_relay() {
     let mint_bin = target_debug_dir().join("buzz-mint");
     assert!(
         mint_bin.exists(),
-        "buzz-mint binary missing at {} — run `cargo build -p buzz-mint` first",
+        "buzz-mint binary missing at {} — run `cargo build -p buzz-provision` first",
         mint_bin.display()
     );
     let cfg_dir = tmp.path().join("cfg");
@@ -625,7 +625,7 @@ async fn full_retire_lifecycle_against_local_relay() {
     let mint_bin = target_debug_dir().join("buzz-mint");
     assert!(
         mint_bin.exists(),
-        "buzz-mint binary missing at {} — run `cargo build -p buzz-mint` first",
+        "buzz-mint binary missing at {} — run `cargo build -p buzz-provision` first",
         mint_bin.display()
     );
     let cfg_dir = tmp.path().join("cfg");

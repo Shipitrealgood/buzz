@@ -5,7 +5,7 @@
 
 use std::fs;
 
-use buzz_seal::bundle::{self, BundleError, BundleMode, Manifest, ManifestConfig};
+use buzz_provision::bundle::{self, BundleError, BundleMode, Manifest, ManifestConfig};
 use nostr::Keys;
 use uuid::Uuid;
 

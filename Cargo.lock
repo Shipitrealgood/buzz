@@ -1023,24 +1023,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buzz-mint"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "buzz-sdk",
- "buzz-seal",
- "clap",
- "nostr",
- "rpassword 7.5.4",
- "serde",
- "serde_json",
- "tempfile",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "buzz-pair-relay"
 version = "0.1.0"
 dependencies = [
@@ -1092,13 +1074,15 @@ dependencies = [
  "anyhow",
  "base64",
  "buzz-sdk",
- "buzz-seal",
  "clap",
  "nostr",
  "reqwest 0.13.4",
+ "rpassword 7.5.4",
+ "serde",
  "serde_json",
  "sqlx",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
  "zeroize",
@@ -1258,22 +1242,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "uuid",
-]
-
-[[package]]
-name = "buzz-seal"
-version = "0.1.0"
-dependencies = [
- "base64",
- "buzz-sdk",
- "nostr",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "uuid",
- "zeroize",
 ]
 
 [[package]]

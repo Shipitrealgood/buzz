@@ -5,11 +5,12 @@
 
 use std::collections::BTreeMap;
 
-use buzz_sdk::nip_oa::compute_auth_tag;
-use buzz_seal::{
-    is_canonical_64_hex, seal, unseal_at, AgentSecretKey, Envelope, InnerPayload, SealError,
-    SecretString, UnsealError, UnsealWarning, ENVELOPE_TYPE, STALENESS_WARN_SECS,
+use buzz_provision::is_canonical_64_hex;
+use buzz_provision::seal::{
+    seal, unseal_at, AgentSecretKey, Envelope, InnerPayload, SealError, SecretString, UnsealError,
+    UnsealWarning, ENVELOPE_TYPE, STALENESS_WARN_SECS,
 };
+use buzz_sdk::nip_oa::compute_auth_tag;
 use nostr::nips::nip44;
 use nostr::{Keys, PublicKey};
 use zeroize::Zeroizing;

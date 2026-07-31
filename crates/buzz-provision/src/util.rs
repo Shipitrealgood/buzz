@@ -41,7 +41,7 @@ pub fn config_dir(explicit: Option<&Path>) -> Result<PathBuf> {
 
 /// True iff `s` is exactly 64 ASCII lowercase-hex characters.
 pub fn is_canonical_64_hex(s: &[u8]) -> bool {
-    buzz_seal::is_canonical_64_hex(s)
+    buzz_provision::is_canonical_64_hex(s)
 }
 
 /// Strictly validate a public-key argument.
@@ -265,9 +265,8 @@ pub fn load_host_keys(key_path: &Path) -> Result<Keys> {
     Ok(Keys::new(secret))
 }
 
-// Shared with buzz-mint via buzz-seal: one redactor, all argv-parsing mint
-// binaries (chuck T1-4 class fix).
-pub use buzz_seal::redact_key_material;
+// One redactor for every argv-parsing mint binary.
+pub use buzz_provision::redact_key_material;
 
 /// Resolve the agent env-file directory: explicit flag override, else
 /// `$HOME/services/buzz-agents` (the deployment convention the systemd
