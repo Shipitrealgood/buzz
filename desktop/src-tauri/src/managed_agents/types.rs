@@ -212,6 +212,11 @@ pub struct RelayAgentInfo {
     /// third-party adds; surfaced so pickers can mirror that enforcement.
     #[serde(default)]
     pub channel_add_policy: Option<String>,
+    /// Host lineage pubkey from kind:10100 content `host` (virtual mint / house
+    /// field). Optional — absent for Local-native directory entries that never
+    /// set lineage. Desktop surfaces this as an environment badge only.
+    #[serde(default)]
+    pub host: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ManagedAgentRecord {

@@ -279,6 +279,11 @@ export type RelayAgent = {
   respondToAllowlist: string[];
   /** kind:10100 `channel_add_policy` — relay-enforced on third-party adds. */
   channelAddPolicy: ChannelAddPolicy | null;
+  /**
+   * Host lineage pubkey from kind:10100 `host` (64-hex). Present for
+   * host-minted agents; used for environment badge hydration — not Local Start.
+   */
+  hostPubkey: string | null;
 };
 
 export type ChannelAddPolicy = "anyone" | "owner_only" | "nobody";
