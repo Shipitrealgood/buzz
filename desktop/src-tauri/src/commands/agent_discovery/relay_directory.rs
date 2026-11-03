@@ -1,5 +1,8 @@
 //! Relay-backed shared-agent directory discovery.
 
+mod people;
+pub use people::check_member_add_people;
+
 use tauri::State;
 
 use crate::{
@@ -54,12 +57,8 @@ impl<'a> DirectoryRead<'a> {
         })
     }
 
-    fn ensure_current(&self) -> Result<(), String> {
-        let _apply = self
-            .state
-            .workspace_apply_lock
-            .try_lock()
-            .map_err(|_| "active community changed during directory lookup")?;
+    async fn ensure_current(&self) -> Result<(), String> {
+        let _apply = self.state.workspace_apply_lock.lock().await;
         if self.generation
             != self
                 .state
@@ -320,7 +319,7 @@ async fn list_in_scope(
                 .into_iter()
                 .collect();
             if candidate_pubkeys.is_empty() {
-                read.ensure_current()?;
+                read.ensure_current().await?;
                 return Ok(Vec::new());
             }
             let directory_filters = exact_author_filters(&candidate_pubkeys, 10100);
@@ -390,7 +389,7 @@ async fn list_in_scope(
             .cloned()
             .unwrap_or_default();
     }
-    read.ensure_current()?;
+    read.ensure_current().await?;
     Ok(agents)
 }
 

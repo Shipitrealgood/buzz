@@ -34,6 +34,7 @@ type ChannelAgentRuntime = Pick<
 
 export type AttachManagedAgentToChannelInput = {
   agent: ManagedAgent;
+  scope?: { expectedRelayUrl: string; expectedSignerPubkey: string };
   role?: Exclude<ChannelRole, "owner">;
   ensureRunning?: boolean;
   /**
@@ -176,6 +177,7 @@ export async function attachManagedAgentToChannel(
   const ensureRunning = input.ensureRunning ?? true;
   const agentPubkey = normalizePubkey(input.agent.pubkey);
   const membershipResult = await addChannelMembers({
+    ...input.scope,
     channelId,
     pubkeys: [input.agent.pubkey],
     role,
@@ -210,7 +212,7 @@ export async function attachManagedAgentToChannel(
       if (input.detachedStart) {
         input.detachedStart(input.agent);
       } else {
-        agent = await startManagedAgent(input.agent.pubkey);
+        agent = await startManagedAgent(input.agent.pubkey, input.scope);
         started = true;
       }
     }

@@ -19,3 +19,21 @@ export async function revalidateRelayAgents(
   });
   return agents.map(fromRawRelayAgent);
 }
+
+export async function checkMemberAddPeople(
+  pubkeys: string[],
+  expectedRelayUrl: string,
+  expectedSignerPubkey: string,
+): Promise<string[]> {
+  const people: string[] = [];
+  for (let offset = 0; offset < pubkeys.length; offset += 50) {
+    people.push(
+      ...(await invokeTauri<string[]>("check_member_add_people", {
+        pubkeys: pubkeys.slice(offset, offset + 50),
+        expectedRelayUrl,
+        expectedSignerPubkey,
+      })),
+    );
+  }
+  return people;
+}

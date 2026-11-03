@@ -355,6 +355,7 @@ type E2eConfig = {
     /** Outcomes for successive explicit team share publications. */
     teamSharePublicationStatuses?: Array<"published" | "queued">;
     relayAgents?: MockRelayAgentSeed[];
+    relayAgentDirectoryUnavailable?: boolean;
     /** Reject successive relay-agent directory reads, then resume. */
     relayAgentListErrors?: (string | null)[];
     /** Pubkeys omitted only from targeted send-time authorization checks. */
@@ -13736,7 +13737,21 @@ export function maybeInstallE2eTauriMocks() {
           (payload as Parameters<typeof handleGetFeed>[0]) ?? {},
           activeConfig,
         );
+      case "check_member_add_people": {
+        const { pubkeys } = payload as { pubkeys: string[] };
+        const agents = new Set(mockRelayAgents.map((agent) => agent.pubkey));
+        return pubkeys.filter((key) => {
+          const profile = getMockProfileByPubkey(key);
+          return (
+            profile?.has_profile_event &&
+            !profile.owner_pubkey &&
+            !agents.has(key)
+          );
+        });
+      }
       case "list_relay_agents":
+        if (activeConfig?.mock?.relayAgentDirectoryUnavailable)
+          throw new Error("Relay agent directory unavailable.");
         return handleListRelayAgents(activeConfig);
       case "revalidate_relay_agents": {
         const agents = await handleListRelayAgents(activeConfig);

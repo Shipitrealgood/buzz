@@ -267,6 +267,7 @@ type MockBridgeOptions = {
   /** Outcomes for successive explicit team share publications. */
   teamSharePublicationStatuses?: Array<"published" | "queued">;
   relayAgents?: MockRelayAgentSeed[];
+  relayAgentDirectoryUnavailable?: boolean;
   /** Reject successive relay-agent directory reads, then resume. */
   relayAgentListErrors?: (string | null)[];
   /** Delay both managed and relay agent directory reads. */

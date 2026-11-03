@@ -1,5 +1,10 @@
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { UserRoundPlus, X } from "lucide-react";
 import {
   invalidateChannelState,
@@ -31,6 +36,7 @@ import { formatOwnerLabel } from "@/features/profile/lib/identity";
 import { rankUserCandidatesBySearch } from "@/features/profile/lib/userCandidateSearch";
 import { useAgentAvailabilityLookup } from "@/features/agents/lib/useAgentAvailability";
 import { VirtualizedList } from "@/shared/ui/VirtualizedList";
+import { checkMemberAddPeople } from "@/shared/api/tauriRelayAgents";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { changeChannelMemberRole } from "@/shared/api/tauri";
 import type {
@@ -255,6 +261,24 @@ export function MembersSidebar({
     limit: MEMBER_ADD_RESULT_LIMIT,
   });
   const userSearchResults = useFlattenedUserSearchResults(userSearchQuery.data);
+  const directoryReady = relayAgentsQuery.isSuccess;
+  const ambiguousKeys = userSearchResults
+    .filter((user) => !user.isAgent)
+    .map((user) => normalizePubkey(user.pubkey));
+  const checkedPeople = useQuery({
+    queryKey: ["member-add-people", relayUrl, currentPubkey, ambiguousKeys],
+    enabled:
+      open &&
+      canAddMembers &&
+      !directoryReady &&
+      ambiguousKeys.length > 0 &&
+      Boolean(relayUrl && currentPubkey),
+    queryFn:
+      relayUrl && currentPubkey
+        ? () => checkMemberAddPeople(ambiguousKeys, relayUrl, currentPubkey)
+        : skipToken,
+    retry: false,
+  });
   const isArchivedDiscovery = useIsArchivedPredicate();
   const addSearchResults = React.useMemo(() => {
     if (!canAddMembers || normalizedDeferredSearchQuery.length === 0) {
@@ -320,13 +344,23 @@ export function MembersSidebar({
       });
     };
 
+    const verifiedPeople = new Set(
+      checkedPeople.isSuccess ? checkedPeople.data : [],
+    );
     for (const user of userSearchResults) {
+      const key = normalizePubkey(user.pubkey);
+      if (
+        !directoryReady &&
+        !managedAgentsByPubkey.has(key) &&
+        !verifiedPeople.has(key)
+      )
+        continue;
       addCandidate(
         addMemberCandidateWithAgentMetadata(user, managedAgentsByPubkey),
       );
     }
 
-    for (const agent of relayAgentsQuery.data ?? []) {
+    for (const agent of (directoryReady ? relayAgentsQuery.data : []) ?? []) {
       addCandidate({
         pubkey: agent.pubkey,
         displayName: agent.name,
@@ -367,6 +401,9 @@ export function MembersSidebar({
     });
   }, [
     canAddMembers,
+    checkedPeople.data,
+    checkedPeople.isSuccess,
+    directoryReady,
     isArchivedDiscovery,
     currentPubkey,
     managedAgentsQuery.data,
@@ -378,7 +415,8 @@ export function MembersSidebar({
   const isAddSearchLoading =
     userSearchQuery.isLoading ||
     managedAgentsQuery.isLoading ||
-    relayAgentsQuery.isLoading;
+    relayAgentsQuery.isLoading ||
+    checkedPeople.isLoading;
   const handlePeopleSearchScroll = useUserSearchFetchMoreOnScroll(
     userSearchQuery,
     canAddMembers && normalizedDeferredSearchQuery.length > 0,
@@ -555,7 +593,14 @@ export function MembersSidebar({
   }
 
   async function handleAddSearchResult(user: UserSearchResult) {
-    if (addingMemberPubkeys.has(user.pubkey)) {
+    if (
+      !channelId ||
+      !currentPubkey ||
+      !relayUrl ||
+      isArchived ||
+      !canAddMembers ||
+      addingMemberPubkeys.has(user.pubkey)
+    ) {
       return;
     }
 
@@ -571,31 +616,48 @@ export function MembersSidebar({
       const managedAgent = managedAgentByPubkey.get(
         normalizePubkey(user.pubkey),
       );
-      if (channelId && managedAgent?.backend.type === "local") {
-        try {
-          await attachManagedAgentToChannel(channelId, {
-            agent: managedAgent,
-            ensureRunning: true,
-          });
-          await invalidateChannelState(queryClient, channelId);
-        } catch (error) {
-          setInviteSubmissionErrors((prev) => [
-            ...prev,
-            {
-              pubkey: user.pubkey,
-              error:
-                error instanceof Error ? error.message : "Failed to add agent.",
-            },
-          ]);
-        }
+      const scope = {
+        expectedRelayUrl: relayUrl,
+        expectedSignerPubkey: currentPubkey,
+      };
+      if (managedAgent?.backend.type === "local") {
+        await attachManagedAgentToChannel(channelId, {
+          agent: managedAgent,
+          scope,
+          ensureRunning: true,
+        });
+        await invalidateChannelState(queryClient, channelId);
         return;
       }
 
+      if (!directoryReady && !managedAgent) {
+        const checked = await checkMemberAddPeople(
+          [user.pubkey],
+          relayUrl,
+          currentPubkey,
+        );
+        if (!checked.includes(normalizePubkey(user.pubkey))) {
+          throw new Error(
+            "This invitation could not be verified. Retry the lookup.",
+          );
+        }
+      }
       const result = await addMembersMutation.mutateAsync({
+        ...scope,
+        channelId,
         pubkeys: [user.pubkey],
         role: user.isAgent ? "bot" : "member",
       });
       setInviteSubmissionErrors((prev) => [...prev, ...result.errors]);
+    } catch (error) {
+      setInviteSubmissionErrors((prev) => [
+        ...prev,
+        {
+          pubkey: user.pubkey,
+          error:
+            error instanceof Error ? error.message : "Failed to add member.",
+        },
+      ]);
     } finally {
       setAddingMemberPubkeys((prev) => {
         const next = new Set(prev);
@@ -782,7 +844,10 @@ export function MembersSidebar({
                         {addSearchResults.map((user) => (
                           <AddMemberSearchResultRow
                             disabled={
-                              addingMemberPubkeys.has(user.pubkey) || isArchived
+                              addingMemberPubkeys.has(user.pubkey) ||
+                              isArchived ||
+                              !relayUrl ||
+                              !currentPubkey
                             }
                             key={user.pubkey}
                             onSelect={(selectedUser) => {
@@ -796,6 +861,29 @@ export function MembersSidebar({
                             user={user}
                           />
                         ))}
+                        {relayAgentsQuery.isError || checkedPeople.isError ? (
+                          <p
+                            className="px-4 py-2 text-sm text-muted-foreground"
+                            role="status"
+                          >
+                            Some invitations could not be verified.{" "}
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={() => {
+                                void relayAgentsQuery.refetch();
+                                if (
+                                  ambiguousKeys.length &&
+                                  relayUrl &&
+                                  currentPubkey
+                                )
+                                  void checkedPeople.refetch();
+                              }}
+                            >
+                              Retry lookup
+                            </button>
+                          </p>
+                        ) : null}
                         {isAddSearchLoading ? (
                           <p className="px-4 py-3 text-sm text-muted-foreground">
                             Searching...

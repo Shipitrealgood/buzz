@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge, openNewMessagePage } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 
@@ -10,7 +10,7 @@ const FLEET = ["Claude", "Grok", "Scout"].map((name, i) => ({
 }));
 const OWNER = "deadbeef".repeat(8);
 
-test.beforeEach(async ({ page }) => {
+async function setupHostFleet(page: Page) {
   await installMockBridge(page, {
     managedAgents: [],
     searchProfiles: FLEET.map((agent) => ({
@@ -53,11 +53,12 @@ test.beforeEach(async ({ page }) => {
     ],
   });
   await page.goto("/");
-});
+}
 
 test("New Message keeps authenticated owner without a user-search duplicate", async ({
   page,
 }) => {
+  await setupHostFleet(page);
   await openNewMessagePage(page);
   await page.getByTestId("new-dm-search").fill("Policy-only Scout");
   const row = page.getByTestId(`new-dm-result-${AGENT}`);
@@ -72,6 +73,7 @@ test("New Message keeps authenticated owner without a user-search duplicate", as
 test("member-add keeps authenticated owner without a user-search duplicate", async ({
   page,
 }) => {
+  await setupHostFleet(page);
   await page.getByTestId("channel-general").click();
   await page.getByTestId("channel-members-trigger").click();
   await page
@@ -89,6 +91,7 @@ test("member-add keeps authenticated owner without a user-search duplicate", asy
 test("fresh owner sees one read-only card per host agent and can open its conversation", async ({
   page,
 }) => {
+  await setupHostFleet(page);
   await page.getByTestId("open-agents-view").click();
   const section = page.getByRole("region", { name: "On host" });
   for (const agent of FLEET) {
@@ -109,6 +112,7 @@ test("fresh owner sees one read-only card per host agent and can open its conver
 test("member-add hides a foreign owner-only add even when the agent responds to anyone", async ({
   page,
 }) => {
+  await setupHostFleet(page);
   await page.getByTestId("channel-general").click();
   await page.getByTestId("channel-members-trigger").click();
   const search = page.getByTestId("channel-management-search-users");
@@ -123,4 +127,95 @@ test("member-add hides a foreign owner-only add even when the agent responds to 
   await expect(
     page.getByTestId(`channel-user-search-result-${"ae".repeat(32)}`),
   ).toHaveCount(0);
+});
+
+test("cold member search checks ambiguous identities and can retry ordinary people independently", async ({
+  page,
+}) => {
+  const human = "b1".repeat(32);
+  const bot = "b2".repeat(32);
+  await installMockBridge(page, {
+    managedAgents: [],
+    relayAgentDirectoryUnavailable: true,
+    searchProfiles: [
+      { pubkey: human, displayName: "Probe Human", isAgent: false },
+      { pubkey: bot, displayName: "Probe Bot", isAgent: false },
+    ],
+    relayAgents: [
+      {
+        pubkey: bot,
+        name: "Probe Bot",
+        respondTo: "anyone",
+        channelAddPolicy: "nobody",
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page.getByTestId("channel-members-trigger").click();
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __TAURI_INTERNALS__: {
+        invoke: (cmd: string, args?: unknown) => Promise<unknown>;
+      };
+      failExact?: () => void;
+      checked?: boolean;
+    };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+      if (cmd === "check_member_add_people" && !w.checked) {
+        w.checked = true;
+        return new Promise((_, reject) => {
+          w.failExact = () => reject(new Error("simulated lookup failure"));
+        });
+      }
+      return invoke(cmd, args);
+    };
+  });
+  const input = page.getByTestId("channel-management-search-users");
+  await input.fill("Probe");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean((window as unknown as { failExact?: unknown }).failExact),
+      ),
+    )
+    .toBe(true);
+  const row = (key: string) =>
+    page.getByTestId(`channel-user-search-result-${key}`);
+  await expect(row(bot)).toHaveCount(0);
+  await expect(row(human)).toHaveCount(0);
+  await input.press("Enter");
+  await page.evaluate(() =>
+    (window as unknown as { failExact: () => void }).failExact(),
+  );
+  await expect(row(bot)).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry lookup" }).click();
+  await expect(row(human)).toBeVisible();
+  await expect(row(bot)).toHaveCount(0);
+  await row(human).getByRole("button", { name: "Add", exact: true }).click();
+  const writes = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __BUZZ_E2E_COMMAND_PAYLOADS__: Array<{
+            command: string;
+            payload: {
+              pubkeys?: string[];
+              expectedRelayUrl?: string;
+              expectedSignerPubkey?: string;
+            };
+          }>;
+        }
+      ).__BUZZ_E2E_COMMAND_PAYLOADS__
+        .filter((x) => x.command === "add_channel_members")
+        .map((x) => x.payload),
+    );
+  await expect.poll(writes).toEqual([
+    expect.objectContaining({
+      pubkeys: [human],
+      expectedRelayUrl: expect.any(String),
+      expectedSignerPubkey: OWNER,
+    }),
+  ]);
 });
