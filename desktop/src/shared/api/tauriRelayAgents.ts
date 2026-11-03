@@ -7,9 +7,9 @@ import type { RelayAgent } from "@/shared/api/types";
 
 export async function revalidateRelayAgents(
   pubkeys: string[],
-  channelId?: string,
-  expectedRelayUrl?: string,
-  expectedSignerPubkey?: string,
+  channelId: string | undefined,
+  expectedRelayUrl: string,
+  expectedSignerPubkey: string,
 ): Promise<RelayAgent[]> {
   const agents = await invokeTauri<RawRelayAgent[]>("revalidate_relay_agents", {
     pubkeys,

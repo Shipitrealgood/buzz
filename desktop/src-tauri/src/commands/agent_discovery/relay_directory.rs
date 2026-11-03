@@ -416,8 +416,8 @@ pub async fn list_relay_agents(
 pub async fn revalidate_relay_agents(
     pubkeys: Vec<String>,
     channel_id: Option<String>,
-    expected_relay_url: Option<String>,
-    expected_signer_pubkey: Option<String>,
+    expected_relay_url: String,
+    expected_signer_pubkey: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<RelayAgentInfo>, String> {
     let requested_pubkeys = pubkeys
@@ -428,10 +428,13 @@ pub async fn revalidate_relay_agents(
     if requested_pubkeys.is_empty() {
         return Ok(Vec::new());
     }
+    if expected_relay_url.trim().is_empty() || expected_signer_pubkey.trim().is_empty() {
+        return Err("agent revalidation requires the selected community and identity".into());
+    }
     let read = DirectoryRead::capture(
         &state,
-        expected_relay_url.as_deref(),
-        expected_signer_pubkey.as_deref(),
+        Some(&expected_relay_url),
+        Some(&expected_signer_pubkey),
     )
     .await?;
     list_in_scope(&read, Some(&requested_pubkeys), channel_id.as_deref()).await

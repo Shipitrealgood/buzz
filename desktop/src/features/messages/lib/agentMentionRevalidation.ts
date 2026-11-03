@@ -139,13 +139,16 @@ export function useAgentMentionRevalidation({
         eligibilityScope: scope,
         sharedChannelIds,
         refetchManagedAgents,
-        fetchRelayAgents: (requestedPubkeys) =>
-          revalidateRelayAgents(
+        fetchRelayAgents: async (requestedPubkeys) => {
+          if (!relayUrl || !currentPubkey)
+            throw new AgentMentionAuthorizationError();
+          return revalidateRelayAgents(
             requestedPubkeys,
             "channelId" in scope ? (scope.channelId ?? undefined) : undefined,
             relayUrl,
-            currentPubkey ?? undefined,
-          ),
+            currentPubkey,
+          );
+        },
       });
     },
     [
