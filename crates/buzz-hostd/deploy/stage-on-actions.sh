@@ -46,8 +46,13 @@ def exe(name):
     return {'path':str(path), 'sha256':hashlib.file_digest(path.open('rb'), 'sha256').hexdigest()}
 catalog = {'community':sys.argv[2], 'label':'Staging Linux', 'capacity':4, 'relay_key':sys.argv[1], 'runtimes':{
     'local/fixture':{'harness':exe('paired-buzz-acp'), 'adapter':exe('paired-fixture.mjs'), 'args':[], 'credential_profile':'none'}}}
-pathlib.Path('/etc/buzz-hostd/catalog.json').write_text(json.dumps(catalog)+'\n')
+catalog_path = pathlib.Path('/etc/buzz-hostd/catalog.json')
+catalog_path.write_text(json.dumps(catalog)+'\n')
+# The caller protects private test keys with umask 0077. The public runtime
+# catalog must also be readable by the controller and DynamicUser workers.
+catalog_path.chmod(0o644)
 PY
+runuser -u buzz-hostd -- test -r /etc/buzz-hostd/catalog.json
 for unit in buzz-hostd.service buzz-hostd-activate.socket buzz-hostd-activate@.service buzz-paired-agent@.service; do
   install -m 0644 "$assets/$unit" "/etc/systemd/system/$unit"
 done
