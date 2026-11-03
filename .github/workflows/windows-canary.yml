@@ -76,7 +76,8 @@ jobs:
         shell: bash
         run: pnpm install --frozen-lockfile
 
-      - name: Derive canary version
+      - &derive-canary-version
+        name: Derive canary version
         id: version
         shell: bash
         run: |
@@ -90,7 +91,8 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building canary version $VERSION from $GITHUB_SHA"
 
-      - name: Patch canary version
+      - &patch-canary-version
+        name: Patch canary version
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -183,19 +185,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Verify signed host discovery on the fork
-        if: github.repository == 'Shipitrealgood/buzz'
-        shell: bash
-        working-directory: desktop/src-tauri
-        env:
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-        run: |
-          set -euo pipefail
-          for suite in nostr_convert:: commands::agent_discovery::relay_directory::; do
-            cargo test --locked --release --target "$TARGET" --lib "$suite" | tee "$RUNNER_TEMP/discovery-tests.log"
-            grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/discovery-tests.log"
-          done
-
       - name: Measure release Cargo cache inputs
         if: always()
         shell: bash
@@ -220,3 +209,47 @@ jobs:
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+  discovery-tests:
+    name: Test Windows host discovery
+    if: github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/host-agents-main-canary'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      TARGET: x86_64-pc-windows-msvc
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      TAURI_CONFIG: '{"bundle":{"createUpdaterArtifacts":false}}'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+
+      - *derive-canary-version
+      - *patch-canary-version
+
+      # Match the Tauri Windows CI prerequisites. These directory tests do
+      # not execute sidecars, and packaging builds the real ones on its runner.
+      - name: Create Windows sidecar placeholders
+        shell: bash
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          for bin in buzz-acp buzz-agent buzz-dev-mcp git-credential-nostr buzz; do
+            touch "desktop/src-tauri/binaries/${bin}-${TARGET}.exe"
+          done
+
+      - name: Verify signed directory conversion and loopback discovery
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: |
+          set -euo pipefail
+          for suite in nostr_convert:: commands::agent_discovery::relay_directory::; do
+            cargo test --locked --target "$TARGET" --lib "$suite" | tee "$RUNNER_TEMP/discovery-tests.log"
+            grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/discovery-tests.log"
+          done
