@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One disposable Ubuntu VM. Run with sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT
 # after building the five indicated binaries and generating the test relay CA.
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "Staging setup failed at line %s.\n" "$LINENO" >&2' ERR
 if [[ ${GITHUB_ACTIONS:-} != true || ${RUNNER_ENVIRONMENT:-} != github-hosted || $EUID != 0 || $# -lt 3 || $# -gt 4 ]]; then
   echo 'requires root on a fresh GitHub-hosted runner: stage-on-actions.sh BIN_DIR CA_CRT RELAY_KEY_HEX' >&2
   exit 2
@@ -35,7 +36,7 @@ install -m 0755 "$bin_dir/buzz" /usr/local/libexec/paired-buzz
 sed -e '1c#!/usr/bin/node' -e 's|const cli = process.env.BUZZ_E2E_CLI_BIN;|const cli = "/usr/local/libexec/paired-buzz";|' \
   "$repo/desktop/tests/e2e/fixtures/fake-acp-agent.mjs" > /usr/local/libexec/paired-fixture.mjs
 chmod 0755 /usr/local/libexec/paired-fixture.mjs
-test -x /usr/bin/node
+test -x /usr/bin/node || { echo "Fixture needs the system Node runtime" >&2; exit 1; }
 install -m 0644 "$ca" /usr/local/share/ca-certificates/buzz-paired-staging.crt
 update-ca-certificates >/dev/null
 python3 - "$relay_key" "${4:-https://localhost:39553}" <<'PY'

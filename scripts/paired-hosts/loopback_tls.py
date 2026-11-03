@@ -20,6 +20,9 @@ async def serve(args):
         try:
             outbound, relay = await asyncio.open_connection("127.0.0.1", args.relay_port)
             await asyncio.gather(copy(inbound, relay), copy(outbound, client), return_exceptions=True)
+        except ConnectionRefusedError:
+            # The relay may still be migrating its disposable database.
+            pass
         finally:
             client.close()
 

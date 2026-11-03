@@ -39,13 +39,14 @@ jobs:
       - name: Install native build prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends protobuf-compiler libasound2-dev libssl-dev libclang-dev libudev-dev cmake python3-cryptography
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libasound2-dev libssl-dev libclang-dev libudev-dev cmake python3-cryptography nodejs
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           key: paired-host-systemd
       - name: Build the relay, host services, agent and native owner driver
         run: |
-          cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bins -p buzz-cli --bin buzz -p buzz-acp --bin buzz-acp --features tokio-tungstenite/rustls-tls-native-roots
+          cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bin buzz-hostd --bin buzz-host-activate --bin buzz-host-runtime -p buzz-cli --bin buzz -p buzz-acp --bin buzz-acp --features tokio-tungstenite/rustls-tls-native-roots
+          for bin in buzz-hostd buzz-host-activate buzz-host-runtime buzz-acp buzz buzz-relay; do test -x "target/debug/$bin" || { echo "Missing rehearsal binary: $bin"; exit 1; }; done
           cargo build --locked -p buzz-paired-owner --example staging
       - name: Pair, provision a system service, message it and unpair
         run: /usr/bin/python3 scripts/paired-hosts/hosted-systemd-smoke.py
