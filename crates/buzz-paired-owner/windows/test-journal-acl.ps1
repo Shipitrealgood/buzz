@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $probe = 'buzzacl' + [guid]::NewGuid().ToString('N').Substring(0,10)
 $base = Join-Path $env:PUBLIC $probe
 $userCreated = $false
+$registered = $false
 $dbProcess = $null
 try {
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -50,24 +51,41 @@ db.close()
     $account = New-LocalUser -Name $probe -Password $password -Description 'Disposable Buzz ACL test'
     $userCreated = $true
     $credential = [pscredential]::new("$env:COMPUTERNAME\$probe",$password)
-    # Pass only a base64 path. No user string is interpolated into a command.
-    $encodedBase = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($base))
+    [IO.File]::WriteAllText((Join-Path $base 'expected-sid'),$account.SID.Value)
     $check = @'
 $ErrorActionPreference = 'Stop'
-$base = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('ENCODED_BASE'))
-if ([IO.File]::ReadAllText((Join-Path $base 'control')) -ne 'public-control') { exit 10 }
+if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne [IO.File]::ReadAllText("$PSScriptRoot\expected-sid")) { exit 9 }
+if ([IO.File]::ReadAllText("$PSScriptRoot\control") -ne 'public-control') { exit 10 }
 foreach ($file in @('owner.sqlite','owner.sqlite-wal','owner.sqlite-shm')) {
-    try { [IO.File]::OpenRead((Join-Path "$base\paired-hosts" $file)).Dispose(); exit 11 }
+    try { [IO.File]::OpenRead((Join-Path "$PSScriptRoot\paired-hosts" $file)).Dispose(); exit 11 }
     catch { if ($_.Exception.GetBaseException() -isnot [UnauthorizedAccessException]) { exit 12 } }
 }
 exit 0
 '@
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($check.Replace('ENCODED_BASE',$encodedBase)))
-    $test = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -NonInteractive -EncodedCommand $encoded" -WorkingDirectory $base -Credential $credential -PassThru
-    if (!$test.WaitForExit(30000)) { $test.Kill(); throw 'secondary-user probe timed out' }
-    if ($test.ExitCode -ne 0) { throw "secondary-user ACL probe failed ($($test.ExitCode))" }
+    $script = Join-Path $base 'read-probe.ps1'
+    [IO.File]::WriteAllText($script,$check)
+    $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $script) -WorkingDirectory $base
+    # Password logon through Task Scheduler works in a noninteractive runner.
+    # Only the fixed probe path appears in the action and its process command line.
+    Register-ScheduledTask -TaskName $probe -Action $action -User $credential.UserName -Password ($credential.GetNetworkCredential().Password) -RunLevel Limited | Out-Null
+    $registered = $true
+    $prior = (Get-ScheduledTaskInfo -TaskName $probe).LastRunTime
+    Start-ScheduledTask -TaskName $probe
+    $deadline = [DateTime]::UtcNow.AddSeconds(45)
+    do {
+        Start-Sleep -Milliseconds 250
+        $info = Get-ScheduledTaskInfo -TaskName $probe
+        $state = (Get-ScheduledTask -TaskName $probe).State
+        $finished = $info.LastRunTime -gt $prior -and $state -eq 'Ready' -and $info.LastTaskResult -ne 267009
+    } until ($finished -or [DateTime]::UtcNow -ge $deadline)
+    if (!$finished -or $info.LastTaskResult -ne 0) { throw "secondary-user scheduled probe failed (state $state, result $($info.LastTaskResult))" }
+    if ($dbProcess.HasExited) { throw 'SQLite closed before the secondary-account probe finished' }
     Write-Output 'Owner used SQLite; another standard user read the control and was denied the DB, WAL and SHM.'
 } finally {
+    if ($registered) {
+        Stop-ScheduledTask -TaskName $probe -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $probe -Confirm:$false
+    }
     if ($dbProcess -and !$dbProcess.HasExited) {
         [IO.File]::WriteAllText((Join-Path $base 'done'),'done')
         if (!$dbProcess.WaitForExit(5000)) { $dbProcess.Kill(); $dbProcess.WaitForExit() }
