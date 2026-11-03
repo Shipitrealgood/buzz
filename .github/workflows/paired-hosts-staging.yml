@@ -1,0 +1,51 @@
+name: Paired hosts systemd rehearsal
+
+on:
+  push:
+    branches: [verify/paired-hosts-staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    if: github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/verify/paired-hosts-staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: postgres://fixture:fixture@127.0.0.1:5432/fixture
+      REDIS_URL: redis://127.0.0.1:6379
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "3"
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+    services:
+      postgres:
+        image: postgres@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
+        env:
+          POSTGRES_DB: fixture
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: fixture
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U fixture" --health-interval 5s --health-timeout 3s --health-retries 12
+      redis:
+        image: redis@sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537
+        ports: [6379:6379]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Install native build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libasound2-dev libssl-dev libclang-dev libudev-dev cmake python3-cryptography
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          key: paired-host-systemd
+      - name: Build the relay, host services, agent and native owner driver
+        run: |
+          cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bins -p buzz-cli --bin buzz -p buzz-acp --bin buzz-acp --features tokio-tungstenite/rustls-tls-native-roots
+          cargo build --locked -p buzz-paired-owner --example staging
+      - name: Pair, provision a system service, message it and unpair
+        run: /usr/bin/python3 scripts/paired-hosts/hosted-systemd-smoke.py

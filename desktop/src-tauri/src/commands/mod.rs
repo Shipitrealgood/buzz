@@ -48,6 +48,10 @@ mod messages;
 mod notifications;
 mod observer_archive;
 mod os_idle;
+#[cfg(windows)]
+mod paired_hosts;
+#[cfg(windows)]
+pub use paired_hosts::*;
 pub mod pairing;
 mod personas;
 mod prevent_sleep;

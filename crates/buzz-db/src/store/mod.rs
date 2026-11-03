@@ -42,6 +42,8 @@ pub mod git_repo;
 pub mod moderation;
 /// Deployment-global operator-listener mention registrations and delivery queues.
 pub mod operator_listener;
+/// Private paired-host enrollment and delivery.
+pub mod paired_hosts;
 /// Monthly table partition management.
 pub mod partition;
 /// Private signer-owned accessory read progress.

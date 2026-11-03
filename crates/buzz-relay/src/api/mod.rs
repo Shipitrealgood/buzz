@@ -12,6 +12,7 @@ pub mod mesh_demo;
 pub mod nip05;
 pub mod nip_fi;
 pub mod operator;
+pub(crate) mod paired_hosts;
 pub mod profiles;
 pub mod workflows;
 

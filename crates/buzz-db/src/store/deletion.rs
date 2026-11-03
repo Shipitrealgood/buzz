@@ -79,6 +79,9 @@ pub const RELAY_ADMIN_TABLES: &[(&str, &str)] = &[
 /// blocks deletion until this manifest is intentionally updated.
 pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_host_requests",
+    "paired_host_bindings",
+    "paired_host_events",
     "api_tokens",
     "archived_identities",
     "artifact_heads",
@@ -131,6 +134,9 @@ const EXCLUDED_SCOPED_TABLES: &[&str] = &[
 /// Foreign-key-safe child-before-parent order for the PostgreSQL purge.
 pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_host_requests",
+    "paired_host_bindings",
+    "paired_host_events",
     "personal_read_frontiers",
     "personal_read_accounts",
     "workflow_approvals",
@@ -4555,6 +4561,92 @@ mod postgres_tests {
         assert_eq!(fences::find(&mut tx, human).await.unwrap(), Some(global));
         assert_eq!(fences::find(&mut tx, agent).await.unwrap(), Some(scoped));
         tx.commit().await.unwrap();
+    }
+
+    async fn paired_host_fence_and_purge() {
+        use crate::paired_hosts::Packet;
+        let (db, store) = store().await;
+        let (request, inventory) = inventoried_request(&db, &store).await;
+        let t = request.community_id;
+        let mut tx = crate::begin_community_write_transaction(
+            &db.pool,
+            t,
+            crate::observability::WriterOperation::Authorization,
+        )
+        .await
+        .unwrap();
+        // Seed each private relation through an admitted fixture transaction.
+        sqlx::query("INSERT INTO paired_host_events(community_id,generation,owner_key,host_key,event_id,operation,expires_at,event_json,route_json) VALUES($1,$2,$2,$3,$2,'pair-claim',1,'{}','{}')").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        sqlx::query("INSERT INTO paired_host_bindings(community_id,generation,owner_key,host_key,claim_id,ack_id,state) VALUES($1,$2,$2,$3,$2,$2,'active')").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        sqlx::query("INSERT INTO paired_host_requests(community_id,generation,owner_key,host_key,request_id,intent_id,head_phase,intent_expiry) VALUES($1,$2,$2,$3,$2,$2,'create',1)").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        tx.commit().await.unwrap();
+        store.approve(request.id, "approver", None).await.unwrap();
+        let claim = store
+            .claim_specific(request.id, "executor", DEFAULT_LEASE_DURATION)
+            .await
+            .unwrap()
+            .unwrap();
+        store.begin_quiescing(&claim.lease).await.unwrap();
+        let p = Packet {
+            id: [4; 32],
+            generation: [1; 32],
+            owner: [1; 32],
+            host: [2; 32],
+            op: "unpaired".into(),
+            prev: Some([1; 32]),
+            request: None,
+            created: 1,
+            expiry: 2,
+            event: serde_json::value::RawValue::from_string("{}".into()).unwrap(),
+            route: serde_json::json!({}),
+        };
+        let err = db
+            .post_paired_packet(t, false, &p, &[0; 32])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DbError::AccessDenied(ref msg) if msg.contains("write-fenced")));
+        let generation = store.fence(&claim.lease).await.unwrap();
+        let token = LeaseToken {
+            fence_generation: Some(generation),
+            ..claim.lease
+        };
+        store
+            .freeze_destructive_storage_manifest(&token, &inventory.storage)
+            .await
+            .unwrap();
+        store.mark_drained(&token).await.unwrap();
+        store
+            .mark_bindings_removed(&token, serde_json::json!({"keys":0}))
+            .await
+            .unwrap();
+        let deleted = store.purge_postgres(&token).await.unwrap();
+        for table in [
+            "paired_host_events",
+            "paired_host_bindings",
+            "paired_host_requests",
+        ] {
+            assert_eq!(deleted.get(table), Some(&1));
+        }
+        store
+            .mark_cache_purged(&token, serde_json::json!({"keys":0}))
+            .await
+            .unwrap();
+        store
+            .verify_postgres_logically_deleted(&token)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn paired_host_tables_obey_fence_and_purge() {
+        paired_host_fence_and_purge().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn migration_schema_paired_host_tables_obey_fence_and_purge() {
+        paired_host_fence_and_purge().await;
     }
 
     async fn store() -> (Db, DeletionStore) {

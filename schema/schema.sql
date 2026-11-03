@@ -83,6 +83,9 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 \i tables/public/channels.sql
 \i tables/public/channel_members.sql
 \i tables/public/users.sql
+\i tables/public/paired_host_events.sql
+\i tables/public/paired_host_bindings.sql
+\i tables/public/paired_host_requests.sql
 \i tables/public/personal_read_accounts.sql
 \i tables/public/personal_read_frontiers.sql
 \i tables/public/events.sql

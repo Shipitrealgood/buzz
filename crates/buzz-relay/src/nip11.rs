@@ -37,6 +37,9 @@ pub struct RelayInfo {
     /// Opt-in, host-bound private accessory API; separate from legacy NIP-RS.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buzz_v1: Option<BuzzV1Descriptor>,
+    /// Private paired-host API on this resolved community.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paired_hosts_v1: Option<bool>,
     /// NIP-AR artifact query transport and enforced resource limits.
     pub artifacts: serde_json::Value,
     /// Relay operator's public key (hex), if published.
@@ -282,6 +285,7 @@ impl RelayInfo {
             description: "Buzz — private team communication relay".to_string(),
             icon: icon.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             read_state_snapshot: None,
+            paired_hosts_v1: None,
             buzz_v1: None,
             artifacts: serde_json::json!({
                 "version": 1, "revision_kind": 45010, "removal_kind": 45011,
@@ -401,6 +405,9 @@ pub(crate) async fn nip11_document(state: &crate::state::AppState, raw_host: &st
             if let Some(fi) = info.federated_identity.as_mut() {
                 fi["public_profile"] = profile;
             }
+        }
+        if state.config.paired_hosts_enabled && !state.config.nip_fi.mode.restricts() {
+            info.paired_hosts_v1 = Some(true);
         }
         if state.config.buzz_v1_enabled {
             use buzz_db::personal_read::{ELIGIBLE_KINDS, MAX_CHANNELS, MAX_INTENTS};

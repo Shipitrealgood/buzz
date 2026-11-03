@@ -1158,6 +1158,7 @@ dependencies = [
  "sha2 0.11.0",
  "subtle",
  "thiserror 2.0.18",
+ "unicode-normalization",
  "url",
  "uuid",
  "zeroize",
@@ -1267,6 +1268,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "buzz-hostd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "buzz-core",
+ "buzz-sdk",
+ "clap",
+ "hex",
+ "nostr 0.44.7",
+ "rand 0.10.1",
+ "reqwest 0.13.4",
+ "rusqlite",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "buzz-media"
 version = "0.1.0"
 dependencies = [
@@ -1332,6 +1357,28 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.29.0",
  "tokio-util",
+ "zeroize",
+]
+
+[[package]]
+name = "buzz-paired-owner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "buzz-core",
+ "buzz-sdk",
+ "hex",
+ "nostr 0.44.7",
+ "rand 0.10.1",
+ "reqwest 0.13.4",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "uuid",
  "zeroize",
 ]
 

@@ -574,6 +574,8 @@ pub const KIND_JOB_RESULT: u32 = 43004;
 pub const KIND_JOB_CANCEL: u32 = 43005;
 /// An agent job failed with an error.
 pub const KIND_JOB_ERROR: u32 = 43006;
+/// Private paired-host enrollment envelope, exchanged only via dedicated transport.
+pub const KIND_PAIRED_HOST_V1: u32 = 43102;
 
 /// Relay-signed notification: the target pubkey was added to a channel.
 /// Stored globally (channel_id = None) with p-tag = target, h-tag = channel UUID.
@@ -779,6 +781,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_JOB_RESULT,
     KIND_JOB_CANCEL,
     KIND_JOB_ERROR,
+    KIND_PAIRED_HOST_V1,
     KIND_MEMBER_ADDED_NOTIFICATION,
     KIND_MEMBER_REMOVED_NOTIFICATION,
     KIND_AGENT_TURN_METRIC,

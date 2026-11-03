@@ -348,6 +348,18 @@ with a TypeScript lookup table or an id comparison in a component.
     for resets; owner replay of a redacted head preserves only a nonportable
     local override. That local path is not synchronized through catalog heads.
 
+## Windows paired hosts
+
+“My hosts” reads the private paired-host endpoint for the active Windows
+community and signer. Persist the device journal under the Windows local app
+data directory. All pairing proofs, freshness decisions, create signatures and
+revocation receipts go through the native owner workflow. The renderer passes
+the exact host key and generation selected by the user. Cached inventory
+identifies installed runtimes; a fresh verified inventory authorizes a tap.
+A pending remote unpair remains visible until the host signs its tombstone.
+The existing “On host” directory cards show conversational agents and confer
+no provisioning authority.
+
 ## Channel-only runtime controls
 
 Desktop observer controls identify a channel, not a thread session. The harness

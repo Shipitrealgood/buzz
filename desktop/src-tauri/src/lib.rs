@@ -261,6 +261,16 @@ pub fn run() {
                     .map(crate::migration::is_dev_data_dir_name)
                     .unwrap_or(false);
                 crate::managed_agents::init_nest_dir(is_dev_for_reset);
+                #[cfg(windows)]
+                if crate::reset::check_sentinel(&data_dir)
+                    && commands::reset_paired_host_journal(&app_handle).is_err()
+                {
+                    app_handle
+                        .state::<AppState>()
+                        .reset_failed
+                        .store(true, Ordering::Release);
+                    return Ok(());
+                }
                 crate::reset::run_boot_reset(&data_dir)
             } else {
                 crate::reset::ResetOutcome::default()
@@ -705,6 +715,14 @@ pub fn run() {
             check_member_add_people,
             list_relay_agents,
             revalidate_relay_agents,
+            #[cfg(windows)]
+            paired_host_list,
+            #[cfg(windows)]
+            paired_host_pair,
+            #[cfg(windows)]
+            paired_host_refresh,
+            #[cfg(windows)]
+            paired_host_unpair,
             list_managed_agents,
             list_managed_agent_runtimes,
             start_managed_agent_runtime,

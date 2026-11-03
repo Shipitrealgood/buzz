@@ -1,0 +1,16 @@
+[Service]
+ExecStart=/usr/local/libexec/buzz-host-activate
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+StateDirectory=buzz-paired-units
+StateDirectoryMode=0700
+UMask=0077
+RuntimeMaxSec=100s
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX
+LimitCORE=0

@@ -1,0 +1,26 @@
+[Unit]
+Description=Buzz paired host control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=buzz-hostd
+Group=buzz-hostd
+ExecStart=/usr/local/libexec/buzz-hostd --state-dir /var/lib/buzz-hostd serve --catalog /etc/buzz-hostd/catalog.json
+StateDirectory=buzz-hostd
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+ProtectProc=invisible
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

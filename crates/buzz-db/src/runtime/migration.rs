@@ -777,7 +777,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 80);
+        assert_eq!(migrations.len(), 81);
         for (index, migration) in migrations.iter().enumerate() {
             assert_eq!(migration.version, (index + 1) as i64);
         }
@@ -2886,6 +2886,9 @@ mod postgres_tests {
             .expect("apply migrations for schema parity");
 
         for table in [
+            "paired_host_events",
+            "paired_host_bindings",
+            "paired_host_requests",
             "relay_admin_actions",
             "relay_admin_outbox",
             "relay_operator_audit",
@@ -2931,6 +2934,9 @@ mod postgres_tests {
         );
 
         for table in [
+            "paired_host_events",
+            "paired_host_bindings",
+            "paired_host_requests",
             "entity_deletion_requests",
             "entity_deletion_stage_history",
             "user_deletion_fences",

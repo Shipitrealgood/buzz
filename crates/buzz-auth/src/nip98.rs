@@ -215,6 +215,46 @@ pub fn verify_nip98_event(
     Ok(event.pubkey)
 }
 
+/// Verify a private API request against an exact trusted HTTPS URL, method and
+/// body. Return the signed event ID for the caller's atomic replay guard.
+pub fn verify_exact_request(
+    event_json: &str,
+    url: &str,
+    method: &str,
+    body: Option<&[u8]>,
+) -> Result<(nostr::PublicKey, nostr::EventId), AuthError> {
+    let invalid = || AuthError::Nip98Invalid("invalid exact request binding".into());
+    let event: Event = serde_json::from_str(event_json).map_err(|_| invalid())?;
+    let mut expected_tags = 2 + usize::from(body.is_some());
+    if !url.starts_with("https://") || !event.content.is_empty() {
+        return Err(invalid());
+    }
+    for tag in event.tags.iter() {
+        match tag.as_slice() {
+            [key, value] if key == "u" && value == url => {}
+            [key, value] if key == "method" && value == method => {}
+            [key, _] if key == "payload" && body.is_some() => {}
+            // Fresh retry credentials may carry an explicitly signed request nonce.
+            [key, value]
+                if key == "nonce"
+                    && value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    && expected_tags == 2 + usize::from(body.is_some()) =>
+            {
+                expected_tags += 1;
+            }
+            _ => return Err(invalid()),
+        }
+    }
+    if event.tags.len() != expected_tags {
+        return Err(invalid());
+    }
+    let key = verify_nip98_event(event_json, url, method, body)?;
+    Ok((key, event.id))
+}
+
 /// Normalize a URL for comparison.
 ///
 /// - Lowercases scheme and host (already done by the `url` crate).

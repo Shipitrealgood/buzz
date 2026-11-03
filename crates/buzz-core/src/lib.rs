@@ -30,6 +30,10 @@ pub mod network;
 pub mod nip10;
 /// Agent observer frame helpers.
 pub mod observer;
+/// Signed, peer-encrypted enrollment of a paired host.
+pub mod paired_host;
+/// Signed, encrypted post-enrollment paired host messages.
+pub mod paired_message;
 /// NIP-AB device pairing — crypto primitives, message types, and errors.
 pub mod pairing;
 /// Presence status types shared across crates.

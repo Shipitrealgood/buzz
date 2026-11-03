@@ -1,0 +1,17 @@
+[
+  {
+    "expected_claim_id": "b20abc1b7387537b655142f8bd986c5d5a1cf1b11cc7c60a69f5e62e25035461",
+    "now": 1800000001,
+    "result": "fresh"
+  },
+  {
+    "expected_claim_id": "b20abc1b7387537b655142f8bd986c5d5a1cf1b11cc7c60a69f5e62e25035461",
+    "now": 1800000120,
+    "result": "historical"
+  },
+  {
+    "expected_claim_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "now": 1800000001,
+    "result": "invalid-claim"
+  }
+]

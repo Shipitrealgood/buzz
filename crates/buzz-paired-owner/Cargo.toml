@@ -1,0 +1,26 @@
+[package]
+name = "buzz-paired-owner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native owner workflow for the Windows paired-host client"
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+buzz-core.workspace = true
+buzz-sdk.workspace = true
+hex.workspace = true
+nostr.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+rusqlite = { version = "0.40", default-features = false, features = ["libsqlite3-sys", "bundled", "fallible_uint"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

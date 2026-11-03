@@ -1,0 +1,38 @@
+{
+  "event": {
+    "content": "Aq2OIZZTQ4r4v5vCqujy8YipOZBkGGxXhBW5UyHPEZyYxJ0hgt6UDY3x9N8phfeFar0bdsAD/9Jxu8LKl+ou2hDTtK8Oq3LGrmL7LBC4OqTMkR9QnQCFlVBDJDVQeRP2c8Q50AiCqe51tPyvAdxPKjADyPwGEZWac2WsQNCfmm73zBDVZlfprspfayhS+sRBX9eHiagBFlcZGpMWixLae+pynrQy8jcqcAbO1vgFIOCFxcLkb4RWOTCHq+pnLhjNbi5i3ADyVzENT4EALpFOAXWnulP8D0Djc3A4/2DV/Gt1jFAyJd+krcsQutgQ1cmcnnTa8mPAMoOPqgKFGUFKKzNT3oeB8D7zEBLOnOUE7pCAsNOZ7FBf4wBXQ8ZAjYZ2DdioEKv/YY0PaesKTDQfaEU2HCZYsNdvKjhgrmbWBVuhrZ2n6/A+RGv0WlNPDciJh5T/zqibw5uB5EjvccYKQWEPFugfTlBcI54WRG5WwsvSuPQOGN/u+24PvMP0P5TDZ/seU9IxfUR0eJQVxmINpZSTrJAfnfvNyVtNgm1HTaJVX2sln5F5rwBusuh2rfcCdz/fkK6LIAEh7edYQDUnrflxwMuRsugzD2OtYLY9i76JTeyAxh2kfNlUZDPjm8PXxuPRz2nEGmpdN4M0nCV/oGHbve+MxJfzY5ceb27cJ8iQMy4=",
+    "created_at": 1800000001,
+    "id": "dcfc07cc60d202eda9118d5a06ae26c8dc63aacd253fccf83097d20450bd9f75",
+    "kind": 43102,
+    "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "sig": "12555dedc17f14e4aaddec4b73aebe59a78953a257d15f7896a53ff1561e066b4264f37039bd1c99ca0d86829c3b666d80dc50ca00e45f8cf0194fd8c7579ace",
+    "tags": [
+      [
+        "p",
+        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+      ],
+      [
+        "community",
+        "https://buzz.example"
+      ],
+      [
+        "g",
+        "abababababababababababababababababababababababababababababababab"
+      ],
+      [
+        "op",
+        "pair-ack"
+      ]
+    ]
+  },
+  "plaintext": {
+    "claim_id": "b20abc1b7387537b655142f8bd986c5d5a1cf1b11cc7c60a69f5e62e25035461",
+    "community": "https://buzz.example",
+    "expires_at": 1800000120,
+    "generation": "abababababababababababababababababababababababababababababababab",
+    "host": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "op": "pair-ack",
+    "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "v": 1
+  }
+}

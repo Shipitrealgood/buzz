@@ -19,6 +19,7 @@ import { TeamShareDialog } from "./TeamShareDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
 import { HostAgentsSection } from "./HostAgentsSection";
+import { PairedHostsSection } from "./PairedHostsSection";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useManagedAgentActions } from "./useManagedAgentActions";
@@ -278,6 +279,8 @@ export function AgentsView() {
               }}
               onDeletePersona={personas.openDelete}
             />
+
+            <PairedHostsSection />
 
             <HostAgentsSection
               agents={agents.relayAgentsQuery.data}

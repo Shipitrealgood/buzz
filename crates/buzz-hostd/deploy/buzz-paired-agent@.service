@@ -1,0 +1,39 @@
+[Unit]
+Description=Buzz paired agent %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=75s
+DynamicUser=yes
+StateDirectory=buzz-agent-%i
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/buzz-agent-%i
+LoadCredential=instance:/var/lib/buzz-paired-units/%i.cred
+ExecStart=/usr/local/libexec/buzz-host-runtime
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/var/lib/buzz-hostd -/var/lib/buzz-paired-units -/run/buzz-hostd-activate.sock -/run/systemd/private -/run/dbus/system_bus_socket -/run/user
+UMask=0077
+MemoryMax=1G
+TasksMax=128
+CPUQuota=100%
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

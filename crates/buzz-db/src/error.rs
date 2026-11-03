@@ -85,6 +85,9 @@ pub enum DbError {
     /// An artifact sync page exceeds its resource limit.
     #[error("artifact sync limit exceeded")]
     ArtifactSyncLimit,
+    /// A private mailbox cursor precedes retained history.
+    #[error("private mailbox history pruned")]
+    PairedCursorPruned,
 
     /// A complete read-state snapshot exceeds its bounded resource budget.
     #[error("read-state snapshot exceeds event or byte limit")]
