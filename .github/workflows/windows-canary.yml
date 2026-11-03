@@ -16,21 +16,26 @@ permissions:
 jobs:
   build:
     name: Build Windows canary
-    if: github.repository == 'block/buzz'
+    if: >-
+      github.repository == 'block/buzz' ||
+      (github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/host-agents-main-canary')
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: read
     env:
       TARGET: x86_64-pc-windows-msvc
     steps:
-      - name: Require main
+      - name: Check canary source
         shell: bash
         env:
           SOURCE_REF: ${{ github.ref }}
         run: |
-          if [[ "$SOURCE_REF" != "refs/heads/main" ]]; then
-            echo "::error::Canary builds must run from main; got $SOURCE_REF"
+          if [[ "$GITHUB_REPOSITORY" == "Shipitrealgood/buzz" && "$SOURCE_REF" == "refs/heads/build/host-agents-main-canary" ]]; then
+            exit 0
+          fi
+          if [[ "$GITHUB_REPOSITORY" != "block/buzz" || "$SOURCE_REF" != "refs/heads/main" ]]; then
+            echo "::error::Unexpected canary source $GITHUB_REPOSITORY@$SOURCE_REF"
             exit 1
           fi
 
@@ -153,30 +158,50 @@ jobs:
       - name: Locate NSIS installer
         id: artifact
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          BUNDLE_DIR="desktop/src-tauri/target/${TARGET}/release/bundle"
-          EXE=$(find "$BUNDLE_DIR/nsis" -name '*.exe' -type f | head -1)
-          if [[ -z "$EXE" ]]; then
-            echo "::error::No NSIS installer found in $BUNDLE_DIR/nsis"
+          EXE="desktop/src-tauri/target/${TARGET}/release/bundle/nsis/Buzz_${VERSION}_x64-setup.exe"
+          if [[ ! -f "$EXE" ]]; then
+            echo "::error::Expected NSIS installer missing: $EXE"
             exit 1
           fi
+          HASH=$(sha256sum "$EXE" | cut -d' ' -f1)
+          printf 'Source: %s\nVersion: %s\nInstaller: %s\nSHA-256: %s\n' \
+            "$GITHUB_SHA" "$VERSION" "${EXE##*/}" "$HASH" | tee "$(dirname "$EXE")/build-receipt.txt" >> "$GITHUB_STEP_SUMMARY"
           echo "exe=$EXE" >> "$GITHUB_OUTPUT"
+          echo "receipt=$(dirname "$EXE")/build-receipt.txt" >> "$GITHUB_OUTPUT"
 
       - name: Upload Windows canary installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: buzz-windows-canary-${{ github.sha }}
-          path: ${{ steps.artifact.outputs.exe }}
+          path: |
+            ${{ steps.artifact.outputs.exe }}
+            ${{ steps.artifact.outputs.receipt }}
           if-no-files-found: error
           retention-days: 7
+
+      - name: Verify signed host discovery on the fork
+        if: github.repository == 'Shipitrealgood/buzz'
+        shell: bash
+        working-directory: desktop/src-tauri
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: |
+          set -euo pipefail
+          for suite in nostr_convert:: commands::agent_discovery::relay_directory::; do
+            cargo test --locked --release --target "$TARGET" --lib "$suite" | tee "$RUNNER_TEMP/discovery-tests.log"
+            grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/discovery-tests.log"
+          done
 
       - name: Measure release Cargo cache inputs
         if: always()
         shell: bash
         run: du -sh ~/.cargo/registry ~/.cargo/git target desktop/src-tauri/target 2>/dev/null || true
 
-      # Only this trusted, main-bound canary writes the cache. Excluding bundle
+      # Only the checked canary source writes the cache. Excluding bundle
       # output prevents installers from entering it.
       - name: Save exact release Cargo cache
         if: steps.rust_cache.outputs.cache-hit != 'true'
