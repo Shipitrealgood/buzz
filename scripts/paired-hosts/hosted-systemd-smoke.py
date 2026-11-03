@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import secrets
 import ssl
 import subprocess
@@ -132,6 +133,24 @@ def main():
             if result["state"] != "ready":
                 raise RuntimeError("host did not report a ready runtime")
             agent=result["agent"]
+            def running_instance():
+                rows = output(["systemctl", "list-units", "--type=service", "--state=running",
+                               "--no-legend", "--plain", "buzz-paired-agent@*.service"])
+                units = [line.split()[0] for line in rows.splitlines() if line.strip()]
+                if len(units) != 1 or not re.fullmatch(r"buzz-paired-agent@[a-f0-9]{64}\.service", units[0]):
+                    raise RuntimeError("expected one isolated running agent")
+                unit = units[0]
+                if output(["systemctl", "is-enabled", unit]).strip() != "enabled":
+                    raise RuntimeError("agent is missing its persistent registration")
+                return unit, output(["systemctl", "show", "--property=InvocationID", "--value", unit]).strip()
+            initial = running_instance()
+            if not re.fullmatch(r"[0-9a-f]{32}", initial[1]):
+                raise RuntimeError("missing verified instance start identifier")
+            run(["sudo", "systemctl", "restart", "buzz-hostd.service"])
+            restored = drive("resume", offer["generation"], result["request_id"])[-1]
+            if restored["state"] != "ready" or restored["agent"] != agent or running_instance() != initial:
+                raise RuntimeError("resuming the same create did not preserve the running agent")
+            print("controller restart and owner retry preserved the same running instance", flush=True)
             marker=secrets.token_hex(8)
             buzz("messages","send","--channel",channel,"--mention",agent,"--content","AE-ID:"+marker)
             def responses():
