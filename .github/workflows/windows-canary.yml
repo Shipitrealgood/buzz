@@ -18,7 +18,7 @@ jobs:
     name: Build Windows canary
     if: >-
       github.repository == 'block/buzz' ||
-      (github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/host-agents-main-canary')
+      (github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/paired-hosts-canary')
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -31,7 +31,7 @@ jobs:
         env:
           SOURCE_REF: ${{ github.ref }}
         run: |
-          if [[ "$GITHUB_REPOSITORY" == "Shipitrealgood/buzz" && "$SOURCE_REF" == "refs/heads/build/host-agents-main-canary" ]]; then
+          if [[ "$GITHUB_REPOSITORY" == "Shipitrealgood/buzz" && "$SOURCE_REF" == "refs/heads/build/paired-hosts-canary" ]]; then
             exit 0
           fi
           if [[ "$GITHUB_REPOSITORY" != "block/buzz" || "$SOURCE_REF" != "refs/heads/main" ]]; then
@@ -212,7 +212,7 @@ jobs:
 
   discovery-tests:
     name: Test Windows host discovery
-    if: github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/host-agents-main-canary'
+    if: github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/paired-hosts-canary'
     runs-on: windows-latest
     timeout-minutes: 90
     env:
