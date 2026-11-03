@@ -437,7 +437,7 @@ impl Device {
                 ensure!(
                     intent_id == intent
                         && commit_id == req.commit.as_ref().map(id).transpose()?
-                        && (req.agent.is_none() || req.agent == agent)
+                        && compatible_candidate(req.agent.as_deref(), agent.as_deref())
                         && (commit_id.is_none()
                             || (agent == req.agent
                                 && matches!(state.as_str(), "ready" | "failed")))
@@ -571,7 +571,7 @@ impl Device {
         })
     }
     /// Checkpoint the independent history diagnostic before any subsequent network wait.
-    /// Only an exact copy of the device's signed chain can clear a previous gap.
+    /// A complete signed precommit closure retires the outbox in the same transaction.
     pub(crate) fn observe_history(
         &mut self,
         selected: &str,
@@ -586,8 +586,17 @@ impl Device {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut req = read(&tx, s, r)?;
         let g = grant(&tx, s)?;
-        let incomplete = evidence::verify(page, keys, s, r, &g, &req).is_err();
-        if req.evidence_incomplete != incomplete {
+        let evidence = evidence::verify(page, keys, s, r, &g, &req);
+        let incomplete = evidence.is_err();
+        let mut changed = req.evidence_incomplete != incomplete;
+        if let Ok(Some((terminal, state))) = evidence {
+            if req.result.is_none() {
+                req.result = Some(terminal.clone());
+                req.terminal_state = Some(state);
+                changed = true;
+            }
+        }
+        if changed {
             req.evidence_incomplete = incomplete;
             save(&tx, s, r, &req)?;
             tx.commit()?;
@@ -732,6 +741,12 @@ impl Device {
         session(s, selected, keys)?;
         self.catalog(s, now()?)
     }
+}
+
+// A precommit closure may identify the request without a candidate. Two
+// explicit identities must agree. Postcommit results additionally require one.
+fn compatible_candidate(local: Option<&str>, reported: Option<&str>) -> bool {
+    local.is_none() || reported.is_none() || local == reported
 }
 
 pub(super) fn validate_terminal_steps(

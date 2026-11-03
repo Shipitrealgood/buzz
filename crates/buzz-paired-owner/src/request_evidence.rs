@@ -18,14 +18,14 @@ pub(crate) struct Evidence {
     pub unresolved: bool,
 }
 
-pub(super) fn verify(
-    page: &Evidence,
+pub(super) fn verify<'a>(
+    page: &'a Evidence,
     keys: &Keys,
     s: &Scope,
     r: &str,
     grant: &Grant,
     req: &Request,
-) -> Result<()> {
+) -> Result<Option<(&'a Packet, String)>> {
     let wall = now()?;
     let intent_id = id(&req.intent)?;
     let summary = &page.summary;
@@ -69,19 +69,7 @@ pub(super) fn verify(
         && messages.values().all(|m|matches!(m.body,Body::Create{..}|Body::Challenge{..}|Body::Inventory{..}|Body::InventoryQuery{..}))
         && messages.values().any(|m|matches!(&m.body,Body::Challenge{request_id,intent_id:i,..} if request_id==r && i==&intent_id)
             && wall<m.expires_at && !req.answered.contains(&m.id));
-    let saved = [
-        req.confirm.as_ref().filter(|_| !superseded),
-        req.offer.as_ref(),
-        req.activate.as_ref(),
-        req.commit.as_ref(),
-        req.credentials.as_ref(),
-        req.result.as_ref(),
-    ]
-    .into_iter()
-    .flatten();
-    // Require each locally retained signed envelope, including its exact
-    // signature and sidecar. Key order in the transport JSON is immaterial.
-    for local in [&grant.claim, ack, &req.intent].into_iter().chain(saved) {
+    let check_envelope = |local: &Packet| -> Result<()> {
         let event: Event = serde_json::from_str(local.event.get())?;
         let (remote, sig) = packets
             .get(&event.id.to_hex())
@@ -90,6 +78,10 @@ pub(super) fn verify(
             remote.route == local.route && sig == &event.sig,
             "different signed envelope"
         );
+        Ok(())
+    };
+    for local in [&grant.claim, ack, &req.intent] {
+        check_envelope(local)?;
     }
     verify_binding(keys, s, packets[&claim_id].0, packets[&ack_id].0, wall)?;
     let get = |id: &str| messages.get(id).context("missing signed predecessor");
@@ -197,11 +189,48 @@ pub(super) fn verify(
             "missing committed receipt"
         );
     }
+    let mut closure = None;
     if let Some(t) = &summary.terminal_id {
-        ensure!(
-            matches!(body(t)?, Body::Result { .. }),
-            "missing terminal receipt"
-        );
+        let Body::Result {
+            state,
+            agent,
+            commit_id,
+            ..
+        } = body(t)?
+        else {
+            bail!("missing terminal receipt")
+        };
+        if commit_id.is_none() {
+            ensure!(
+                req.commit.is_none()
+                    && req.credentials.is_none()
+                    && compatible_candidate(req.agent.as_deref(), agent.as_deref()),
+                "precommit result conflicts with local evidence"
+            );
+            closure = Some((packets[t].0, state.clone()));
+        }
     }
-    Ok(())
+
+    // Peer receipts and the exact local envelopes which they reference remain
+    // mandatory. Signing the current outbox item does not prove its delivery.
+    for packet in [&req.offer, &req.commit, &req.credentials, &req.result]
+        .into_iter()
+        .flatten()
+    {
+        check_envelope(packet)?;
+    }
+    for (packet, can_be_absent) in [
+        (
+            &req.confirm,
+            superseded || (closure.is_some() && req.offer.is_none()),
+        ),
+        (&req.activate, closure.is_some()),
+    ] {
+        if let Some(packet) = packet {
+            if !can_be_absent || packets.contains_key(&id(packet)?) {
+                check_envelope(packet)?;
+            }
+        }
+    }
+    Ok(closure)
 }

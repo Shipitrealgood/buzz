@@ -104,6 +104,40 @@ impl Setup {
             channels: vec!["2c84a2bb-c004-4431-93bb-d7e1af763d5c".into()],
         }
     }
+    fn candidate_offer(&self, r: &str, i: &str, confirm: &str, a: &Keys) -> (String, Packet) {
+        let agent = a.public_key().to_hex();
+        let t = now().unwrap();
+        let nonce = "e1".repeat(32);
+        let pop = sign_possession(
+            &self.s,
+            &Possession {
+                request_id: r,
+                intent_id: i,
+                confirm_id: confirm,
+                nonce: &nonce,
+                agent: a.public_key(),
+                expires_at: t + 60,
+            },
+            a,
+        )
+        .unwrap();
+        let offer = seal(
+            &self.h,
+            &self.s,
+            Body::KeyOffer {
+                request_id: r.into(),
+                intent_id: i.into(),
+                confirm_id: confirm.into(),
+                nonce,
+                agent: agent.clone(),
+                agent_sig: pop,
+            },
+            t,
+            t + 60,
+        )
+        .unwrap();
+        (agent, offer)
+    }
     fn outgoing(&self, r: &str) -> Packet {
         self.d.outgoing(C, &self.o, &self.s, r).unwrap().unwrap()
     }
@@ -159,6 +193,162 @@ fn enroll_inventory_revocation_and_restart() {
     assert!(f.d.inventory_query(C, &f.o, &f.s).is_err());
 }
 #[test]
+fn verified_precommit_closure_retires_an_undelivered_outbox_item() {
+    for (lost_activation, state, step) in [
+        (false, "expired", "expired"),
+        (false, "revoked-before-commit", "revoked"),
+        (true, "expired", "expired"),
+        (true, "revoked-before-commit", "revoked"),
+    ] {
+        let mut f = Setup::new();
+        let (query, inventory) = f.inventory_chain();
+        let (r, intent) =
+            f.d.create(C, &f.o, &f.s, &id(&inventory).unwrap(), f.draft())
+                .unwrap();
+        let i = id(&intent).unwrap();
+        let challenge = f.sign(
+            Body::Challenge {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                nonce: "a3".repeat(32),
+                phase: "generate".into(),
+            },
+            60,
+        );
+        f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+        let mut page = crate::create::Evidence {
+            summary: crate::history::Summary {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                commit_id: None,
+                terminal_id: None,
+            },
+            messages: vec![
+                f.b.claim.clone(),
+                f.b.ack.clone(),
+                query,
+                inventory,
+                intent,
+                challenge.clone(),
+            ],
+            unresolved: false,
+        };
+        let candidate = Keys::generate();
+        let mut committed_copy = None;
+        if lost_activation {
+            let confirm = f.outgoing(&r);
+            let (agent, offer) = f.candidate_offer(&r, &i, &id(&confirm).unwrap(), &candidate);
+            f.d.receive(C, &f.o, &f.s, &r, &offer, Some(&candidate.public_key()))
+                .unwrap();
+            let activate = f.outgoing(&r);
+            let commit = f.sign(
+                Body::Committed {
+                    request_id: r.clone(),
+                    intent_id: i.clone(),
+                    agent,
+                    offer_id: id(&offer).unwrap(),
+                    activate_id: id(&activate).unwrap(),
+                },
+                86400,
+            );
+            page.messages.extend([confirm, offer]);
+            // A separate branch actually delivered the activation and verified its commit.
+            let copy = f.dir.path().join("committed");
+            std::fs::copy(f.dir.path().join("state"), &copy).unwrap();
+            let mut d = Device::at(&copy).unwrap();
+            d.receive(C, &f.o, &f.s, &r, &commit, None).unwrap();
+            committed_copy = Some((d, activate, commit));
+        }
+        let terminal = |request: &str, parent: &str, agent: Option<String>| {
+            f.sign(
+                Body::Result {
+                    request_id: request.into(),
+                    intent_id: parent.into(),
+                    agent,
+                    commit_id: None,
+                    state: state.into(),
+                    steps: vec![step.into()],
+                },
+                86400,
+            )
+        };
+        // Both the host that includes its candidate and a closure identifying
+        // only the exact original request are supported by the signed schema.
+        let candidate_hint =
+            (lost_activation && state == "expired").then(|| candidate.public_key().to_hex());
+        let receipt = terminal(&r, &i, candidate_hint.clone());
+        let foreign_parent = terminal(&r, &"11".repeat(32), candidate_hint.clone());
+        let foreign_request = terminal(&"22".repeat(32), &i, candidate_hint);
+        let mut false_receipts = vec![foreign_parent, foreign_request];
+        if lost_activation {
+            false_receipts.push(terminal(
+                &r,
+                &i,
+                Some(Keys::generate().public_key().to_hex()),
+            ));
+        }
+        for false_receipt in false_receipts {
+            page.summary.terminal_id = Some(id(&false_receipt).unwrap());
+            page.messages.push(false_receipt);
+            assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            page.messages.pop();
+        }
+        page.summary.terminal_id = Some(id(&receipt).unwrap());
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.insert(0, receipt.clone());
+        let original = page.messages.remove(5); // signed intent, the terminal's actual predecessor
+        assert_eq!(id(&original).unwrap(), i);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.push(original);
+        if let Some((mut committed, activate, commit)) = committed_copy {
+            assert!(!committed.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            assert!(committed
+                .receive(C, &f.o, &f.s, &r, &receipt, None)
+                .is_err());
+            assert_eq!(
+                committed.request(C, &f.o, &f.s, &r).unwrap().state,
+                "committed"
+            );
+
+            page.messages.extend([activate, commit.clone()]);
+            for head in [None, Some(id(&commit).unwrap())] {
+                page.summary.commit_id = head;
+                assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            }
+            page.summary.commit_id = None;
+            page.messages.truncate(page.messages.len() - 2);
+        }
+        // This is the scheduler's observation point, before it handles status or
+        // replays business packets. Closing twice remains idempotent after restart.
+        for _ in 0..2 {
+            f.d = Device::at(&f.dir.path().join("state")).unwrap();
+            assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            let view = f.d.request(C, &f.o, &f.s, &r).unwrap();
+            assert_eq!(view.state, state);
+            assert!(!view.evidence_incomplete);
+            assert!(f.d.outgoing(C, &f.o, &f.s, &r).unwrap().is_none());
+            assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+            assert!(f.d.receive(C, &f.o, &f.s, &r, &challenge, None).is_err());
+        }
+        let other = f.sign(
+            Body::Result {
+                request_id: r.clone(),
+                intent_id: i,
+                agent: None,
+                commit_id: None,
+                state: "failed".into(),
+                steps: vec!["catalog-changed".into()],
+            },
+            86400,
+        );
+        page.summary.terminal_id = Some(id(&other).unwrap());
+        page.messages[0] = other;
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, state);
+    }
+}
+
+#[test]
 fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     let mut f = Setup::new();
     let (inventory_query, inv) = f.inventory_chain();
@@ -182,43 +372,9 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     let confirm = id(&confirm_packet).unwrap();
     f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
     assert_eq!(id(&f.outgoing(&r)).unwrap(), confirm);
-    let candidate_offer = |a: &Keys| {
-        let agent = a.public_key().to_hex();
-        let t = now().unwrap();
-        let nonce = "e1".repeat(32);
-        let pop = sign_possession(
-            &f.s,
-            &Possession {
-                request_id: &r,
-                intent_id: &i,
-                confirm_id: &confirm,
-                nonce: &nonce,
-                agent: a.public_key(),
-                expires_at: t + 60,
-            },
-            a,
-        )
-        .unwrap();
-        let offer = seal(
-            &f.h,
-            &f.s,
-            Body::KeyOffer {
-                request_id: r.clone(),
-                intent_id: i.clone(),
-                confirm_id: confirm.clone(),
-                nonce,
-                agent: agent.clone(),
-                agent_sig: pop,
-            },
-            t,
-            t + 60,
-        )
-        .unwrap();
-        (agent, offer)
-    };
     let hidden_host = Keys::generate();
     let (other, p) = Offer::issue(C.into(), hidden_host.public_key(), now().unwrap()).unwrap();
-    let (_, foreign_offer) = candidate_offer(&hidden_host);
+    let (_, foreign_offer) = f.candidate_offer(&r, &i, &confirm, &hidden_host);
     f.d.pair(C, &f.o, &invitation(&other, &p.expose_hex()))
         .unwrap();
     assert!(f
@@ -233,7 +389,7 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
         )
         .is_err());
     let desktop_agent = Keys::generate();
-    let (_, desktop_offer) = candidate_offer(&desktop_agent);
+    let (_, desktop_offer) = f.candidate_offer(&r, &i, &confirm, &desktop_agent);
     let pk = desktop_agent.public_key();
     f.d = f.d.with_local_identities(move || Ok(vec![pk]));
     assert!(f
@@ -241,7 +397,7 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
         .receive(C, &f.o, &f.s, &r, &desktop_offer, Some(&pk))
         .is_err());
     let a = Keys::generate();
-    let (agent, offer) = candidate_offer(&a);
+    let (agent, offer) = f.candidate_offer(&r, &i, &confirm, &a);
     assert!(f.d.receive(C, &f.o, &f.s, &r, &offer, None).is_err());
     f.d.receive(C, &f.o, &f.s, &r, &offer, Some(&a.public_key()))
         .unwrap();
