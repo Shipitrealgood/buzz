@@ -749,10 +749,16 @@ export async function changeRelayMemberRole(
   await invokeTauri("change_relay_member_role", { targetPubkey, newRole });
 }
 
-export async function listRelayAgents(): Promise<RelayAgent[]> {
-  return (await invokeTauri<RawRelayAgent[]>("list_relay_agents")).map(
-    fromRawRelayAgent,
-  );
+export async function listRelayAgents(
+  expectedRelayUrl?: string,
+  expectedSignerPubkey?: string,
+): Promise<RelayAgent[]> {
+  return (
+    await invokeTauri<RawRelayAgent[]>("list_relay_agents", {
+      expectedRelayUrl,
+      expectedSignerPubkey,
+    })
+  ).map(fromRawRelayAgent);
 }
 
 export async function listManagedAgents(): Promise<ManagedAgent[]> {

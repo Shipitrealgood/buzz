@@ -4,6 +4,7 @@ import {
   type AgentEligibilityScope,
 } from "@/features/agents/lib/agentAutocompleteEligibility";
 import { revalidateRelayAgents } from "@/shared/api/tauriRelayAgents";
+import { useCommunities } from "@/features/communities/useCommunities";
 import type { ManagedAgent, RelayAgent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import * as React from "react";
@@ -110,6 +111,8 @@ export function useAgentMentionRevalidation({
   sharedChannelIds: ReadonlySet<string>;
   refetchManagedAgents: () => Promise<DirectoryResult<ManagedAgent[]>>;
 }) {
+  const { activeCommunity } = useCommunities();
+  const relayUrl = activeCommunity?.relayUrl;
   return React.useCallback(
     (
       pubkeys: readonly string[],
@@ -140,11 +143,14 @@ export function useAgentMentionRevalidation({
           revalidateRelayAgents(
             requestedPubkeys,
             "channelId" in scope ? (scope.channelId ?? undefined) : undefined,
+            relayUrl,
+            currentPubkey ?? undefined,
           ),
       });
     },
     [
       agentPubkeys,
+      relayUrl,
       currentPubkey,
       eligibilityScope,
       getSelectedAgentPubkeys,

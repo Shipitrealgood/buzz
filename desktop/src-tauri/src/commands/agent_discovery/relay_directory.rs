@@ -3,8 +3,11 @@
 use tauri::State;
 
 use crate::{
-    app_state::AppState, commands::identity_archive, managed_agents::RelayAgentInfo, nostr_convert,
-    relay::query_relay,
+    app_state::AppState,
+    commands::identity_archive,
+    managed_agents::RelayAgentInfo,
+    nostr_convert,
+    relay::{assert_expected_relay_scope, assert_expected_signer, query_relay_at_with_keys},
 };
 
 const RELAY_DIRECTORY_PAGE_SIZE: usize = 500;
@@ -20,13 +23,80 @@ const RELAY_FILTER_BATCH_SIZE: usize = 10;
 /// exceed it together. (Overlapping rebuilds each hold their own budget.)
 const RELAY_DIRECTORY_MAX_CONCURRENCY: usize = 8;
 
+struct DirectoryRead<'a> {
+    state: &'a AppState,
+    target: identity_archive::RelayTarget,
+    keys: nostr::Keys,
+    generation: u64,
+}
+
+impl<'a> DirectoryRead<'a> {
+    async fn capture(
+        state: &'a AppState,
+        expected_relay: Option<&str>,
+        expected_signer: Option<&str>,
+    ) -> Result<Self, String> {
+        // The workspace transaction writes relay and keys under separate
+        // mutexes. Hold its outer lock only while capturing the pair.
+        let _apply = state.workspace_apply_lock.lock().await;
+        let target = identity_archive::capture_relay_target(state);
+        let generation = state
+            .workspace_apply_generation
+            .load(std::sync::atomic::Ordering::Acquire);
+        let keys = state.signing_keys()?;
+        assert_expected_relay_scope(expected_relay, &target.api_base_url)?;
+        assert_expected_signer(expected_signer, &keys.public_key().to_hex())?;
+        Ok(Self {
+            state,
+            target,
+            keys,
+            generation,
+        })
+    }
+
+    fn ensure_current(&self) -> Result<(), String> {
+        let _apply = self
+            .state
+            .workspace_apply_lock
+            .try_lock()
+            .map_err(|_| "active community changed during directory lookup")?;
+        if self.generation
+            != self
+                .state
+                .workspace_apply_generation
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err("active community changed during directory lookup".into());
+        }
+        let active = identity_archive::capture_relay_target(self.state);
+        if active.ws_url != self.target.ws_url || active.api_base_url != self.target.api_base_url {
+            return Err("active community changed during directory lookup".into());
+        }
+        assert_expected_signer(
+            Some(&self.keys.public_key().to_hex()),
+            &self.state.signing_keys()?.public_key().to_hex(),
+        )
+    }
+
+    async fn query(&self, filters: &[serde_json::Value]) -> Result<Vec<nostr::Event>, String> {
+        query_relay_at_with_keys(
+            self.state,
+            &self.target.api_base_url,
+            filters,
+            &self.keys,
+            None,
+        )
+        .await
+    }
+}
+
 /// Run one `query_relay` request per `RELAY_FILTER_BATCH_SIZE` chunk of
 /// `filters`, each acquiring a permit from `semaphore` so the total in-flight
 /// request count stays within the shared ceiling even when several batch sets
 /// run concurrently. Returned events are concatenated; order is unspecified —
 /// every caller keys the events by pubkey downstream, so ordering is irrelevant.
 async fn query_filter_batches(
-    state: &AppState,
+    read: &DirectoryRead<'_>,
     semaphore: &tokio::sync::Semaphore,
     filters: &[serde_json::Value],
     error_label: &str,
@@ -36,7 +106,7 @@ async fn query_filter_batches(
             let _permit = semaphore.acquire().await.map_err(|error| {
                 format!("{error_label}: directory concurrency semaphore closed: {error}")
             })?;
-            query_relay(state, batch)
+            read.query(batch)
                 .await
                 .map_err(|error| format!("{error_label}: {error}"))
         },
@@ -77,14 +147,6 @@ fn managed_policy_filters(
         .collect()
 }
 
-fn current_user_pubkey(state: &AppState) -> Result<String, String> {
-    state
-        .keys
-        .lock()
-        .map(|keys| keys.public_key().to_hex())
-        .map_err(|error| error.to_string())
-}
-
 pub(super) fn advance_relay_cursor(filter: &mut serde_json::Value, page: &[nostr::Event]) {
     let last = page
         .last()
@@ -94,13 +156,13 @@ pub(super) fn advance_relay_cursor(filter: &mut serde_json::Value, page: &[nostr
 }
 
 async fn query_all_relay_pages(
-    state: &AppState,
+    read: &DirectoryRead<'_>,
     mut filter: serde_json::Value,
 ) -> Result<Vec<nostr::Event>, String> {
     filter["limit"] = serde_json::json!(RELAY_DIRECTORY_PAGE_SIZE);
     let mut events = Vec::new();
     loop {
-        let page = query_relay(state, &[filter.clone()]).await?;
+        let page = read.query(std::slice::from_ref(&filter)).await?;
         let done = page.len() < RELAY_DIRECTORY_PAGE_SIZE;
         if !done {
             advance_relay_cursor(&mut filter, &page);
@@ -118,19 +180,30 @@ fn retain_agents_allowed_by_build(agents: &mut Vec<RelayAgentInfo>, require_veri
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn list_relay_agents_for_state(
     state: &AppState,
 ) -> Result<Vec<RelayAgentInfo>, String> {
     list_relay_agents_for_selection(state, None, None).await
 }
 
+#[cfg(test)]
 async fn list_relay_agents_for_selection(
     state: &AppState,
     requested_pubkeys: Option<&std::collections::HashSet<String>>,
     channel_id: Option<&str>,
 ) -> Result<Vec<RelayAgentInfo>, String> {
-    let viewer_pubkey = current_user_pubkey(state)?;
-    let relay_pubkey = identity_archive::fetch_relay_self(state)
+    let read = DirectoryRead::capture(state, None, None).await?;
+    list_in_scope(&read, requested_pubkeys, channel_id).await
+}
+
+async fn list_in_scope(
+    read: &DirectoryRead<'_>,
+    requested_pubkeys: Option<&std::collections::HashSet<String>>,
+    channel_id: Option<&str>,
+) -> Result<Vec<RelayAgentInfo>, String> {
+    let viewer_pubkey = read.keys.public_key().to_hex();
+    let relay_pubkey = identity_archive::fetch_relay_self_at(read.state, &read.target.ws_url)
         .await?
         .ok_or_else(|| "relay agent membership authority is unavailable".to_string())?;
 
@@ -146,7 +219,7 @@ async fn list_relay_agents_for_selection(
         owned_filter["#d"] = serde_json::json!(requested_pubkeys);
     }
     let owned_query = async {
-        query_all_relay_pages(state, owned_filter)
+        query_all_relay_pages(read, owned_filter)
             .await
             .map_err(|error| format!("relay owned-agent query failed: {error}"))
     };
@@ -164,7 +237,7 @@ async fn list_relay_agents_for_selection(
         membership_filter["#d"] = serde_json::json!([channel_id]);
     }
     let membership_query = async {
-        query_all_relay_pages(state, membership_filter)
+        query_all_relay_pages(read, membership_filter)
             .await
             .map_err(|error| format!("relay agent channel-membership query failed: {error}"))
     };
@@ -193,13 +266,13 @@ async fn list_relay_agents_for_selection(
                 owned_query,
                 membership_query,
                 query_filter_batches(
-                    state,
+                    read,
                     &semaphore,
                     &directory_filters,
                     "relay agent runtime-directory query failed",
                 ),
                 query_filter_batches(
-                    state,
+                    read,
                     &semaphore,
                     &profile_filters,
                     "relay agent owner-profile query failed",
@@ -247,19 +320,20 @@ async fn list_relay_agents_for_selection(
                 .into_iter()
                 .collect();
             if candidate_pubkeys.is_empty() {
+                read.ensure_current()?;
                 return Ok(Vec::new());
             }
             let directory_filters = exact_author_filters(&candidate_pubkeys, 10100);
             let profile_filters = exact_author_filters(&candidate_pubkeys, 0);
             let (directory_events, profile_events) = tokio::try_join!(
                 query_filter_batches(
-                    state,
+                    read,
                     &semaphore,
                     &directory_filters,
                     "relay agent runtime-directory query failed",
                 ),
                 query_filter_batches(
-                    state,
+                    read,
                     &semaphore,
                     &profile_filters,
                     "relay agent owner-profile query failed",
@@ -280,7 +354,7 @@ async fn list_relay_agents_for_selection(
     let verified_owners = nostr_convert::verified_agent_owners_from_profiles(&profile_events);
     let managed_filters = managed_policy_filters(&candidate_pubkeys, &verified_owners);
     let managed_agent_events = query_filter_batches(
-        state,
+        read,
         &semaphore,
         &managed_filters,
         "relay agent managed-policy query failed",
@@ -316,12 +390,23 @@ async fn list_relay_agents_for_selection(
             .cloned()
             .unwrap_or_default();
     }
+    read.ensure_current()?;
     Ok(agents)
 }
 
 #[tauri::command]
-pub async fn list_relay_agents(state: State<'_, AppState>) -> Result<Vec<RelayAgentInfo>, String> {
-    list_relay_agents_for_state(&state).await
+pub async fn list_relay_agents(
+    expected_relay_url: Option<String>,
+    expected_signer_pubkey: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<RelayAgentInfo>, String> {
+    let read = DirectoryRead::capture(
+        &state,
+        expected_relay_url.as_deref(),
+        expected_signer_pubkey.as_deref(),
+    )
+    .await?;
+    list_in_scope(&read, None, None).await
 }
 
 /// Revalidate only the selected relay agents in the target channel.
@@ -332,6 +417,8 @@ pub async fn list_relay_agents(state: State<'_, AppState>) -> Result<Vec<RelayAg
 pub async fn revalidate_relay_agents(
     pubkeys: Vec<String>,
     channel_id: Option<String>,
+    expected_relay_url: Option<String>,
+    expected_signer_pubkey: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<RelayAgentInfo>, String> {
     let requested_pubkeys = pubkeys
@@ -342,7 +429,13 @@ pub async fn revalidate_relay_agents(
     if requested_pubkeys.is_empty() {
         return Ok(Vec::new());
     }
-    list_relay_agents_for_selection(&state, Some(&requested_pubkeys), channel_id.as_deref()).await
+    let read = DirectoryRead::capture(
+        &state,
+        expected_relay_url.as_deref(),
+        expected_signer_pubkey.as_deref(),
+    )
+    .await?;
+    list_in_scope(&read, Some(&requested_pubkeys), channel_id.as_deref()).await
 }
 
 #[cfg(test)]
@@ -554,7 +647,7 @@ mod real_relay_tests {
         .expect("create-path immediate policy flush");
         assert_eq!(flushed, 1);
 
-        let queried = query_relay(
+        let queried = crate::relay::query_relay(
             &state,
             &[serde_json::json!({
                 "kinds": [KIND_MANAGED_AGENT],

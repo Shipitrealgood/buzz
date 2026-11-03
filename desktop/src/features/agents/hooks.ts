@@ -1,4 +1,6 @@
 import * as React from "react";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -383,16 +385,18 @@ export function useManagedAgentPrereqsQuery(
 }
 
 export function useRelayAgentsQuery(options?: { enabled?: boolean }) {
+  const { activeCommunity } = useCommunities();
+  const signer = useIdentityQuery().data?.pubkey;
   const refetchInterval = useFocusedRefetchInterval(AGENTS_FOCUS_STALE_TIME_MS);
   return useQuery({
     queryKey: relayAgentsQueryKey,
-    queryFn: listRelayAgents,
+    queryFn: () => listRelayAgents(activeCommunity?.relayUrl, signer),
     // Relay agent discovery is scoped to the viewer's relay-signed channel
     // memberships, then resolves exact agent/profile/policy coordinates in
     // protocol-sized batches. Polling remains the only refresh path for remote
     // changes, so keep it relaxed and pause while backgrounded.
     refetchInterval,
-    enabled: options?.enabled,
+    enabled: (options?.enabled ?? true) && Boolean(signer),
     ...agentsFocusRefetchPolicy,
   });
 }

@@ -47,6 +47,12 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
     let queries = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
     let query_events = events.clone();
     let query_log = queries.clone();
+    let state = Arc::new(crate::app_state::build_app_state());
+    let switch_target = Arc::new(Mutex::new(None::<(String, Keys)>));
+    let request_signers = Arc::new(Mutex::new(Vec::new()));
+    let switch_on_membership = switch_target.clone();
+    let signers = request_signers.clone();
+    let workspace = state.clone();
     let router = Router::new()
         .route(
             "/",
@@ -57,54 +63,77 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
         )
         .route(
             "/query",
-            post(move |Json(filters): Json<Vec<serde_json::Value>>| {
-                let events = query_events.clone();
-                let queries = query_log.clone();
-                async move {
-                    queries.lock().unwrap().extend(filters.clone());
-                    let events = events.lock().unwrap();
-                    let result: Vec<_> = events
-                        .iter()
-                        .filter(|event| {
-                            filters.iter().any(|filter| {
-                                filter["kinds"]
-                                    .as_array()
-                                    .unwrap()
-                                    .contains(&serde_json::json!(event.kind.as_u16()))
-                                    && filter.get("authors").is_none_or(|authors| {
-                                        authors
-                                            .as_array()
-                                            .unwrap()
-                                            .contains(&serde_json::json!(event.pubkey.to_hex()))
-                                    })
-                                    && ["d", "p"].iter().all(|tag| {
-                                        filter.get(format!("#{tag}")).is_none_or(|values| {
-                                            event.tags.iter().any(|t| {
-                                                t.as_slice().first().map(String::as_str)
-                                                    == Some(*tag)
-                                                    && t.as_slice().get(1).is_some_and(|value| {
-                                                        values
-                                                            .as_array()
-                                                            .unwrap()
-                                                            .contains(&serde_json::json!(value))
-                                                    })
+            post(
+                move |headers: axum::http::HeaderMap,
+                      Json(filters): Json<Vec<serde_json::Value>>| {
+                    use base64::Engine;
+                    let auth = headers["authorization"]
+                        .to_str()
+                        .unwrap()
+                        .strip_prefix("Nostr ")
+                        .unwrap();
+                    let auth: nostr::Event = serde_json::from_slice(
+                        &base64::engine::general_purpose::STANDARD
+                            .decode(auth)
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    auth.verify().unwrap();
+                    signers.lock().unwrap().push(auth.pubkey.to_hex());
+                    if filters[0]["kinds"] == serde_json::json!([39002]) {
+                        if let Some((url, keys)) = switch_on_membership.lock().unwrap().take() {
+                            *workspace.relay_url_override.lock().unwrap() = Some(url);
+                            *workspace.keys.lock().unwrap() = keys;
+                        }
+                    }
+                    let events = query_events.clone();
+                    let queries = query_log.clone();
+                    async move {
+                        queries.lock().unwrap().extend(filters.clone());
+                        let events = events.lock().unwrap();
+                        let result: Vec<_> = events
+                            .iter()
+                            .filter(|event| {
+                                filters.iter().any(|filter| {
+                                    filter["kinds"]
+                                        .as_array()
+                                        .unwrap()
+                                        .contains(&serde_json::json!(event.kind.as_u16()))
+                                        && filter.get("authors").is_none_or(|authors| {
+                                            authors
+                                                .as_array()
+                                                .unwrap()
+                                                .contains(&serde_json::json!(event.pubkey.to_hex()))
+                                        })
+                                        && ["d", "p"].iter().all(|tag| {
+                                            filter.get(format!("#{tag}")).is_none_or(|values| {
+                                                event.tags.iter().any(|t| {
+                                                    t.as_slice().first().map(String::as_str)
+                                                        == Some(*tag)
+                                                        && t.as_slice().get(1).is_some_and(
+                                                            |value| {
+                                                                values.as_array().unwrap().contains(
+                                                                    &serde_json::json!(value),
+                                                                )
+                                                            },
+                                                        )
+                                                })
                                             })
                                         })
-                                    })
+                                })
                             })
-                        })
-                        .cloned()
-                        .collect();
-                    Json(result)
-                }
-            }),
+                            .cloned()
+                            .collect();
+                        Json(result)
+                    }
+                },
+            ),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
-    let state = crate::app_state::build_app_state();
     *state.keys.lock().unwrap() = owner.clone();
     *state.relay_url_override.lock().unwrap() = Some(format!("ws://{address}"));
 
@@ -310,6 +339,37 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
                 .is_empty()
         );
     }
+    // Switch while A is serving the membership snapshot, before any candidate
+    // keys have been queried. Subsequent private author and policy queries must
+    // remain on A with A's signer. The result cannot be delivered to B.
+    let b_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let hits = b_calls.clone();
+    let b = Router::new().fallback(move || {
+        hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async { Json(serde_json::json!([])) }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url_b = format!("ws://{}", listener.local_addr().unwrap());
+    let server_b = tokio::spawn(async move { axum::serve(listener, b).await.unwrap() });
+    *switch_target.lock().unwrap() = Some((url_b, Keys::generate()));
+    request_signers.lock().unwrap().clear();
+    queries.lock().unwrap().clear();
+    assert!(list_relay_agents_for_state(&state)
+        .await
+        .unwrap_err()
+        .contains("community changed"));
+    assert_eq!(b_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(queries
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|q| q["kinds"] == serde_json::json!([30177]) && q.get("#d").is_some()));
+    assert!(request_signers
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|key| key == &viewer));
+    server_b.abort();
     server.abort();
     crate::relay_admission::reset_rate_limit_gate();
 }
