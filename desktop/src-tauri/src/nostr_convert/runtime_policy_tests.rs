@@ -141,3 +141,35 @@ fn forged_latest_runtime_cannot_supply_or_revive_availability() {
     assert!(forged.verify().is_err());
     assert_merge(&[old, forged], &profile, &policy, "unknown");
 }
+
+#[test]
+fn host_fleet_keeps_attested_identity_separate_from_policy_and_membership() {
+    let host = Keys::generate().public_key().to_hex();
+    for (name, mode) in [("Claude", "anyone"), ("Grok", "anyone"), ("Scout", "owner-only")] {
+        let (agent, profile, policy) = fixture();
+        let content = json!({
+            "name": name, "display_name": name, "agent_type": "agent",
+            "channels": [], "channel_ids": ["claimed"], "capabilities": [],
+            "status": "online", "respond_to": mode, "respond_to_allowlist": [],
+            "channel_add_policy": "owner_only", "host": host,
+            "owner_pubkey": "forged", "has_managed_policy": true,
+        });
+        let event = EventBuilder::new(Kind::Custom(10100), content.to_string())
+            .tags(profile.tags.iter().cloned())
+            .sign_with_keys(&agent).unwrap();
+        for policies in [&[][..], std::slice::from_ref(&policy)] {
+            let rows = relay_agents_from_directory_events(
+                std::slice::from_ref(&event), policies, std::slice::from_ref(&profile));
+            assert_eq!(rows.len(), 1);
+            let row = serde_json::to_value(&rows[0]).unwrap();
+            assert_eq!(row["pubkey"], agent.public_key().to_hex());
+            assert_eq!(row["owner_pubkey"], policy.pubkey.to_hex());
+            assert_eq!(row["host_pubkey"], host);
+            assert_eq!(row["channel_add_policy"], "owner_only");
+            assert_eq!(row["channel_ids"], json!([]));
+            assert_eq!(row["respond_to"], if policies.is_empty() {mode} else {"allowlist"});
+        }
+        let rows = relay_agents_from_directory_events(&[event], &[], &[]);
+        assert_eq!(rows[0].owner_pubkey, None, "runtime cannot self-assign an owner");
+    }
+}
