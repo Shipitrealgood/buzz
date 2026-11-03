@@ -3,14 +3,19 @@ $ErrorActionPreference = 'Stop'
 $probe = 'buzzacl' + [guid]::NewGuid().ToString('N').Substring(0,10)
 $base = Join-Path $env:PUBLIC $probe
 $userCreated = $false
-$registered = $false
+$password = $null
+$oldBase = $env:BUZZ_JOURNAL_BASE
+$oldPath = $env:BUZZ_JOURNAL_PATH
 $dbProcess = $null
 try {
+    $password = ConvertTo-SecureString ('T9!' + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
+    $account = New-LocalUser -Name $probe -Password $password -Description 'Disposable Buzz ACL test'
+    $userCreated = $true
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
     $security = [Security.AccessControl.DirectorySecurity]::new()
     $security.SetOwner($sid)
     $security.SetAccessRuleProtection($true,$false)
-    foreach ($entry in @(@($sid,'FullControl'),@('S-1-5-18','FullControl'),@('S-1-5-32-545','ReadAndExecute'))) {
+    foreach ($entry in @(@($sid,'FullControl'),@('S-1-5-18','FullControl'),@($account.SID,'ReadAndExecute'))) {
         $principal = [Security.Principal.SecurityIdentifier]$entry[0]
         $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($principal,$entry[1],'ContainerInherit,ObjectInherit','None','Allow'))
     }
@@ -47,49 +52,90 @@ db.close()
     foreach ($name in $files) {
         if (!(Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)) { throw 'missing SQLite file for ACL probe' }
     }
-    $password = ConvertTo-SecureString ('T9!' + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
-    $account = New-LocalUser -Name $probe -Password $password -Description 'Disposable Buzz ACL test'
-    $userCreated = $true
-    $credential = [pscredential]::new("$env:COMPUTERNAME\$probe",$password)
-    [IO.File]::WriteAllText((Join-Path $base 'expected-sid'),$account.SID.Value)
-    $check = @'
-$ErrorActionPreference = 'Stop'
-if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne [IO.File]::ReadAllText("$PSScriptRoot\expected-sid")) { exit 9 }
-if ([IO.File]::ReadAllText("$PSScriptRoot\control") -ne 'public-control') { exit 10 }
-foreach ($file in @('owner.sqlite','owner.sqlite-wal','owner.sqlite-shm')) {
-    try { [IO.File]::OpenRead((Join-Path "$PSScriptRoot\paired-hosts" $file)).Dispose(); exit 11 }
-    catch { if ($_.Exception.GetBaseException() -isnot [UnauthorizedAccessException]) { exit 12 } }
+    # All identity checks and opens execute synchronously on the same native
+    # thread. The password never leaves process memory or enters an argument list.
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
+
+public static class BuzzJournalAclProbe {
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    private static extern bool LogonUserW(string user, string domain, IntPtr password,
+        int logonType, int provider, out SafeAccessTokenHandle token);
+
+    public static void Check(string user, SecureString password, string expectedSid,
+        string control, string directory, string[] files) {
+        const int LOGON32_LOGON_INTERACTIVE = 2;
+        const int LOGON32_PROVIDER_DEFAULT = 0;
+        SafeAccessTokenHandle token;
+        IntPtr secret = Marshal.SecureStringToGlobalAllocUnicode(password);
+        try {
+            if (!LogonUserW(user, ".", secret, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out token)) {
+                int error = Marshal.GetLastWin32Error();
+                throw new Win32Exception(error, "Local probe account logon failed with Windows error " + error);
+            }
+        } finally {
+            Marshal.ZeroFreeGlobalAllocUnicode(secret);
+        }
+
+        using (token)
+        using (WindowsIdentity owner = WindowsIdentity.GetCurrent())
+        using (WindowsImpersonationContext context = WindowsIdentity.Impersonate(token.DangerousGetHandle())) {
+            try {
+                using (WindowsIdentity effective = WindowsIdentity.GetCurrent(true)) {
+                    if (effective == null || effective.User.Value != expectedSid || effective.User.Equals(owner.User))
+                        throw new InvalidOperationException("Unexpected effective thread SID");
+                    if (new WindowsPrincipal(effective).IsInRole(WindowsBuiltInRole.Administrator))
+                        throw new InvalidOperationException("Probe account is an administrator");
+                }
+                if (File.ReadAllText(control) != "public-control")
+                    throw new InvalidOperationException("Standard account could not read the control");
+                foreach (string file in files) {
+                    try {
+                        File.Open(Path.Combine(directory, file), FileMode.Open, FileAccess.Read,
+                            FileShare.ReadWrite | FileShare.Delete).Dispose();
+                    } catch (UnauthorizedAccessException denied) {
+                        if (denied.HResult != unchecked((int)0x80070005)) throw;
+                        continue;
+                    }
+                    throw new InvalidOperationException("Standard account read " + file);
+                }
+            } finally {
+                context.Undo();
+                using (WindowsIdentity restored = WindowsIdentity.GetCurrent()) {
+                    if (!restored.User.Equals(owner.User))
+                        throw new InvalidOperationException("Owner identity was not restored");
+                }
+            }
+        }
+    }
 }
-exit 0
 '@
-    $script = Join-Path $base 'read-probe.ps1'
-    [IO.File]::WriteAllText($script,$check)
-    $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $script) -WorkingDirectory $base
-    # Password logon through Task Scheduler works in a noninteractive runner.
-    # Only the fixed probe path appears in the action and its process command line.
-    Register-ScheduledTask -TaskName $probe -Action $action -User $credential.UserName -Password ($credential.GetNetworkCredential().Password) -RunLevel Limited | Out-Null
-    $registered = $true
-    $prior = (Get-ScheduledTaskInfo -TaskName $probe).LastRunTime
-    Start-ScheduledTask -TaskName $probe
-    $deadline = [DateTime]::UtcNow.AddSeconds(45)
-    do {
-        Start-Sleep -Milliseconds 250
-        $info = Get-ScheduledTaskInfo -TaskName $probe
-        $state = (Get-ScheduledTask -TaskName $probe).State
-        $finished = $info.LastRunTime -gt $prior -and $state -eq 'Ready' -and $info.LastTaskResult -ne 267009
-    } until ($finished -or [DateTime]::UtcNow -ge $deadline)
-    if (!$finished -or $info.LastTaskResult -ne 0) { throw "secondary-user scheduled probe failed (state $state, result $($info.LastTaskResult))" }
+    [BuzzJournalAclProbe]::Check($probe,$password,$account.SID.Value,(Join-Path $base 'control'),$dir,$files)
     if ($dbProcess.HasExited) { throw 'SQLite closed before the secondary-account probe finished' }
     Write-Output 'Owner used SQLite; another standard user read the control and was denied the DB, WAL and SHM.'
 } finally {
-    if ($registered) {
-        Stop-ScheduledTask -TaskName $probe -ErrorAction SilentlyContinue
-        Unregister-ScheduledTask -TaskName $probe -Confirm:$false
+    try {
+        if ($dbProcess -and !$dbProcess.HasExited) {
+            try {
+                [IO.File]::WriteAllText((Join-Path $base 'done'),'done')
+            } finally {
+                if (!$dbProcess.WaitForExit(5000)) { $dbProcess.Kill(); $dbProcess.WaitForExit() }
+            }
+        }
+    } finally {
+        try {
+            if ($userCreated) { Remove-LocalUser -Name $probe }
+        } finally {
+            if ($password) { $password.Dispose() }
+            $env:BUZZ_JOURNAL_BASE = $oldBase
+            $env:BUZZ_JOURNAL_PATH = $oldPath
+            if (Test-Path -LiteralPath $base) { Remove-Item -LiteralPath $base -Recurse -Force }
+        }
     }
-    if ($dbProcess -and !$dbProcess.HasExited) {
-        [IO.File]::WriteAllText((Join-Path $base 'done'),'done')
-        if (!$dbProcess.WaitForExit(5000)) { $dbProcess.Kill(); $dbProcess.WaitForExit() }
-    }
-    if ($userCreated) { Remove-LocalUser -Name $probe }
-    if (Test-Path -LiteralPath $base) { Remove-Item -LiteralPath $base -Recurse -Force }
 }

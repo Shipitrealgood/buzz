@@ -1,0 +1,27 @@
+name: Paired hosts Windows ACL probe
+
+on:
+  push:
+    branches:
+      - verify/paired-hosts-staging
+    paths:
+      - crates/buzz-paired-owner/windows/test-journal-acl.ps1
+      - crates/buzz-paired-owner/windows/protect-journal.ps1
+      - .github/workflows/paired-hosts-windows-acl.yml
+
+permissions:
+  contents: read
+
+jobs:
+  journal-acl:
+    if: github.repository == 'Shipitrealgood/buzz'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Probe SQLite files as a disposable standard user
+        shell: powershell
+        run: ./crates/buzz-paired-owner/windows/test-journal-acl.ps1
