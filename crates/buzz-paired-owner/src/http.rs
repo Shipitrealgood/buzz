@@ -445,6 +445,7 @@ impl Endpoint {
             .context("missing scoped high-water cursor")?;
         ensure!(high_water.len() <= 1024, "invalid cursor");
         let (mut history, unresolved) = self.evidence(&signer()?, s, r).await?;
+        device.observe_history(&self.origin, &signer()?, s, r, unresolved, &history)?;
         if let Some(q) = device.status_query(&self.origin, &signer()?, s, r, high_water)? {
             self.post(&signer()?, s, &q).await?;
         }
@@ -543,12 +544,7 @@ impl Endpoint {
             self.verify_ready(device, signer, s, r).await?;
             return device.request(&self.origin, &signer()?, s, r);
         }
-        if unresolved
-            && !matches!(
-                view.state.as_str(),
-                "ready" | "failed" | "expired" | "revoked-before-commit"
-            )
-        {
+        if view.evidence_incomplete {
             return Ok(RequestView {
                 state: "unresolved".into(),
                 ..view

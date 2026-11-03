@@ -37,6 +37,9 @@ pub struct RequestView {
     pub channels: Vec<String>,
     /// Authenticated phase, or unresolved after loss of delivery.
     pub state: String,
+    /// The relay has not returned complete signed evidence for the local request.
+    #[serde(default)]
+    pub evidence_incomplete: bool,
     /// Last local reconciliation error, separate from authenticated host state.
     pub issue: Option<String>,
     /// Pinned candidate agent key, once verified.
@@ -62,6 +65,8 @@ struct Request {
     terminal_state: Option<String>,
     public: Vec<Event>,
     published: usize,
+    #[serde(default)]
+    evidence_incomplete: bool,
     #[serde(default)]
     issue: Option<String>,
     #[serde(default)]
@@ -190,6 +195,7 @@ impl Device {
             terminal_state: None,
             public: vec![],
             published: 0,
+            evidence_incomplete: false,
             issue: None,
             verified_at: None,
         };
@@ -544,6 +550,11 @@ impl Device {
         };
         Ok(RequestView {
             request_id: r.into(),
+            evidence_incomplete: req.evidence_incomplete
+                && !matches!(
+                    state.as_str(),
+                    "ready" | "failed" | "expired" | "revoked-before-commit"
+                ),
             issue: req.issue,
             name: req.draft.name,
             runtime: req.draft.runtime,
@@ -554,6 +565,60 @@ impl Device {
             steps,
         })
     }
+    /// Checkpoint the independent history diagnostic before any subsequent network wait.
+    /// Only an exact copy of the device's signed chain can clear a previous gap.
+    pub(crate) fn observe_history(
+        &mut self,
+        selected: &str,
+        keys: &Keys,
+        s: &Scope,
+        r: &str,
+        incomplete: bool,
+        history: &[Packet],
+    ) -> Result<()> {
+        session(s, selected, keys)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut req = read(&tx, s, r)?;
+        if incomplete == req.evidence_incomplete {
+            return Ok(());
+        }
+        if !incomplete {
+            for saved in [
+                Some(&req.intent),
+                req.confirm.as_ref(),
+                req.offer.as_ref(),
+                req.activate.as_ref(),
+                req.commit.as_ref(),
+                req.credentials.as_ref(),
+                req.result.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let local: Event = serde_json::from_str(saved.event.get())?;
+                let restored = history.iter().any(|p| {
+                    p.route == saved.route
+                        && buzz_core::paired_host::transport::verify_outer(
+                            p.event.get().as_bytes(),
+                            &s.community,
+                            &s.generation,
+                            local.pubkey,
+                        )
+                        .is_ok_and(|(event, ..)| event.id == local.id)
+                });
+                if !restored {
+                    return Ok(());
+                }
+            }
+        }
+        req.evidence_incomplete = incomplete;
+        save(&tx, s, r, &req)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Keep a local transport/reconciliation diagnostic without changing host-reported state.
     pub fn note_issue(
         &mut self,

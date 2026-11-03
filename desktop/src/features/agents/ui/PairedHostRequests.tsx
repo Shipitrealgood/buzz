@@ -130,6 +130,11 @@ export function PairedHostRequests({
           {r.steps.length > 0 && (
             <p className="text-xs">{r.steps.join(", ")}</p>
           )}
+          {r.evidence_incomplete && (
+            <p role="status">
+              Evidence incomplete. Waiting for verified request history.
+            </p>
+          )}
           {r.issue && <p role="status">{r.issue}</p>}
           {!terminalHostRequest(r.state) && (
             <Button

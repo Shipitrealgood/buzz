@@ -124,6 +124,19 @@ fn enroll_inventory_revocation_and_restart() {
         id(&f.d.unpair(C, &f.o, &f.s).unwrap()).unwrap()
     );
     assert_eq!(f.d.view(C, &f.o, &f.s).unwrap().state, "unpair-pending");
+    for snapshot in ["fenced", "active"] {
+        f.b.state = snapshot.into();
+        f.d.restore(C, &f.o, &f.b).unwrap();
+        f.d = Device::at(&f.dir.path().join("state")).unwrap();
+        let deliveries = f.d.next_deliveries(C, &f.o).unwrap();
+        assert_eq!(deliveries.len(), 1);
+        let (scope, retry, claim) = &deliveries[0];
+        assert_eq!(scope, &f.s);
+        assert!(!claim);
+        assert_eq!(retry.event.get(), p.event.get());
+        assert_eq!(retry.route, p.route);
+        assert!(f.d.inventory_query(C, &f.o, &f.s).is_err());
+    }
     f.b.tombstone = Some(f.sign(
         Body::Unpaired {
             pair_ack_id: id(&f.b.ack).unwrap(),
@@ -134,6 +147,7 @@ fn enroll_inventory_revocation_and_restart() {
     f.d.restore(C, &f.o, &f.b).unwrap();
     f.b.tombstone = None;
     f.d.restore(C, &f.o, &f.b).unwrap();
+    assert!(f.d.next_deliveries(C, &f.o).unwrap().is_empty());
     assert_eq!(f.d.view(C, &f.o, &f.s).unwrap().state, "unpaired");
     assert!(f.d.inventory_query(C, &f.o, &f.s).is_err());
 }
@@ -630,4 +644,46 @@ fn repeated_tap_is_idempotent_after_ipc_loss_and_process_restart() {
         .create_once(C, &Keys::generate(), &f.s, &inventory, &r, draft)
         .is_err());
     assert_eq!(f.d.requests(C, &f.o, &f.s).unwrap().len(), 1);
+}
+
+#[test]
+fn directory_retains_history_gap_across_worker_success_failure_and_verified_recovery() {
+    let mut f = Setup::new();
+    let catalog = id(&f.inventory()).unwrap();
+    let (r, intent) = f.d.create(C, &f.o, &f.s, &catalog, f.draft()).unwrap();
+    let view = |d: &Device| {
+        d.hosts(C, &f.o)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .requests
+            .pop()
+            .unwrap()
+    };
+    f.d.observe_history(C, &f.o, &f.s, &r, true, &[]).unwrap();
+    // The scheduler's ordinary successful result clears transient transport errors.
+    f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    assert_eq!(view(&f.d).state, "pending");
+    assert!(view(&f.d).evidence_incomplete);
+    f.d.note_issue(C, &f.o, &f.s, &r, Some("Community offline.".into()))
+        .unwrap();
+    assert!(view(&f.d).evidence_incomplete);
+    f.d.observe_history(C, &f.o, &f.s, &r, false, &[]).unwrap();
+    assert!(
+        view(&f.d).evidence_incomplete,
+        "an empty complete-looking response cannot repair a pruned chain"
+    );
+    let mut bad = intent.clone();
+    bad.route.expires_at += 1;
+    f.d.observe_history(C, &f.o, &f.s, &r, false, &[bad])
+        .unwrap();
+    assert!(view(&f.d).evidence_incomplete);
+    f.d.observe_history(C, &f.o, &f.s, &r, false, &[intent])
+        .unwrap();
+    f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
+    let repaired = view(&f.d);
+    assert!(!repaired.evidence_incomplete);
+    assert!(repaired.issue.is_none());
+    assert_eq!(repaired.state, "pending");
 }

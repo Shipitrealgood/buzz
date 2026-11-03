@@ -536,7 +536,7 @@ impl Device {
             let mut q=tx.prepare("SELECT data FROM grants
                 WHERE json_extract(scope,'$.community')=? AND json_extract(scope,'$.owner')=?
                   AND ((json_extract(data,'$.ack') IS NULL AND json_extract(data,'$.claim.route.expires_at')>?)
-                     OR (json_extract(data,'$.revocation') IS NOT NULL AND json_extract(data,'$.tombstone') IS NULL AND NOT json_extract(data,'$.fenced')))
+                     OR (json_extract(data,'$.revocation') IS NOT NULL AND json_extract(data,'$.tombstone') IS NULL))
                 ORDER BY scope<=?,scope LIMIT 8")?;
             let rows = q.query_map(params![selected, owner, now()?, last], |r| {
                 r.get::<_, String>(0)

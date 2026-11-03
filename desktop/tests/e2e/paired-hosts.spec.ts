@@ -52,6 +52,7 @@ async function open(
         state: string;
         steps: string[];
         issue: string | null;
+        evidence_incomplete: boolean;
       }[],
       catalog_revision: "ab".repeat(32),
       state: "paired",
@@ -130,6 +131,7 @@ async function open(
             state: "pending",
             steps: [],
             issue: null,
+            evidence_incomplete: false,
           });
           throw new Error("Lost IPC response after durable save.");
         }
@@ -143,6 +145,7 @@ async function open(
           ?.requests.find((r) => r.request_id === args?.requestId);
         if (!r) throw new Error("wrong resume target");
         document.body.dataset.resumed = r.request_id;
+        r.evidence_incomplete = document.body.dataset.pruned === "yes";
         if (document.body.dataset.finish) {
           r.state = "ready";
           r.agent = "cd".repeat(32);
@@ -275,6 +278,21 @@ test("Create on selected host preserves one tap through lost IPC, resumes status
     "data-resumed",
     /^[0-9a-f]{64}$/,
   );
+  const progress = rows
+    .nth(1)
+    .getByRole("group", { name: "Build helper provisioning" });
+  await page.evaluate(() => {
+    document.body.dataset.pruned = "yes";
+  });
+  await progress.getByRole("button", { name: "Resume request" }).click();
+  await expect(progress).toContainText("Evidence incomplete");
+  await expect(progress).toContainText("Pending");
+  await page.evaluate(() => {
+    delete document.body.dataset.pruned;
+  });
+  await progress.getByRole("button", { name: "Resume request" }).click();
+  await expect(progress).not.toContainText("Evidence incomplete");
+  await expect(progress).toContainText("Pending");
   await page.evaluate(() => {
     document.body.dataset.finish = "yes";
   });

@@ -19,6 +19,7 @@ export type HostRequest = {
   agent: string | null;
   steps: string[];
   issue: string | null;
+  evidence_incomplete: boolean;
 };
 export type Session = { expectedRelay: string; expectedOwner: string };
 export type Host = {
