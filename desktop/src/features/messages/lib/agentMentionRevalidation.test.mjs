@@ -217,3 +217,30 @@ test("publication cannot authorize a DM that still has no destination", async ()
     AgentMentionAuthorizationError,
   );
 });
+
+test("another member can publish to Claude and Grok in their destination but not to Scout", async () => {
+  for (const [name, mode] of [
+    ["Claude", "anyone"],
+    ["Grok", "anyone"],
+    ["Scout", "owner-only"],
+  ]) {
+    const publish = revalidateAgentMentionPubkeys({
+      ...options(),
+      fetchRelayAgents: async () => [
+        {
+          name,
+          pubkey: AGENT,
+          ownerPubkey: LOCAL_AGENT,
+          respondTo: mode,
+          respondToAllowlist: [],
+          channelIds: ["general"],
+        },
+      ],
+    });
+    if (mode === "owner-only") {
+      await assert.rejects(publish, AgentMentionAuthorizationError);
+    } else {
+      assert.deepEqual(await publish, [HUMAN, AGENT]);
+    }
+  }
+});
