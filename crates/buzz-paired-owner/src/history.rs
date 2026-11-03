@@ -21,10 +21,12 @@ pub struct HistoryView {
 
 #[derive(Deserialize)]
 pub(crate) struct Summary {
-    request_id: String,
-    intent_id: String,
-    commit_id: Option<String>,
-    terminal_id: Option<String>,
+    pub request_id: String,
+    pub intent_id: String,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub commit_id: Option<String>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub terminal_id: Option<String>,
 }
 impl Endpoint {
     /// Discover the owner's immutable request coordinates, one bounded relay page

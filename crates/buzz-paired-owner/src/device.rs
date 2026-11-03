@@ -108,7 +108,7 @@ fn save(db: &Connection, g: &Grant) -> Result<()> {
     Ok(())
 }
 
-fn verify_binding(
+pub(super) fn verify_binding(
     keys: &Keys,
     scope: &Scope,
     claim: &Packet,

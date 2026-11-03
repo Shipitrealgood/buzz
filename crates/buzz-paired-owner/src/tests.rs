@@ -64,13 +64,18 @@ impl Setup {
         seal(&self.h, &self.s, body, t, t + ttl).unwrap()
     }
     fn inventory(&mut self) -> Packet {
+        self.inventory_chain().1
+    }
+    fn inventory_chain(&mut self) -> (Packet, Packet) {
         let q = self.d.inventory_query(C, &self.o, &self.s).unwrap();
         let Body::InventoryQuery { nonce, .. } =
             open(&self.h, &self.s, &q, now().unwrap()).unwrap().body
         else {
             panic!()
         };
-        let p = self.sign(
+        let p = seal(
+            &self.h,
+            &self.s,
             Body::Inventory {
                 query_id: id(&q).unwrap(),
                 nonce,
@@ -80,10 +85,12 @@ impl Setup {
                 capacity: 2,
                 catalog_revision: "ab".repeat(32),
             },
-            60,
-        );
+            now().unwrap(),
+            q.route.expires_at,
+        )
+        .unwrap();
         self.d.accept_inventory(C, &self.o, &self.s, &p).unwrap();
-        p
+        (q, p)
     }
     fn draft(&self) -> Draft {
         Draft {
@@ -154,7 +161,7 @@ fn enroll_inventory_revocation_and_restart() {
 #[test]
 fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     let mut f = Setup::new();
-    let inv = f.inventory();
+    let (inventory_query, inv) = f.inventory_chain();
     let draft = f.draft();
     let (r, i) =
         f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), draft)
@@ -253,6 +260,37 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     };
     let bad = make_commit("ab".repeat(32));
     let good = make_commit(id(&activate).unwrap());
+    let mut detail = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            commit_id: Some(id(&good).unwrap()),
+            terminal_id: None,
+        },
+        messages: vec![
+            f.b.claim.clone(),
+            f.b.ack.clone(),
+            inventory_query,
+            inv,
+            intent_packet.clone(),
+            challenge.clone(),
+            confirm_packet.clone(),
+            offer.clone(),
+            activate.clone(),
+            good.clone(),
+        ],
+        unresolved: false,
+    };
+    for idx in 0..detail.messages.len() {
+        let saved = detail.messages.remove(idx);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+        assert!(f.d.receive(C, &f.o, &f.s, &r, &good, None).is_err());
+        assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+        detail.messages.insert(idx, saved);
+    }
+    // Return all packets in reverse order. Verification follows signed references.
+    detail.messages.reverse();
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
     let copy = f.dir.path().join("newly-discovered");
     std::fs::copy(f.dir.path().join("state"), &copy).unwrap();
     let pk = a.public_key();
@@ -353,6 +391,13 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     f.d.record_verified_ready(C, &f.o, &f.s, &r).unwrap();
     assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, "ready");
     let summary=serde_json::from_value(serde_json::json!({"request_id":r,"intent_id":id(&intent_packet).unwrap(),"commit_id":id(&good).unwrap(),"terminal_id":id(&p).unwrap()})).unwrap();
+    detail.summary.terminal_id = Some(id(&p).unwrap());
+    detail.messages.extend([credential.clone(), p.clone()]);
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    let original = detail.summary.terminal_id.replace("ab".repeat(32));
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    detail.summary.terminal_id = original;
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
     let mut historical = vec![
         p,
         good,
@@ -649,8 +694,32 @@ fn repeated_tap_is_idempotent_after_ipc_loss_and_process_restart() {
 #[test]
 fn directory_retains_history_gap_across_worker_success_failure_and_verified_recovery() {
     let mut f = Setup::new();
-    let catalog = id(&f.inventory()).unwrap();
-    let (r, intent) = f.d.create(C, &f.o, &f.s, &catalog, f.draft()).unwrap();
+    let (q, inv) = f.inventory_chain();
+    let (r, intent) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), f.draft())
+            .unwrap();
+    let i = id(&intent).unwrap();
+    let challenge = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            phase: "generate".into(),
+            nonce: "ab".repeat(32),
+        },
+        60,
+    );
+    f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+    let confirm = f.outgoing(&r);
+    let mut page = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            commit_id: None,
+            terminal_id: None,
+        },
+        messages: vec![confirm.clone(), intent.clone()],
+        unresolved: true,
+    };
     let view = |d: &Device| {
         d.hosts(C, &f.o)
             .unwrap()
@@ -660,30 +729,120 @@ fn directory_retains_history_gap_across_worker_success_failure_and_verified_reco
             .pop()
             .unwrap()
     };
-    f.d.observe_history(C, &f.o, &f.s, &r, true, &[]).unwrap();
-    // The scheduler's ordinary successful result clears transient transport errors.
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
     f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
     f.d = Device::at(&f.dir.path().join("state")).unwrap();
     assert_eq!(view(&f.d).state, "pending");
     assert!(view(&f.d).evidence_incomplete);
     f.d.note_issue(C, &f.o, &f.s, &r, Some("Community offline.".into()))
         .unwrap();
-    assert!(view(&f.d).evidence_incomplete);
-    f.d.observe_history(C, &f.o, &f.s, &r, false, &[]).unwrap();
+    page.unresolved = false;
     assert!(
-        view(&f.d).evidence_incomplete,
-        "an empty complete-looking response cannot repair a pruned chain"
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "signed intent and confirm alone are incomplete"
     );
-    let mut bad = intent.clone();
+    page.messages
+        .extend([f.b.claim.clone(), f.b.ack.clone(), q.clone(), inv.clone()]);
+    assert!(
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "host challenge missing"
+    );
+    let wrong = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            phase: "generate".into(),
+            nonce: "11".repeat(32),
+        },
+        60,
+    );
+    page.messages.push(wrong.clone());
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &wrong, None).is_err());
+    assert_eq!(id(&f.outgoing(&r)).unwrap(), id(&confirm).unwrap());
+    let mut altered = challenge.clone();
+    altered.route.prev = Some(id(&inv).unwrap());
+    *page.messages.last_mut().unwrap() = altered;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    let mut bad = challenge.clone();
     bad.route.expires_at += 1;
-    f.d.observe_history(C, &f.o, &f.s, &r, false, &[bad])
-        .unwrap();
+    *page.messages.last_mut().unwrap() = bad;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    let mut forged = challenge.clone();
+    let mut wire: serde_json::Value = serde_json::from_str(forged.event.get()).unwrap();
+    wire["sig"] = serde_json::json!("00".repeat(64));
+    forged.event = serde_json::value::to_raw_value(&wire).unwrap();
+    *page.messages.last_mut().unwrap() = forged;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    *page.messages.last_mut().unwrap() = challenge;
+    let foreign_parent = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: "cd".repeat(32),
+            phase: "generate".into(),
+            nonce: "82".repeat(32),
+        },
+        60,
+    );
+    page.messages.push(foreign_parent);
+    assert!(!f.d.observe_history(C,&f.o,&f.s,&r,&page).unwrap(),"a signed packet with a missing parent invalidates the page even when all locally saved packets are present");
+    page.messages.pop();
+    for idx in 0..page.messages.len() {
+        let packet = page.messages.remove(idx);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.insert(idx, packet);
+    }
     assert!(view(&f.d).evidence_incomplete);
-    f.d.observe_history(C, &f.o, &f.s, &r, false, &[intent])
-        .unwrap();
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
     f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
     let repaired = view(&f.d);
     assert!(!repaired.evidence_incomplete);
     assert!(repaired.issue.is_none());
     assert_eq!(repaired.state, "pending");
+}
+
+#[test]
+fn fresh_complete_replacement_challenge_recovers_an_expired_unaccepted_confirm() {
+    let mut f = Setup::new();
+    let (q, inv) = f.inventory_chain();
+    let (r, intent) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), f.draft())
+            .unwrap();
+    let intent_id = id(&intent).unwrap();
+    let challenge = |nonce: String| Body::Challenge {
+        request_id: r.clone(),
+        intent_id: intent_id.clone(),
+        phase: "generate".into(),
+        nonce,
+    };
+    let old = f.sign(challenge("11".repeat(32)), 2);
+    f.d.receive(C, &f.o, &f.s, &r, &old, None).unwrap();
+    let old_answer = id(&f.outgoing(&r)).unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let fresh = f.sign(challenge("12".repeat(32)), 60);
+    let mut page = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id,
+            commit_id: None,
+            terminal_id: None,
+        },
+        messages: vec![
+            f.b.claim.clone(),
+            f.b.ack.clone(),
+            inv,
+            intent,
+            fresh.clone(),
+        ],
+        unresolved: false,
+    };
+    assert!(
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "the replacement also needs a complete root"
+    );
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &fresh, None).is_err());
+    page.messages.push(q);
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    f.d.receive(C, &f.o, &f.s, &r, &fresh, None).unwrap();
+    assert_ne!(id(&f.outgoing(&r)).unwrap(), old_answer);
 }

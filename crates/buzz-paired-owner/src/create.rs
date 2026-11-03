@@ -8,6 +8,10 @@ use nostr::{EventBuilder, Kind, PublicKey, Tags, Timestamp};
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
+#[path = "request_evidence.rs"]
+mod evidence;
+pub(crate) use evidence::Evidence;
+
 /// All inputs from the single initiating owner's tap.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -242,6 +246,7 @@ impl Device {
         let g = grant(&tx, s)?;
         let mut req = read(&tx, s, r)?;
         let intent = id(&req.intent)?;
+        ensure!(!req.evidence_incomplete, "request evidence is incomplete");
         let live = g.active()
             && now < req.intent.route.expires_at
             && req.commit.is_none()
@@ -573,50 +578,21 @@ impl Device {
         keys: &Keys,
         s: &Scope,
         r: &str,
-        incomplete: bool,
-        history: &[Packet],
-    ) -> Result<()> {
+        page: &Evidence,
+    ) -> Result<bool> {
         session(s, selected, keys)?;
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut req = read(&tx, s, r)?;
-        if incomplete == req.evidence_incomplete {
-            return Ok(());
+        let g = grant(&tx, s)?;
+        let incomplete = evidence::verify(page, keys, s, r, &g, &req).is_err();
+        if req.evidence_incomplete != incomplete {
+            req.evidence_incomplete = incomplete;
+            save(&tx, s, r, &req)?;
+            tx.commit()?;
         }
-        if !incomplete {
-            for saved in [
-                Some(&req.intent),
-                req.confirm.as_ref(),
-                req.offer.as_ref(),
-                req.activate.as_ref(),
-                req.commit.as_ref(),
-                req.credentials.as_ref(),
-                req.result.as_ref(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                let local: Event = serde_json::from_str(saved.event.get())?;
-                let restored = history.iter().any(|p| {
-                    p.route == saved.route
-                        && buzz_core::paired_host::transport::verify_outer(
-                            p.event.get().as_bytes(),
-                            &s.community,
-                            &s.generation,
-                            local.pubkey,
-                        )
-                        .is_ok_and(|(event, ..)| event.id == local.id)
-                });
-                if !restored {
-                    return Ok(());
-                }
-            }
-        }
-        req.evidence_incomplete = incomplete;
-        save(&tx, s, r, &req)?;
-        tx.commit()?;
-        Ok(())
+        Ok(!incomplete)
     }
 
     /// Keep a local transport/reconciliation diagnostic without changing host-reported state.

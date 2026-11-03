@@ -243,28 +243,19 @@ impl Endpoint {
         .await?;
         Ok(())
     }
-    async fn evidence(&self, keys: &Keys, s: &Scope, r: &str) -> Result<(Vec<Packet>, bool)> {
+    async fn evidence(&self, keys: &Keys, s: &Scope, r: &str) -> Result<crate::create::Evidence> {
         session(s, &self.origin, keys)?;
         let g = bounded_id(&s.generation)?;
         bounded_id(r)?;
-        #[derive(Deserialize)]
-        struct Evidence {
-            request_id: String,
-            messages: Vec<Packet>,
-            unresolved: bool,
-        }
-        let e: Evidence = self
+        let page: crate::create::Evidence = self
             .send(
                 keys,
                 &format!("/api/paired-hosts/v1/bindings/{g}/requests/{r}"),
                 None,
             )
             .await?;
-        ensure!(
-            e.request_id == r && e.messages.len() <= 1024,
-            "invalid request evidence"
-        );
-        Ok((e.messages, e.unresolved))
+        ensure!(page.messages.len() <= 1024, "oversized request detail");
+        Ok(page)
     }
     pub(crate) async fn query(&self, keys: &Keys, mut filter: Value) -> Result<Vec<Event>> {
         filter["consistency"] = json!("strong");
@@ -444,10 +435,20 @@ impl Endpoint {
             .as_deref()
             .context("missing scoped high-water cursor")?;
         ensure!(high_water.len() <= 1024, "invalid cursor");
-        let (mut history, unresolved) = self.evidence(&signer()?, s, r).await?;
-        device.observe_history(&self.origin, &signer()?, s, r, unresolved, &history)?;
+        let page = self.evidence(&signer()?, s, r).await?;
+        let complete = device.observe_history(&self.origin, &signer()?, s, r, &page)?;
+        let mut history = page.messages;
         if let Some(q) = device.status_query(&self.origin, &signer()?, s, r, high_water)? {
             self.post(&signer()?, s, &q).await?;
+        }
+        // A status query can request retransmission of exact missing evidence.
+        // Do not advance the business workflow on a partial or forged page.
+        if !complete {
+            let mut view = device.request(&self.origin, &signer()?, s, r)?;
+            if view.evidence_incomplete {
+                view.state = "unresolved".into();
+            }
+            return Ok(view);
         }
         // Status traffic is transient and is deliberately excluded from the
         // immutable request detail. Read forward from the snapshot captured
