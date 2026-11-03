@@ -1,0 +1,87 @@
+name: Paired-host relay image
+
+on:
+  push:
+    branches: [build/paired-relay-image]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: github.repository == 'Shipitrealgood/buzz'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Prepare hosted runner
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = x86_64
+          # The cargo-chef recipe cooks the workspace before compiling the release
+          # binaries. Reclaim unused preinstalled SDKs for the cold build.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h /var/lib/docker
+          echo "IMAGE=shipitrealgood/buzz-relay:paired-${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Build canonical runtime
+        run: |
+          docker buildx build --platform linux/amd64 --target runtime --load \
+            --tag "$IMAGE" \
+            --cache-from type=registry,ref=ghcr.io/block/buzz-buildcache:amd64 \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --build-arg "BUZZ_SOURCE_SHA=$GITHUB_SHA" \
+            --build-arg "BUZZ_BUILD_ID=github-actions:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
+            --build-arg "BUZZ_BUILD_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            .
+
+      - name: Check runtime and package loadable image
+        run: |
+          mkdir "$RUNNER_TEMP/paired-relay"
+          cd "$RUNNER_TEMP/paired-relay"
+          docker image inspect "$IMAGE" | jq -e --arg sha "$GITHUB_SHA" --arg image "$IMAGE" '
+            .[0] | select(.Os == "linux" and .Architecture == "amd64" and
+              .Config.Entrypoint == ["/usr/local/bin/buzz-relay"] and
+              .Config.Labels["org.opencontainers.image.revision"] == $sha) |
+            {source_sha: $sha, tag: $image, image_id: .Id, os: .Os,
+             architecture: .Architecture, repo_digests: .RepoDigests}' > receipt.json
+          # Exercise the packaged primary relay and its native dependencies.
+          # Deliberately fail config parsing before it needs database access.
+          status=0
+          docker run --rm --network none -e BUZZ_BIND_ADDR=invalid "$IMAGE" > smoke.log 2>&1 || status=$?
+          cat smoke.log
+          test "$status" -eq 1
+          grep -Fq 'invalid BUZZ_BIND_ADDR' smoke.log
+          docker image save "$IMAGE" | gzip -n -1 > buzz-relay-amd64.tar.gz
+          sha256sum buzz-relay-amd64.tar.gz receipt.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          {
+            printf 'To load `%s`, extract the artifact and run:\n' "$IMAGE"
+            echo '~~~sh'
+            echo 'sha256sum -c SHA256SUMS && docker load -i buzz-relay-amd64.tar.gz'
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: paired-relay-linux-amd64-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/paired-relay/buzz-relay-amd64.tar.gz
+            ${{ runner.temp }}/paired-relay/SHA256SUMS
+            ${{ runner.temp }}/paired-relay/receipt.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
