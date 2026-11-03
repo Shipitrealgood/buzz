@@ -144,6 +144,8 @@ type MockManagedAgentRuntimeSeed = {
 };
 
 type MockRelayAgentSeed = {
+  hostPubkey?: string | null;
+  channelAddPolicy?: "owner_only" | "anyone" | "nobody" | null;
   pubkey: string;
   ownerPubkey?: string | null;
   name: string;
@@ -956,6 +958,8 @@ type RawSendChannelMessageResponse = {
 };
 
 type RawRelayAgent = {
+  host_pubkey?: string | null;
+  channel_add_policy?: "owner_only" | "anyone" | "nobody" | null;
   pubkey: string;
   owner_pubkey?: string | null;
   name: string;
@@ -2615,6 +2619,8 @@ function resetMockRelayAgents(config?: E2eConfig) {
       );
     });
     mockRelayAgents.push({
+      host_pubkey: seed.hostPubkey ?? null,
+      channel_add_policy: seed.channelAddPolicy ?? null,
       pubkey: seed.pubkey,
       owner_pubkey: seed.ownerPubkey ?? null,
       name: seed.name,

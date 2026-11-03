@@ -5,14 +5,11 @@ import {
   invalidateChannelState,
   useAddChannelMembersMutation,
   useChannelMembersQuery,
-  useChannelsQuery,
 } from "@/features/channels/hooks";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import {
   coalesceAgentAutocompleteCandidates,
-  getMentionableAgentPubkeys,
-  getSharedChannelIds,
-  isAgentIdentityInAllowedList,
+  relayAgentCanBeAdded,
 } from "@/features/agents/lib/agentAutocompleteEligibility";
 import { useIsArchivedPredicate } from "@/features/identity-archive/hooks";
 import { useClassifiedMembers } from "@/features/channels/lib/useClassifiedMembers";
@@ -155,7 +152,6 @@ export function MembersSidebar({
   >(() => new Set());
   const identityQuery = useIdentityQuery();
   const membersQuery = useChannelMembersQuery(channelId, open);
-  const channelsQuery = useChannelsQuery({ enabled: open });
   const addMembersMutation = useAddChannelMembersMutation(channelId);
   const changeRoleMutation = useMutation({
     mutationFn: async ({ pubkey, role }: { pubkey: string; role: string }) => {
@@ -272,21 +268,27 @@ export function MembersSidebar({
         agent,
       ]),
     );
-    const sharedChannelIds = getSharedChannelIds(channelsQuery.data);
-    const allowedAgentPubkeys = getMentionableAgentPubkeys({
-      currentPubkey,
-      eligibilityScope: { type: "community" },
-      managedAgentPubkeys: managedAgentsByPubkey.keys(),
-      relayAgents: relayAgentsQuery.data,
-      sharedChannelIds,
-    });
+    const relayByPubkey = new Map(
+      (relayAgentsQuery.data ?? []).map((agent) => [
+        normalizePubkey(agent.pubkey),
+        agent,
+      ]),
+    );
 
     const addCandidate = (candidate: AddMemberSearchCandidate) => {
       const pubkey = normalizePubkey(candidate.pubkey);
+      const relayAgent = relayByPubkey.get(pubkey);
+      // Local instances can attach through the existing managed-agent path.
+      // For a declared add policy, every candidate for that key uses it,
+      // including duplicate user-search hits classified as ordinary people.
+      const unavailableAgent = relayAgent?.channelAddPolicy
+        ? !relayAgentCanBeAdded(relayAgent, currentPubkey)
+        : (relayAgent || candidate.isAgent) &&
+          !managedAgentsByPubkey.has(pubkey);
       if (
         memberPubkeys.has(pubkey) ||
         isArchivedDiscovery(pubkey) ||
-        !isAgentIdentityInAllowedList(candidate, allowedAgentPubkeys)
+        unavailableAgent
       ) {
         return;
       }
@@ -365,7 +367,6 @@ export function MembersSidebar({
     });
   }, [
     canAddMembers,
-    channelsQuery.data,
     isArchivedDiscovery,
     currentPubkey,
     managedAgentsQuery.data,
@@ -377,8 +378,7 @@ export function MembersSidebar({
   const isAddSearchLoading =
     userSearchQuery.isLoading ||
     managedAgentsQuery.isLoading ||
-    relayAgentsQuery.isLoading ||
-    channelsQuery.isLoading;
+    relayAgentsQuery.isLoading;
   const handlePeopleSearchScroll = useUserSearchFetchMoreOnScroll(
     userSearchQuery,
     canAddMembers && normalizedDeferredSearchQuery.length > 0,

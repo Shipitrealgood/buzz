@@ -256,6 +256,8 @@ export type RelayMember = {
   createdAt: string;
 };
 export type RelayAgent = {
+  hostPubkey: string | null;
+  channelAddPolicy: "owner_only" | "anyone" | "nobody" | null;
   pubkey: string;
   ownerPubkey: string | null;
   name: string;

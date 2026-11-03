@@ -229,6 +229,15 @@ impl ManagedAgentRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayAgentInfo {
     pub pubkey: String,
+    /// Reported by the latest signed runtime event. Display provenance only.
+    #[serde(skip_deserializing)]
+    pub host_pubkey: Option<String>,
+    /// Effective channel-add hint. The relay authorizes the actual invitation.
+    #[serde(skip_deserializing)]
+    pub channel_add_policy: Option<String>,
+    /// Distinguish an authenticated 30177 from legacy OA ownership.
+    #[serde(skip)]
+    pub has_managed_policy: bool,
     #[serde(default)]
     pub owner_pubkey: Option<String>,
     pub name: String,

@@ -112,9 +112,9 @@ async fn query_all_relay_pages(
     }
 }
 
-fn retain_agents_allowed_by_build(agents: &mut Vec<RelayAgentInfo>, require_verified_owner: bool) {
-    if require_verified_owner {
-        agents.retain(|agent| agent.owner_pubkey.is_some());
+fn retain_agents_allowed_by_build(agents: &mut Vec<RelayAgentInfo>, require_verified_policy: bool) {
+    if require_verified_policy {
+        agents.retain(|agent| agent.has_managed_policy);
     }
 }
 
@@ -205,10 +205,21 @@ async fn list_relay_agents_for_selection(
                     "relay agent owner-profile query failed",
                 ),
             )?;
-            let owned_candidates = nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
+            let mut owned_candidates =
+                nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
+            // A DM roster may use an ordinary role. The caller already named
+            // these exact identities, so their verified OA can establish which
+            // are the viewer's agents without broadening the discovery query.
+            owned_candidates.extend(
+                nostr_convert::verified_agent_owners_from_profiles(&profile_events)
+                    .into_iter()
+                    .filter(|(_, owner)| owner == &viewer_pubkey)
+                    .map(|(agent, _)| agent),
+            );
             let mut member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
                 &membership_events,
                 &relay_pubkey,
+                &viewer_pubkey,
                 &owned_candidates,
             );
             member_agent_channel_ids.retain(|pubkey, _| requested_pubkeys.contains(pubkey));
@@ -229,6 +240,7 @@ async fn list_relay_agents_for_selection(
             let member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
                 &membership_events,
                 &relay_pubkey,
+                &viewer_pubkey,
                 &owned_candidates,
             );
             let candidate_pubkeys: Vec<String> = member_agent_channel_ids
@@ -284,8 +296,8 @@ async fn list_relay_agents_for_selection(
         &managed_agent_events,
         &profile_events,
     );
-    // Marked builds reject legacy directory records that lack a verified
-    // NIP-OA owner, but do not require that owner to equal the viewer. The
+    // Marked builds require verified managed policy even for OA-backed legacy
+    // records, but do not require that owner to equal the viewer. The
     // verified owner's signed respond_to policy remains the authorization
     // boundary for independently operated relay agents.
     retain_agents_allowed_by_build(
@@ -293,8 +305,14 @@ async fn list_relay_agents_for_selection(
         crate::managed_agents::owner_only_access_build(),
     );
     agents.retain(|agent| {
+        if requested_pubkeys.is_some_and(|keys| !keys.contains(&agent.pubkey)) {
+            return false;
+        }
+        // An exact OA-backed owner selection can prepare an invitation,
+        // including into a new DM. Only the roster below grants membership.
         member_agent_channel_ids.contains_key(&agent.pubkey)
-            || agent.owner_pubkey.as_deref() == Some(viewer_pubkey.as_str())
+            || (agent.owner_pubkey.as_deref() == Some(viewer_pubkey.as_str())
+                && (agent.has_managed_policy || requested_pubkeys.is_some()))
     });
     for agent in &mut agents {
         agent.channel_ids = member_agent_channel_ids
@@ -336,12 +354,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn marked_build_requires_verified_owner_without_requiring_viewer_ownership() {
+    fn marked_build_requires_verified_policy_without_requiring_viewer_ownership() {
         let cross_owner = "b".repeat(64);
         let mut agents = vec![
             RelayAgentInfo {
                 pubkey: "a".repeat(64),
                 owner_pubkey: Some(cross_owner.clone()),
+                has_managed_policy: true,
+                host_pubkey: None,
+                channel_add_policy: None,
                 name: "Verified cross-owner".to_string(),
                 agent_type: "agent".to_string(),
                 channels: Vec::new(),
@@ -353,8 +374,11 @@ mod tests {
             },
             RelayAgentInfo {
                 pubkey: "c".repeat(64),
-                owner_pubkey: None,
-                name: "Ownerless legacy".to_string(),
+                owner_pubkey: Some(cross_owner.clone()),
+                has_managed_policy: false,
+                host_pubkey: None,
+                channel_add_policy: None,
+                name: "OA-backed legacy".to_string(),
                 agent_type: "agent".to_string(),
                 channels: Vec::new(),
                 channel_ids: Vec::new(),
@@ -380,6 +404,9 @@ mod tests {
         let mut agents = vec![RelayAgentInfo {
             pubkey: "a".repeat(64),
             owner_pubkey: None,
+            has_managed_policy: false,
+            host_pubkey: None,
+            channel_add_policy: None,
             name: "Ownerless legacy".to_string(),
             agent_type: "agent".to_string(),
             channels: Vec::new(),

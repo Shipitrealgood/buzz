@@ -39,7 +39,7 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
         .sign_with_keys(&stranger)
         .unwrap();
     let events = Arc::new(Mutex::new(vec![
-        profile,
+        profile.clone(),
         policy(&agent_key),
         forged,
         stranger_profile,
@@ -187,6 +187,62 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
         .any(|filter| filter["kinds"] == serde_json::json!([30177])
             && filter["authors"] == serde_json::json!([owner_key])
             && filter.get("#d").is_none()));
+    // A-mode agents omit the 30177 owner coordinate. A shared bot
+    // membership seeds them on a fresh device, while an unindexed runtime
+    // alone cannot. Only the signed roster supplies actual channel IDs.
+    let host = Keys::generate().public_key().to_hex();
+    let runtime = EventBuilder::new(
+        Kind::Custom(10100),
+        serde_json::json!({
+            "name": "Scout", "host": host, "respond_to": "owner-only",
+            "channel_add_policy": "owner_only", "channel_ids": ["fabricated"],
+        })
+        .to_string(),
+    )
+    .sign_with_keys(&agent)
+    .unwrap();
+    *events.lock().unwrap() = vec![profile, runtime];
+    assert!(list_relay_agents_for_state(&state)
+        .await
+        .unwrap()
+        .is_empty());
+    let bot_membership = EventBuilder::new(Kind::Custom(39002), "")
+        .tags([
+            Tag::parse(["d", "general"]).unwrap(),
+            Tag::parse(["p", &owner_key, "", "member"]).unwrap(),
+            Tag::parse(["p", &agent_key, "", "bot"]).unwrap(),
+        ])
+        .sign_with_keys(&relay)
+        .unwrap();
+    events.lock().unwrap().push(bot_membership);
+    let legacy = list_relay_agents_for_state(&state).await.unwrap();
+    assert_eq!(legacy.len(), 1);
+    assert_eq!(legacy[0].owner_pubkey.as_deref(), Some(owner_key.as_str()));
+    assert!(!legacy[0].has_managed_policy);
+    assert_eq!(legacy[0].host_pubkey.as_deref(), Some(host.as_str()));
+    assert_eq!(legacy[0].status, "unknown");
+    assert_eq!(legacy[0].channel_ids, ["general"]);
+    let dm = EventBuilder::new(Kind::Custom(39002), "")
+        .tags([
+            Tag::parse(["d", "dm"]).unwrap(),
+            Tag::parse(["p", &owner_key, "", "member"]).unwrap(),
+            Tag::parse(["p", &agent_key, "", "member"]).unwrap(),
+        ])
+        .sign_with_keys(&relay)
+        .unwrap();
+    events.lock().unwrap().push(dm);
+    let in_dm = list_relay_agents_for_selection(&state, Some(&requested), Some("dm"))
+        .await
+        .unwrap();
+    assert_eq!(in_dm[0].channel_ids, ["dm"]);
+    let outside = list_relay_agents_for_selection(&state, Some(&requested), Some("elsewhere"))
+        .await
+        .unwrap();
+    assert_eq!(outside.len(), 1, "owner can prepare an invite");
+    assert!(
+        outside[0].channel_ids.is_empty(),
+        "publication still needs membership"
+    );
     server.abort();
     crate::relay_admission::reset_rate_limit_gate();
 }

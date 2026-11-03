@@ -98,7 +98,7 @@ export function useManagedAgentActions() {
   // AppShell); this hook only reads derived state.
 
   const managedPubkeys = React.useMemo(
-    () => new Set(managedAgents.map((agent) => agent.pubkey)),
+    () => new Set(managedAgents.map((agent) => normalizePubkey(agent.pubkey))),
     [managedAgents],
   );
 

@@ -55,6 +55,8 @@ type MockSearchProfileSeed = {
 };
 
 type MockRelayAgentSeed = {
+  hostPubkey?: string | null;
+  channelAddPolicy?: "owner_only" | "anyone" | "nobody" | null;
   pubkey: string;
   ownerPubkey?: string | null;
   name: string;

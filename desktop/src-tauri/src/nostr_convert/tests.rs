@@ -521,6 +521,7 @@ fn managed_agent_candidates_use_only_relay_signed_bot_membership() {
     let channel_ids = member_agent_channel_ids_from_events(
         &[forged, general],
         &relay_keys.public_key().to_hex(),
+        &stranger,
         &Default::default(),
     );
 
@@ -783,9 +784,20 @@ fn known_owned_agents_have_membership_independent_of_role() {
         ])
         .sign_with_keys(&relay)
         .unwrap();
+    let unrelated = member_agent_channel_ids_from_events(
+        std::slice::from_ref(&event),
+        &relay.public_key().to_hex(),
+        &Keys::generate().public_key().to_hex(),
+        &std::collections::HashSet::from([agent.clone()]),
+    );
+    assert!(
+        unrelated.is_empty(),
+        "a signed roster must include the viewer"
+    );
     let memberships = member_agent_channel_ids_from_events(
         &[event],
         &relay.public_key().to_hex(),
+        &agent,
         &std::collections::HashSet::from([agent.clone()]),
     );
     assert_eq!(memberships.get(&agent), Some(&vec!["general".to_string()]));

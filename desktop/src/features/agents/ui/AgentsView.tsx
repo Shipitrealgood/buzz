@@ -18,6 +18,7 @@ import { TeamSnapshotImportDialog } from "./TeamSnapshotImportDialog";
 import { TeamShareDialog } from "./TeamShareDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
+import { HostAgentsSection } from "./HostAgentsSection";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useManagedAgentActions } from "./useManagedAgentActions";
@@ -276,6 +277,12 @@ export function AgentsView() {
                 void personas.handleSetActive(persona, false, "library");
               }}
               onDeletePersona={personas.openDelete}
+            />
+
+            <HostAgentsSection
+              agents={agents.relayAgentsQuery.data}
+              managedPubkeys={agents.managedPubkeys}
+              onOpenProfile={openProfilePanel}
             />
 
             <TeamsSection

@@ -26,6 +26,8 @@ fn runtime(keys: &Keys, status: Option<Value>, timestamp: u64) -> Event {
     let mut content = serde_json::json!({
         "name": "Runtime name",
         "owner_pubkey": "b".repeat(64),
+        "host": keys.public_key().to_hex(),
+        "channel_add_policy": "anyone",
         "respond_to": "anyone",
         "respond_to_allowlist": ["b".repeat(64)],
         "channels": ["Untrusted"],
@@ -139,13 +141,20 @@ fn forged_latest_runtime_cannot_supply_or_revive_availability() {
     value["content"] = json!(r#"{"status":"online"}"#);
     let forged: Event = serde_json::from_value(value).unwrap();
     assert!(forged.verify().is_err());
-    assert_merge(&[old, forged], &profile, &policy, "unknown");
+    assert_merge(&[old.clone(), forged.clone()], &profile, &policy, "unknown");
+    let rows = relay_agents_from_directory_events(&[old, forged], &[policy], &[profile]);
+    assert!(rows[0].host_pubkey.is_none());
+    assert!(rows[0].channel_add_policy.is_none());
 }
 
 #[test]
 fn host_fleet_keeps_attested_identity_separate_from_policy_and_membership() {
     let host = Keys::generate().public_key().to_hex();
-    for (name, mode) in [("Claude", "anyone"), ("Grok", "anyone"), ("Scout", "owner-only")] {
+    for (name, mode) in [
+        ("Claude", "anyone"),
+        ("Grok", "anyone"),
+        ("Scout", "owner-only"),
+    ] {
         let (agent, profile, policy) = fixture();
         let content = json!({
             "name": name, "display_name": name, "agent_type": "agent",
@@ -156,10 +165,14 @@ fn host_fleet_keeps_attested_identity_separate_from_policy_and_membership() {
         });
         let event = EventBuilder::new(Kind::Custom(10100), content.to_string())
             .tags(profile.tags.iter().cloned())
-            .sign_with_keys(&agent).unwrap();
+            .sign_with_keys(&agent)
+            .unwrap();
         for policies in [&[][..], std::slice::from_ref(&policy)] {
             let rows = relay_agents_from_directory_events(
-                std::slice::from_ref(&event), policies, std::slice::from_ref(&profile));
+                std::slice::from_ref(&event),
+                policies,
+                std::slice::from_ref(&profile),
+            );
             assert_eq!(rows.len(), 1);
             let row = serde_json::to_value(&rows[0]).unwrap();
             assert_eq!(row["pubkey"], agent.public_key().to_hex());
@@ -167,9 +180,42 @@ fn host_fleet_keeps_attested_identity_separate_from_policy_and_membership() {
             assert_eq!(row["host_pubkey"], host);
             assert_eq!(row["channel_add_policy"], "owner_only");
             assert_eq!(row["channel_ids"], json!([]));
-            assert_eq!(row["respond_to"], if policies.is_empty() {mode} else {"allowlist"});
+            assert_eq!(
+                row["respond_to"],
+                if policies.is_empty() {
+                    mode
+                } else {
+                    "allowlist"
+                }
+            );
         }
         let rows = relay_agents_from_directory_events(&[event], &[], &[]);
-        assert_eq!(rows[0].owner_pubkey, None, "runtime cannot self-assign an owner");
+        assert_eq!(
+            rows[0].owner_pubkey, None,
+            "runtime cannot self-assign an owner"
+        );
     }
+}
+
+#[test]
+fn malformed_latest_host_and_add_policy_do_not_revive_old_values() {
+    let (keys, profile, policy) = fixture();
+    let old = runtime(&keys, Some(json!("online")), 10);
+    let new = EventBuilder::new(
+        Kind::Custom(10100),
+        json!({
+            "host":"not-a-key", "host_pubkey":keys.public_key().to_hex(),
+            "channel_add_policy":"future-mode", "has_managed_policy":true,
+        })
+        .to_string(),
+    )
+    .custom_created_at(nostr::Timestamp::from(20))
+    .sign_with_keys(&keys)
+    .unwrap();
+    let rows = relay_agents_from_directory_events(&[old, new], &[policy], &[profile]);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].name, "Policy name");
+    assert_eq!(rows[0].host_pubkey, None);
+    assert_eq!(rows[0].channel_add_policy, None);
+    assert_eq!(rows[0].status, "unknown");
 }

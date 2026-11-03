@@ -97,7 +97,9 @@ type RawSearchResponse = {
   found: number;
 };
 
-type RawRelayAgent = {
+export type RawRelayAgent = {
+  host_pubkey?: string | null;
+  channel_add_policy?: RelayAgent["channelAddPolicy"];
   pubkey: string;
   owner_pubkey?: string | null;
   name: string;
@@ -585,8 +587,10 @@ export async function createAuthEvent(input: {
   const eventJson = await invokeTauri<string>("create_auth_event", input);
   return JSON.parse(eventJson) as RelayEvent;
 }
-function fromRawRelayAgent(agent: RawRelayAgent): RelayAgent {
+export function fromRawRelayAgent(agent: RawRelayAgent): RelayAgent {
   return {
+    hostPubkey: agent.host_pubkey ?? null,
+    channelAddPolicy: agent.channel_add_policy ?? null,
     pubkey: agent.pubkey,
     ownerPubkey: agent.owner_pubkey ?? null,
     name: agent.name,

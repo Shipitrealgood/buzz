@@ -142,6 +142,22 @@ export function getMentionableAgentPubkeys({
   return pubkeys;
 }
 
+/** The picker mirrors signed add policy. The relay authorizes the actual add. */
+export function relayAgentCanBeAdded(
+  agent: Pick<RelayAgent, "ownerPubkey" | "channelAddPolicy">,
+  viewer?: string | null,
+) {
+  return (
+    agent.channelAddPolicy === "anyone" ||
+    Boolean(
+      agent.channelAddPolicy === "owner_only" &&
+        viewer &&
+        agent.ownerPubkey &&
+        normalizePubkey(agent.ownerPubkey) === normalizePubkey(viewer),
+    )
+  );
+}
+
 export function isAgentIdentityInAllowedList(
   candidate: { isAgent?: boolean; pubkey: string },
   allowedAgentPubkeys: ReadonlySet<string>,

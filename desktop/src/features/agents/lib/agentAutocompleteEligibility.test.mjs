@@ -10,6 +10,7 @@ import {
   getSharedChannelIds,
   isAgentDirectoryReady,
   isAgentIdentityInAllowedList,
+  relayAgentCanBeAdded,
   isAgentMentionChannelType,
   relayAgentCanRespondInChannel,
   relayAgentIsSharedWithUser,
@@ -636,4 +637,22 @@ test("DM ownership is independent of local configuration and still requires memb
     }),
     new Set([PUB_A, PUB_B]),
   );
+});
+
+test("host agent channel-add policy is independent of mention access", () => {
+  for (const policy of ["anyone", "owner_only", "nobody", null, "malformed"]) {
+    const agent = { ownerPubkey: "bc".repeat(32), channelAddPolicy: policy };
+    assert.equal(
+      relayAgentCanBeAdded(agent, agent.ownerPubkey.toUpperCase()),
+      policy === "anyone" || policy === "owner_only",
+    );
+    assert.equal(
+      relayAgentCanBeAdded(agent, "cd".repeat(32)),
+      policy === "anyone",
+    );
+    assert.equal(
+      relayAgentCanBeAdded({ ...agent, ownerPubkey: null }, agent.ownerPubkey),
+      policy === "anyone",
+    );
+  }
 });

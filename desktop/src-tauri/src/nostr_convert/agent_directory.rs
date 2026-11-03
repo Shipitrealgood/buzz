@@ -26,7 +26,7 @@ fn event_is_newer(candidate: &Event, previous: &Event) -> bool {
         || (candidate.created_at == previous.created_at && candidate.id < previous.id)
 }
 
-fn relay_agents_from_legacy_events(events: &[Event]) -> Vec<RelayAgentInfo> {
+fn latest_runtime_events(events: &[Event]) -> HashMap<String, &Event> {
     let mut latest: HashMap<String, &Event> = HashMap::new();
     for event in events {
         let pubkey = event.pubkey.to_hex();
@@ -39,35 +39,38 @@ fn relay_agents_from_legacy_events(events: &[Event]) -> Vec<RelayAgentInfo> {
     }
 
     latest
-        .into_values()
-        .filter_map(|event| {
-            if event.kind != nostr::Kind::Custom(10100) || event.verify().is_err() {
-                return None;
-            }
-            let value = agents_from_events(std::slice::from_ref(event));
-            let mut agent: RelayAgentInfo =
-                serde_json::from_value(value.get("agents")?.as_array()?.first()?.clone()).ok()?;
-            // The generic converter defaults missing status to offline for
-            // compatibility. Discovery must retain only explicit, known runtime
-            // evidence from this verified latest event, never that fallback.
-            agent.status = serde_json::from_str::<serde_json::Value>(&event.content)
-                .ok()
-                .and_then(|content| {
-                    content
-                        .get("status")?
-                        .as_str()
-                        .filter(|status| matches!(*status, "online" | "away" | "offline"))
-                        .map(str::to_owned)
-                })
-                .unwrap_or_else(|| "unknown".to_string());
-            // Legacy directory entries are not authenticated managed-policy
-            // coordinates, so they must not drive the live 30177 watcher.
-            agent.owner_pubkey = None;
-            // Channel membership is authoritative only in relay-signed kind:39002.
-            agent.channel_ids.clear();
-            Some(agent)
-        })
-        .collect()
+}
+
+fn relay_agent_from_runtime(
+    event: &Event,
+    verified_owner: Option<&String>,
+) -> Option<RelayAgentInfo> {
+    if event.kind != nostr::Kind::Custom(10100) || event.verify().is_err() {
+        return None;
+    }
+    let value = agents_from_events(std::slice::from_ref(event));
+    let mut agent: RelayAgentInfo =
+        serde_json::from_value(value.get("agents")?.as_array()?.first()?.clone()).ok()?;
+    let content: serde_json::Value = serde_json::from_str(&event.content).ok()?;
+    // The generic converter supplies compatibility defaults. Discovery exposes
+    // only evidence from the signed event and the separately verified profile.
+    agent.status = content["status"]
+        .as_str()
+        .filter(|s| matches!(*s, "online" | "away" | "offline"))
+        .unwrap_or("unknown")
+        .to_owned();
+    agent.host_pubkey = content["host"]
+        .as_str()
+        .and_then(|key| nostr::PublicKey::from_hex(key).ok())
+        .filter(|key| key.xonly().is_ok())
+        .map(|key| key.to_hex());
+    agent.channel_add_policy = content["channel_add_policy"]
+        .as_str()
+        .filter(|value| matches!(*value, "owner_only" | "anyone" | "nobody"))
+        .map(str::to_owned);
+    agent.owner_pubkey = verified_owner.cloned();
+    agent.channel_ids.clear();
+    Some(agent)
 }
 
 /// Merge self-authored kind:10100 runtime profiles with verified Desktop-managed
@@ -78,20 +81,29 @@ pub fn relay_agents_from_directory_events(
     managed_agent_events: &[Event],
     profile_events: &[Event],
 ) -> Vec<RelayAgentInfo> {
-    let verified_policies = latest_verified_managed_policies(managed_agent_events, profile_events);
-    let mut agents: HashMap<String, RelayAgentInfo> =
-        relay_agents_from_legacy_events(directory_events)
-            .into_iter()
-            .map(|agent| (agent.pubkey.clone(), agent))
-            .collect();
+    let owners = verified_agent_owners_from_profiles(profile_events);
+    let verified_policies = latest_verified_managed_policies(managed_agent_events, &owners);
+    let runtimes = latest_runtime_events(directory_events);
+    let mut agents: HashMap<String, RelayAgentInfo> = runtimes
+        .iter()
+        .filter_map(|(key, event)| {
+            relay_agent_from_runtime(event, owners.get(key)).map(|agent| (key.clone(), agent))
+        })
+        .collect();
     for (agent_pubkey, event) in verified_policies {
-        // Remove even when policy parsing fails: invalid latest policy must not
-        // revive runtime permissions. Only verified runtime liveness survives
-        // a valid policy overlay; ownership, permissions and membership do not.
+        // Invalid latest policy reserves the coordinate. An agent-signed
+        // runtime can describe its host, availability and separate add policy,
+        // but cannot restore permissions or claim channel membership.
         let runtime = agents.remove(&agent_pubkey);
         if let Some(mut agent) = relay_agent_from_managed_policy(&agent_pubkey, event) {
             if let Some(runtime) = runtime {
                 agent.status = runtime.status;
+                agent.host_pubkey = runtime.host_pubkey;
+                agent.channel_add_policy = runtime.channel_add_policy;
+            } else if !runtimes.contains_key(&agent_pubkey) {
+                // Preserve owner invitations for a policy-only identity.
+                // A returned but invalid runtime must never use this fallback.
+                agent.channel_add_policy = Some("owner_only".to_owned());
             }
             agents.insert(agent_pubkey, agent);
         }
@@ -127,10 +139,8 @@ pub fn verified_agent_owners_from_profiles(events: &[Event]) -> HashMap<String, 
 
 fn latest_verified_managed_policies<'a>(
     managed_agent_events: &'a [Event],
-    profile_events: &[Event],
+    verified_owners: &HashMap<String, String>,
 ) -> HashMap<String, &'a Event> {
-    let verified_owners = verified_agent_owners_from_profiles(profile_events);
-
     let mut latest: HashMap<String, &'a Event> = HashMap::new();
     for event in managed_agent_events {
         let Some(agent_pubkey) = first_tag_value(event, "d") else {
@@ -158,6 +168,9 @@ fn relay_agent_from_managed_policy(agent_pubkey: &str, event: &Event) -> Option<
     let content = managed_agent_content_from_event(event).ok()?;
     Some(RelayAgentInfo {
         pubkey: agent_pubkey.to_string(),
+        host_pubkey: None,
+        channel_add_policy: None,
+        has_managed_policy: true,
         owner_pubkey: Some(event.pubkey.to_hex()),
         name: content.name,
         agent_type: "agent".to_string(),
@@ -178,7 +191,8 @@ pub fn relay_agents_from_managed_agent_events(
     managed_agent_events: &[Event],
     profile_events: &[Event],
 ) -> Vec<RelayAgentInfo> {
-    let mut agents: Vec<_> = latest_verified_managed_policies(managed_agent_events, profile_events)
+    let owners = verified_agent_owners_from_profiles(profile_events);
+    let mut agents: Vec<_> = latest_verified_managed_policies(managed_agent_events, &owners)
         .into_iter()
         .filter_map(|(agent_pubkey, event)| relay_agent_from_managed_policy(&agent_pubkey, event))
         .collect();
@@ -192,6 +206,7 @@ pub fn relay_agents_from_managed_agent_events(
 pub fn member_agent_channel_ids_from_events(
     events: &[Event],
     relay_pubkey: &str,
+    viewer_pubkey: &str,
     known_agent_pubkeys: &std::collections::HashSet<String>,
 ) -> HashMap<String, Vec<String>> {
     let mut latest: HashMap<String, &Event> = HashMap::new();
@@ -212,6 +227,23 @@ pub fn member_agent_channel_ids_from_events(
             latest.insert(channel_id.to_string(), event);
         }
     }
+    latest.retain(|_, event| {
+        tags_named(event, "p").any(|tag| {
+            tag.get(1)
+                .is_some_and(|key| key.eq_ignore_ascii_case(viewer_pubkey))
+        })
+    });
+    // Once a bot role seeds an agent, its ordinary memberships in the other
+    // signed, visible rosters are equally authoritative.
+    let mut agents = known_agent_pubkeys.clone();
+    for event in latest.values() {
+        agents.extend(
+            tags_named(event, "p")
+                .filter(|tag| tag.get(3).map(String::as_str) == Some("bot"))
+                .filter_map(|tag| tag.get(1))
+                .map(|key| key.to_ascii_lowercase()),
+        );
+    }
     let mut channel_ids: HashMap<String, BTreeSet<String>> = HashMap::new();
     for (channel_id, event) in latest {
         for tag in tags_named(event, "p") {
@@ -222,9 +254,7 @@ pub fn member_agent_channel_ids_from_events(
                 continue;
             };
             let pubkey = pubkey.to_hex();
-            if tag.get(3).map(String::as_str) != Some("bot")
-                && !known_agent_pubkeys.contains(&pubkey)
-            {
+            if !agents.contains(&pubkey) {
                 continue;
             }
             channel_ids
