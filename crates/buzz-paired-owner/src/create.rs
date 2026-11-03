@@ -23,12 +23,22 @@ pub struct Draft {
 }
 
 /// Status suitable for UI display, scoped to the device's original request.
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RequestView {
     /// Tap identifier.
     pub request_id: String,
+    /// Immutable display name and selected catalog runtime.
+    pub name: String,
+    /// Runtime from the initiating tap.
+    pub runtime: String,
+    /// Response policy used by the native build gate on resume.
+    pub policy: Policy,
+    /// Authorized channels, exactly as selected.
+    pub channels: Vec<String>,
     /// Authenticated phase, or unresolved after loss of delivery.
     pub state: String,
+    /// Last local reconciliation error, separate from authenticated host state.
+    pub issue: Option<String>,
     /// Pinned candidate agent key, once verified.
     pub agent: Option<String>,
     /// Host-reported step codes, when a terminal receipt exists.
@@ -48,8 +58,12 @@ struct Request {
     credentials: Option<Packet>,
     agent: Option<String>,
     result: Option<Packet>,
+    #[serde(default)]
+    terminal_state: Option<String>,
     public: Vec<Event>,
     published: usize,
+    #[serde(default)]
+    issue: Option<String>,
     #[serde(default)]
     verified_at: Option<u64>,
 }
@@ -79,13 +93,64 @@ impl Device {
         catalog_id: &str,
         draft: Draft,
     ) -> Result<(String, Packet)> {
+        self.create_once(selected, keys, s, catalog_id, &random()?, draft)
+    }
+
+    /// Return only the exact persisted tap on duplicate IPC delivery.
+    pub(crate) fn saved_tap(
+        db: &Connection,
+        keys: &Keys,
+        s: &Scope,
+        r: &str,
+        catalog_id: &str,
+        draft: &Draft,
+    ) -> Result<Option<Packet>> {
+        use rusqlite::OptionalExtension;
+        crate::http::bounded_id(r)?;
+        let saved: Option<(String, String)> = db
+            .query_row("SELECT scope,data FROM requests WHERE r=?", [r], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .optional()?;
+        let Some((scope, data)) = saved else {
+            return Ok(None);
+        };
+        ensure!(
+            scope == coordinate(s)?,
+            "tap belongs to another host or community"
+        );
+        let req: Request = serde_json::from_str(&data)?;
+        let signed = restore_sent(keys, s, &req.intent, &id(&req.intent)?)?;
+        ensure!(
+            &req.draft == draft
+                && matches!(signed.body,Body::Create{request_id,catalog_id:ref original,..} if request_id==r && original==catalog_id),
+            "tap inputs changed"
+        );
+        Ok(Some(req.intent))
+    }
+
+    pub(crate) fn create_once(
+        &mut self,
+        selected: &str,
+        keys: &Keys,
+        s: &Scope,
+        catalog_id: &str,
+        r: &str,
+        draft: Draft,
+    ) -> Result<(String, Packet)> {
         session(s, selected, keys)?;
         let now = now()?;
         self.check_time(now)?;
+        if let Some(packet) = Self::saved_tap(&self.db, keys, s, r, catalog_id, &draft)? {
+            return Ok((r.into(), packet));
+        }
         ensure!(catalog_id == self.catalog(s, now)?, "catalog changed");
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(packet) = Self::saved_tap(&tx, keys, s, r, catalog_id, &draft)? {
+            return Ok((r.into(), packet));
+        }
         let g = grant(&tx, s)?;
         ensure!(
             g.active()
@@ -93,7 +158,10 @@ impl Device {
                 && g.runtimes.contains(&draft.runtime),
             "runtime not offered"
         );
-        let r = random()?;
+        let pending:i64=tx.query_row("SELECT count(*) FROM requests WHERE scope=? AND json_extract(data,'$.result') IS NULL
+            AND (json_extract(data,'$.intent.route.expires_at')>? OR json_extract(data,'$.commit') IS NOT NULL)",params![coordinate(s)?,now],|row|row.get(0))?;
+        ensure!(pending < 8, "eight requests already pending on this host");
+        let r = r.to_owned();
         let intent = seal(
             keys,
             s,
@@ -119,8 +187,10 @@ impl Device {
             credentials: None,
             agent: None,
             result: None,
+            terminal_state: None,
             public: vec![],
             published: 0,
+            issue: None,
             verified_at: None,
         };
         tx.execute(
@@ -148,6 +218,18 @@ impl Device {
         self.check_time(now)?;
         let m = open(keys, s, p, now)?;
         ensure!(p.route.r.as_deref() == Some(r), "wrong request");
+        let discovered = if matches!(&m.body, Body::KeyOffer { .. } | Body::Committed { .. }) {
+            self.local_keys
+                .as_ref()
+                .map(|reader| reader())
+                .transpose()?
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        if !discovered.is_empty() {
+            self.remember_identities(discovered)?;
+        }
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -212,8 +294,7 @@ impl Device {
                     candidate_unused.map(|k| k.to_hex()).as_deref() == Some(agent.as_str()),
                     "candidate identity unavailable or pre-existing"
                 );
-                let other:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM requests WHERE json_extract(data,'$.agent')=? AND NOT(scope=? AND r=?))",params![agent,coordinate(s)?,r],|row|row.get(0))?;
-                ensure!(!other, "candidate belongs to another tap");
+                candidate_available(&tx, s, r, &agent)?;
                 // open() checked the exact PoP transcript, owner/host exclusion and current expiry.
                 req.agent = Some(agent.clone());
                 req.offer = Some(p.clone());
@@ -315,6 +396,7 @@ impl Device {
                     request_id == r && signed_draft == req.draft,
                     "original tap changed"
                 );
+                candidate_available(&tx, s, r, &agent)?;
                 let (oa, registration, events) = credentials(keys, &agent, &signed_draft, now)?;
                 req.credentials = Some(seal(
                     keys,
@@ -351,32 +433,13 @@ impl Device {
                         && (state != "ready" || commit_id.is_some()),
                     "result disagrees with original tap"
                 );
-                if state == "ready" {
-                    let mut expected = vec![
-                        "profile-verified".to_owned(),
-                        "directory-verified".into(),
-                        "registration-verified".into(),
-                        "unit-active".into(),
-                        "presence-confirmed".into(),
-                        "verified".into(),
-                    ];
-                    expected.extend(
-                        req.draft
-                            .channels
-                            .iter()
-                            .map(|c| format!("membership-verified:{c}")),
-                    );
-                    ensure!(
-                        steps.len() == expected.len()
-                            && expected.iter().all(|step| steps.contains(step)),
-                        "ready receipt lacks exact provisioning evidence"
-                    );
-                }
+                validate_terminal_steps(&state, &steps, &req.draft.channels, commit_id.is_some())?;
                 if let Some(result) = &req.result {
                     ensure!(id(result)? == m.id, "conflicting results");
                     return Ok(());
                 }
                 req.result = Some(p.clone());
+                req.terminal_state = Some(state);
             }
             _ => bail!("unexpected response"),
         }
@@ -416,6 +479,14 @@ impl Device {
     ) -> Result<Option<Event>> {
         session(s, selected, keys)?;
         let req = read(&self.db, s, r)?;
+        if let Some(p) = &req.result {
+            let Body::Result { state, .. } = open(keys, s, p, now()?)?.body else {
+                bail!("invalid terminal evidence")
+            };
+            if state != "ready" {
+                return Ok(None);
+            }
+        }
         Ok(req.public.get(req.published).cloned())
     }
     /// Idempotently checkpoint a completed community read-back.
@@ -473,17 +544,46 @@ impl Device {
         };
         Ok(RequestView {
             request_id: r.into(),
+            issue: req.issue,
+            name: req.draft.name,
+            runtime: req.draft.runtime,
+            policy: req.draft.policy,
+            channels: req.draft.channels,
             state,
             agent: req.agent,
             steps,
         })
     }
+    /// Keep a local transport/reconciliation diagnostic without changing host-reported state.
+    pub fn note_issue(
+        &mut self,
+        selected: &str,
+        keys: &Keys,
+        s: &Scope,
+        r: &str,
+        issue: Option<String>,
+    ) -> Result<()> {
+        session(s, selected, keys)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut req = read(&tx, s, r)?;
+        if req.issue != issue {
+            req.issue = issue;
+            save(&tx, s, r, &req)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Enumerate this profile's original requests for a specific owner/host binding.
     pub fn requests(&self, selected: &str, keys: &Keys, s: &Scope) -> Result<Vec<RequestView>> {
         session(s, selected, keys)?;
         let mut q = self
             .db
-            .prepare("SELECT r FROM requests WHERE scope=? ORDER BY rowid DESC")?;
+            .prepare("SELECT r FROM requests WHERE scope=? ORDER BY
+            ((json_extract(data,'$.result') IS NULL AND (json_extract(data,'$.intent.route.expires_at')>unixepoch() OR json_extract(data,'$.commit') IS NOT NULL))
+              OR (json_extract(data,'$.terminal_state')='ready' AND json_extract(data,'$.verified_at') IS NULL)) DESC, rowid DESC LIMIT 40")?;
         let rows = q.query_map([coordinate(s)?], |row| row.get::<_, String>(0))?;
         rows.map(|r| self.request(selected, keys, s, &r?)).collect()
     }
@@ -591,6 +691,43 @@ impl Device {
         session(s, selected, keys)?;
         self.catalog(s, now()?)
     }
+}
+
+pub(super) fn validate_terminal_steps(
+    state: &str,
+    steps: &[String],
+    channels: &[String],
+    committed: bool,
+) -> Result<()> {
+    ensure!(
+        !committed || matches!(state, "ready" | "failed"),
+        "invalid post-commit state"
+    );
+    ensure!(state != "ready" || committed, "ready requires commit");
+    if state == "ready" {
+        let mut expected = vec![
+            "profile-verified".to_owned(),
+            "directory-verified".into(),
+            "registration-verified".into(),
+            "unit-active".into(),
+            "presence-confirmed".into(),
+            "verified".into(),
+        ];
+        expected.extend(channels.iter().map(|c| format!("membership-verified:{c}")));
+        ensure!(
+            steps.len() == expected.len() && expected.iter().all(|step| steps.contains(step)),
+            "ready receipt lacks exact provisioning evidence"
+        );
+    }
+    Ok(())
+}
+
+fn candidate_available(db: &Connection, s: &Scope, r: &str, agent: &str) -> Result<()> {
+    let known:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM known_identities WHERE key=?1)
+        OR EXISTS(SELECT 1 FROM grants WHERE json_extract(scope,'$.host')=?1 OR json_extract(scope,'$.owner')=?1)
+        OR EXISTS(SELECT 1 FROM requests WHERE json_extract(data,'$.agent')=?1 AND NOT(scope=?2 AND r=?3))",params![agent,coordinate(s)?,r],|row|row.get(0))?;
+    ensure!(!known, "candidate is an existing identity");
+    Ok(())
 }
 
 fn credentials(

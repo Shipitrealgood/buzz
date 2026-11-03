@@ -170,17 +170,25 @@ pub struct SavedClaim {
     id: EventId,
     created_at: u64,
     checked_at: u64,
+    proof_digest: [u8; 32],
 }
 
 impl SavedClaim {
-    fn from_event(event: &Event, offer: &Offer, now: u64) -> Self {
+    fn from_event(event: &Event, offer: &Offer, now: u64, proof: &Proof) -> Self {
         Self {
             offer: offer.clone(),
             owner: event.pubkey,
             id: event.id,
             created_at: event.created_at.as_secs(),
             checked_at: now,
+            proof_digest: proof.digest(),
         }
+    }
+
+    /// Distinguish an explicitly corrected invitation from an identical retry
+    /// without returning the encrypted claim's console secret.
+    pub fn matches_proof(&self, proof: &Proof) -> bool {
+        bool::from(self.proof_digest.ct_eq(&proof.digest()))
     }
 
     /// Exact event ID to persist independently alongside the trusted invitation scope.
@@ -343,7 +351,7 @@ pub fn build_claim(
     let mut body = Body::new(Operation::PairClaim, offer, owner.public_key());
     body.proof = Some(hex::encode(proof.0.as_ref()));
     let event = seal(owner, offer.host, offer, &body, now)?;
-    let claim = SavedClaim::from_event(&event, offer, now);
+    let claim = SavedClaim::from_event(&event, offer, now, proof);
     Ok((event, claim))
 }
 
@@ -449,7 +457,7 @@ pub fn restore_claim(
     if event.id != expected_id {
         return Err(Error::Message);
     }
-    open(
+    let body = open(
         &event,
         Reader::Owner(owner),
         owner.public_key(),
@@ -457,7 +465,8 @@ pub fn restore_claim(
         Operation::PairClaim,
         now,
     )?;
-    Ok(SavedClaim::from_event(&event, offer, now))
+    let proof = Proof::from_hex(body.proof.as_deref().ok_or(Error::Message)?)?;
+    Ok(SavedClaim::from_event(&event, offer, now, &proof))
 }
 
 /// Verify a fresh claim against local offer data. Explicitly pass `None` for
@@ -489,7 +498,9 @@ pub fn verify_claim(
     if !bool::from(proof.digest().ct_eq(expected_digest)) {
         return Err(Error::Proof(event.id));
     }
-    Ok(VerifiedClaim(SavedClaim::from_event(&event, offer, now)))
+    Ok(VerifiedClaim(SavedClaim::from_event(
+        &event, offer, now, &proof,
+    )))
 }
 
 /// Sign an acknowledgement referencing the exact proof-verified claim.

@@ -40,6 +40,15 @@ impl std::fmt::Display for CursorPruned {
 }
 impl std::error::Error for CursorPruned {}
 
+#[derive(Debug)]
+struct HttpStatus(reqwest::StatusCode);
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "community endpoint returned HTTP {}", self.0.as_u16())
+    }
+}
+impl std::error::Error for HttpStatus {}
+
 /// Native transport pinned to one selected canonical community and signer.
 pub struct Endpoint {
     client: Client,
@@ -95,11 +104,9 @@ impl Endpoint {
         if status == reqwest::StatusCode::GONE {
             return Err(CursorPruned.into());
         }
-        ensure!(
-            status.is_success(),
-            "community endpoint returned HTTP {}",
-            status.as_u16()
-        );
+        if !status.is_success() {
+            return Err(HttpStatus(status).into());
+        }
         let mut bytes = Vec::new();
         while let Some(chunk) = res
             .chunk()
@@ -197,7 +204,7 @@ impl Endpoint {
         Ok(b)
     }
     /// List scoped bindings including locally revoked hosts from another owner device.
-    pub async fn hosts(&self, keys: &Keys) -> Result<Vec<Binding>> {
+    pub async fn hosts(&self, signer: &impl Fn() -> Result<Keys>) -> Result<Vec<Binding>> {
         #[derive(Deserialize)]
         struct Hosts {
             hosts: Vec<Binding>,
@@ -206,7 +213,11 @@ impl Endpoint {
         let mut path = "/api/paired-hosts/v1/hosts?include=history".to_owned();
         let mut all = vec![];
         for _ in 0..100 {
-            let page: Hosts = self.send(keys, &path, None).await?;
+            let page: Hosts = self.send(&signer()?, &path, None).await?;
+            ensure!(
+                signer()?.public_key() == self.owner,
+                "active signer changed"
+            );
             all.extend(page.hosts);
             let Some(cursor) = page.after else {
                 return Ok(all);
@@ -265,15 +276,21 @@ impl Endpoint {
         }
         Ok(events)
     }
-    async fn unused(&self, keys: &Keys, pk: &str) -> Result<bool> {
-        Ok(self
-            .query(keys, json!({"kinds":[0,1,9,10100],"authors":[pk],"limit":1}))
-            .await?
-            .is_empty()
-            && self
-                .query(keys, json!({"kinds":[30177],"#d":[pk],"limit":1}))
-                .await?
-                .is_empty())
+    async fn unused(&self, signer: &impl Fn() -> Result<Keys>, pk: &str) -> Result<bool> {
+        for filter in [
+            json!({"kinds":[0,1,9,10100],"authors":[pk],"limit":1}),
+            json!({"kinds":[30177],"#d":[pk],"limit":1}),
+        ] {
+            let matches = self.query(&signer()?, filter).await?;
+            ensure!(
+                signer()?.public_key() == self.owner,
+                "active signer changed"
+            );
+            if !matches.is_empty() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     pub(crate) async fn channel_head(
@@ -313,7 +330,25 @@ impl Endpoint {
         catalog_id: &str,
         draft: crate::Draft,
     ) -> Result<String> {
+        self.start_tap(device, signer, s, catalog_id, &random()?, draft)
+            .await
+    }
+
+    /// Durable idempotency for one concrete UI tap, including a lost IPC response.
+    pub async fn start_tap(
+        &self,
+        device: &mut Device,
+        signer: &impl Fn() -> Result<Keys>,
+        s: &Scope,
+        catalog_id: &str,
+        tap: &str,
+        draft: crate::Draft,
+    ) -> Result<String> {
         use buzz_core::channel::{decide_member_put, ChannelJoinRole, MemberPut, MemberRole};
+        session(s, &self.origin, &signer()?)?;
+        if Device::saved_tap(&device.db, &signer()?, s, tap, catalog_id, &draft)?.is_some() {
+            return Ok(tap.to_owned());
+        }
         session(s, &self.origin, &signer()?)?;
         ensure!(draft.channels.len() <= 8, "too many initial channels");
         if !draft.channels.is_empty() {
@@ -380,7 +415,7 @@ impl Endpoint {
         let latest = self.binding(&signer()?, s).await?;
         device.restore(&self.origin, &signer()?, &latest)?;
         Ok(device
-            .create(&self.origin, &signer()?, s, catalog_id, draft)?
+            .create_once(&self.origin, &signer()?, s, catalog_id, tap, draft)?
             .0)
     }
 
@@ -392,7 +427,6 @@ impl Endpoint {
         signer: &impl Fn() -> Result<Keys>,
         s: &Scope,
         r: &str,
-        known: &impl Fn(&PublicKey) -> bool,
     ) -> Result<RequestView> {
         let binding = self.binding(&signer()?, s).await?;
         device.restore(&self.origin, &signer()?, &binding)?;
@@ -472,7 +506,7 @@ impl Endpoint {
                 {
                     let pk = PublicKey::from_hex(agent)?;
                     ensure!(
-                        !known(&pk) && self.unused(&signer()?, agent).await?,
+                        self.unused(signer, agent).await?,
                         "candidate identity is already known"
                     );
                     Some(pk)
@@ -557,7 +591,16 @@ impl Endpoint {
         };
         let receipt: Value = self
             .send(&signer()?, "/events", Some(serde_json::to_string(event)?))
-            .await?;
+            .await
+            .map_err(|e| {
+                if e.downcast_ref::<HttpStatus>()
+                    .is_some_and(|s| s.0.is_client_error())
+                {
+                    anyhow!("public event denied for {coord}")
+                } else {
+                    e
+                }
+            })?;
         ensure!(
             receipt["accepted"] == true
                 && receipt["event_id"].as_str() == Some(event.id.to_hex().as_str()),
@@ -620,5 +663,93 @@ impl Endpoint {
             tokio::time::sleep(Duration::from_millis(750)).await;
         }
         anyhow::bail!("host has not confirmed current inventory")
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // The simulated relay changes the native session while its first response
+    // is outstanding, before the next NIP-98 header can be created.
+    async fn switched_after_first_response(list: bool) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let switched = Arc::new(AtomicBool::new(false));
+        let requests = Arc::new(AtomicUsize::new(0));
+        let (flipped, count) = (Arc::clone(&switched), Arc::clone(&requests));
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut input = Vec::new();
+                let mut chunk = [0; 1024];
+                while !input.windows(4).any(|b| b == b"\r\n\r\n") {
+                    let n = stream.read(&mut chunk).await.unwrap();
+                    assert!(n > 0 && input.len() + n <= 8192);
+                    input.extend_from_slice(&chunk[..n]);
+                }
+                let text = String::from_utf8_lossy(&input).to_ascii_lowercase();
+                assert!(text.contains("authorization: nostr "));
+                let idx = count.fetch_add(1, Ordering::SeqCst);
+                flipped.store(true, Ordering::SeqCst);
+                let body = match (list, idx) {
+                    (true, 0) => r#"{"hosts":[],"after":"more"}"#,
+                    (true, _) => r#"{"hosts":[],"after":null}"#,
+                    _ => "[]",
+                };
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            }
+        });
+        let keys = Keys::generate();
+        let other = Keys::generate();
+        let endpoint = Endpoint {
+            client: Client::builder().no_proxy().build().unwrap(),
+            origin: format!("http://{address}"),
+            owner: keys.public_key(),
+        };
+        let signer = || {
+            if switched.load(Ordering::SeqCst) {
+                if list {
+                    Ok(other.clone())
+                } else {
+                    anyhow::bail!("signer locked")
+                }
+            } else {
+                Ok(keys.clone())
+            }
+        };
+        if list {
+            assert!(endpoint.hosts(&signer).await.is_err());
+        } else {
+            assert!(endpoint
+                .unused(&signer, &other.public_key().to_hex())
+                .await
+                .is_err());
+        }
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        server.abort();
+        let _ = server.await;
+    }
+    #[tokio::test]
+    async fn switch_between_host_pages_stops_second_authenticated_read() {
+        switched_after_first_response(true).await
+    }
+    #[tokio::test]
+    async fn lock_between_candidate_queries_stops_second_authenticated_read() {
+        switched_after_first_response(false).await
     }
 }

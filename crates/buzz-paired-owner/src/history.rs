@@ -31,11 +31,11 @@ impl Endpoint {
     /// at a time. Call `history` to verify a selected item before displaying its outcome.
     pub async fn history_ids(
         &self,
-        keys: &Keys,
+        signer: &impl Fn() -> Result<Keys>,
         s: &Scope,
         after: Option<&str>,
     ) -> Result<(Vec<String>, Option<String>)> {
-        session(s, &self.origin, keys)?;
+        session(s, &self.origin, &signer()?)?;
         let g = crate::http::bounded_id(&s.generation)?;
         let mut url = reqwest::Url::parse(&format!(
             "{}/api/paired-hosts/v1/bindings/{g}/requests",
@@ -51,7 +51,7 @@ impl Endpoint {
             after: Option<String>,
         }
         let page: List = self
-            .send(keys, &url.as_str()[self.origin.len()..], None)
+            .send(&signer()?, &url.as_str()[self.origin.len()..], None)
             .await?;
         ensure!(
             page.requests.len() <= 100 && page.after.as_ref().is_none_or(|c| c.len() <= 1024),
@@ -62,12 +62,18 @@ impl Endpoint {
             crate::http::bounded_id(&row.request_id)?;
             ids.push(row.request_id);
         }
+        session(s, &self.origin, &signer()?)?;
         Ok((ids, page.after))
     }
 
     /// Verify a remote journal entry without creating, importing or resuming a local tap.
-    pub async fn history(&self, keys: &Keys, s: &Scope, r: &str) -> Result<HistoryView> {
-        session(s, &self.origin, keys)?;
+    pub async fn history(
+        &self,
+        signer: &impl Fn() -> Result<Keys>,
+        s: &Scope,
+        r: &str,
+    ) -> Result<HistoryView> {
+        session(s, &self.origin, &signer()?)?;
         let g = crate::http::bounded_id(&s.generation)?;
         crate::http::bounded_id(r)?;
         #[derive(Deserialize)]
@@ -79,7 +85,7 @@ impl Endpoint {
         }
         let record: Record = self
             .send(
-                keys,
+                &signer()?,
                 &format!("/api/paired-hosts/v1/bindings/{g}/requests/{r}"),
                 None,
             )
@@ -89,7 +95,7 @@ impl Endpoint {
             "invalid request record"
         );
         inspect(
-            keys,
+            &signer()?,
             s,
             &record.summary,
             &record.messages,
@@ -125,7 +131,10 @@ pub(super) fn inspect(
     let r = &summary.request_id;
     let intent = restore_sent(keys, s, lookup(i)?, i)?;
     let Body::Create {
-        request_id, name, ..
+        request_id,
+        name,
+        channels,
+        ..
     } = intent.body
     else {
         bail!("missing signed original intent")
@@ -219,6 +228,7 @@ pub(super) fn inspect(
             commit_id,
             agent,
             state,
+            steps,
             ..
         } = from_host(terminal)?.body
         else {
@@ -232,6 +242,7 @@ pub(super) fn inspect(
                 && (state != "ready" || commit_id.is_some()),
             "conflicting historical output"
         );
+        crate::create::validate_terminal_steps(&state, &steps, &channels, commit_id.is_some())?;
         view.host_state = state;
     }
     Ok(view)

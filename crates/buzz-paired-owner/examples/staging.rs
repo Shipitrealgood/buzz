@@ -38,6 +38,13 @@ async fn main() -> Result<()> {
             "use a private 0700 directory"
         );
     }
+    #[cfg(windows)]
+    {
+        let base = PathBuf::from(
+            env::var_os("LOCALAPPDATA").context("local application data unavailable")?,
+        );
+        buzz_paired_owner::protect_windows_journal(&base, &dir)?;
+    }
     let keyfile = dir.join("disposable-owner.secret");
     if op == "init" {
         let keys = Keys::generate();
@@ -89,7 +96,7 @@ async fn main() -> Result<()> {
         bail!("pair claim pending")
     }
     let mut scopes = vec![];
-    for b in net.hosts(&signer()?).await? {
+    for b in net.hosts(&signer).await? {
         let s = device.restore(&origin, &signer()?, &b)?;
         if op == "hosts" {
             println!(
@@ -137,10 +144,7 @@ async fn main() -> Result<()> {
     };
     let mut last = String::new();
     for _ in 0..120 {
-        match net
-            .reconcile(&mut device, &signer, &s, &r, &|_| false)
-            .await
-        {
+        match net.reconcile(&mut device, &signer, &s, &r).await {
             Ok(view) => {
                 if last != view.state {
                     println!("{}", serde_json::to_string(&view)?);

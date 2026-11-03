@@ -41,12 +41,20 @@ pub struct HostView {
     pub catalog_revision: Option<String>,
     /// Only a currently live nonce response permits a create.
     pub fresh: bool,
+    /// Exact signed event for both cached and live views.
+    pub inventory_id: Option<String>,
+    /// Remaining native wall/monotonic lifetime measured just before returning.
+    pub fresh_for_ms: u64,
+    /// Requests whose original tap is stored on this device.
+    pub requests: Vec<crate::RequestView>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Grant {
     pub scope: Scope,
     pub claim: Packet,
+    #[serde(default)]
+    pub previous_claims: Vec<Packet>,
     pub ack: Option<Packet>,
     pub tombstone: Option<Packet>,
     pub revocation: Option<Packet>,
@@ -77,6 +85,7 @@ pub(crate) struct StatusQuery {
 /// The directory belongs to the OS user. The DB contains private inventory and ciphertext.
 pub struct Device {
     pub(crate) db: Connection,
+    pub(crate) local_keys: Option<Box<dyn Fn() -> Result<Vec<PublicKey>> + Send>>,
     queries: HashMap<String, (String, String, Instant)>,
     fresh: HashMap<String, (String, Instant, u64)>,
     pub(crate) status: HashMap<(String, String), StatusQuery>,
@@ -135,9 +144,13 @@ impl Device {
         let db = Connection::open(path)?;
         db.execute_batch("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS grants(scope TEXT PRIMARY KEY,data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS requests(scope TEXT NOT NULL,r TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(scope,r));
+            CREATE INDEX IF NOT EXISTS requests_by_id ON requests(r);
+            CREATE TABLE IF NOT EXISTS known_identities(key TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS delivery_cursor(community TEXT,owner TEXT,last_scope TEXT NOT NULL,PRIMARY KEY(community,owner));
             CREATE TABLE IF NOT EXISTS clock(id INTEGER PRIMARY KEY,wall INTEGER NOT NULL);")?;
         Ok(Self {
             db,
+            local_keys: None,
             queries: HashMap::new(),
             fresh: HashMap::new(),
             status: HashMap::new(),
@@ -179,7 +192,8 @@ impl Device {
         };
         let now = now()?;
         self.check_time(now)?;
-        let (event, _) = paired_host::build_claim(keys, &offer, &Proof::from_hex(inv.proof)?, now)?;
+        let proof = Proof::from_hex(inv.proof)?;
+        let (event, _) = paired_host::build_claim(keys, &offer, &proof, now)?;
         let claim = Packet {
             event: serde_json::value::to_raw_value(&event)?,
             route: Route {
@@ -199,18 +213,48 @@ impl Device {
             )
             .optional()?;
         if let Some(raw) = existing {
-            let old: Grant = serde_json::from_str(&raw)?;
+            let mut old: Grant = serde_json::from_str(&raw)?;
             ensure!(
                 old.ack.is_none() && old.claim.route.expires_at == inv.expires_at,
                 "generation already paired"
             );
-            return Ok((scope, old.claim));
+            let mut claims = old.previous_claims.clone();
+            claims.push(old.claim.clone());
+            let mut matching = None;
+            for (idx, p) in claims.iter().enumerate() {
+                let saved = paired_host::restore_claim(
+                    p.event.get().as_bytes(),
+                    keys,
+                    &offer,
+                    EventId::from_hex(&id(p)?)?,
+                    now,
+                )?;
+                if saved.matches_proof(&proof) {
+                    matching = Some(idx);
+                    break;
+                }
+            }
+            let current = if let Some(idx) = matching {
+                claims.remove(idx)
+            } else {
+                ensure!(
+                    claims.len() < 5,
+                    "attempt budget exhausted; obtain a fresh host invitation"
+                );
+                claim
+            };
+            old.claim = current.clone();
+            old.previous_claims = claims;
+            save(&tx, &old)?;
+            tx.commit()?;
+            return Ok((scope, current));
         }
         save(
             &tx,
             &Grant {
                 scope: scope.clone(),
                 claim: claim.clone(),
+                previous_claims: Vec::new(),
                 ack: None,
                 tombstone: None,
                 revocation: None,
@@ -255,6 +299,7 @@ impl Device {
             Grant {
                 scope: scope.clone(),
                 claim: b.claim.clone(),
+                previous_claims: Vec::new(),
                 ack: None,
                 tombstone: None,
                 revocation: None,
@@ -268,7 +313,10 @@ impl Device {
             }
         };
         ensure!(
-            id(&g.claim)? == id(&b.claim)?
+            (id(&g.claim)? == id(&b.claim)?
+                || g.previous_claims
+                    .iter()
+                    .any(|p| id(p).is_ok_and(|i| Some(i) == id(&b.claim).ok())))
                 && g.ack
                     .as_ref()
                     .map(id)
@@ -276,6 +324,8 @@ impl Device {
                     .is_none_or(|a| Some(a) == id(&b.ack).ok()),
             "conflicting enrollment"
         );
+        g.claim = b.claim.clone();
+        g.previous_claims.clear();
         g.ack = Some(b.ack.clone());
         // A fresh installation may display authenticated historical inventory, but
         // only accept_inventory() can set the process-local freshness marker.
@@ -439,14 +489,86 @@ impl Device {
         );
         Ok(id)
     }
+    /// Refresh the installed native client's private identity inventory at each
+    /// offer/commit boundary. The staging driver has only its isolated journal.
+    pub fn with_local_identities(
+        mut self,
+        reader: impl Fn() -> Result<Vec<PublicKey>> + Send + 'static,
+    ) -> Self {
+        self.local_keys = Some(Box::new(reader));
+        self
+    }
+    /// Record public-only local identity inventory. Previously used keys cannot become new agents.
+    pub fn remember_identities(&mut self, keys: Vec<PublicKey>) -> Result<()> {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for key in keys {
+            tx.execute(
+                "INSERT OR IGNORE INTO known_identities VALUES(?)",
+                [key.to_hex()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+    /// Take a fair bounded batch of pending local packets across all grants of this owner.
+    /// Persist the last selected coordinate so reconnects and process restarts cannot starve later hosts.
+    pub fn next_deliveries(
+        &mut self,
+        selected: &str,
+        keys: &Keys,
+    ) -> Result<Vec<(Scope, Packet, bool)>> {
+        let owner = keys.public_key().to_hex();
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let last: String = tx
+            .query_row(
+                "SELECT last_scope FROM delivery_cursor WHERE community=? AND owner=?",
+                params![selected, owner],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or_default();
+        let mut batch = Vec::new();
+        {
+            let mut q=tx.prepare("SELECT data FROM grants
+                WHERE json_extract(scope,'$.community')=? AND json_extract(scope,'$.owner')=?
+                  AND ((json_extract(data,'$.ack') IS NULL AND json_extract(data,'$.claim.route.expires_at')>?)
+                     OR (json_extract(data,'$.revocation') IS NOT NULL AND json_extract(data,'$.tombstone') IS NULL AND NOT json_extract(data,'$.fenced')))
+                ORDER BY scope<=?,scope LIMIT 8")?;
+            let rows = q.query_map(params![selected, owner, now()?, last], |r| {
+                r.get::<_, String>(0)
+            })?;
+            for row in rows {
+                let grant: Grant = serde_json::from_str(&row?)?;
+                if let Some(revocation) = grant.revocation {
+                    batch.push((grant.scope, revocation, false));
+                } else {
+                    batch.push((grant.scope, grant.claim, true));
+                }
+            }
+        }
+        if let Some((scope, ..)) = batch.last() {
+            tx.execute("INSERT INTO delivery_cursor VALUES(?,?,?) ON CONFLICT(community,owner) DO UPDATE SET last_scope=excluded.last_scope",params![selected,owner,coordinate(scope)?])?;
+        }
+        tx.commit()?;
+        Ok(batch)
+    }
+
     /// Restore local cards, including pending enrollment whose HTTP receipt was lost.
     pub fn hosts(&self, selected: &str, keys: &Keys) -> Result<Vec<HostView>> {
         let mut query=self.db.prepare("SELECT scope FROM grants WHERE json_extract(scope,'$.community')=? AND json_extract(scope,'$.owner')=? ORDER BY rowid")?;
         let rows = query.query_map(params![selected, keys.public_key().to_hex()], |row| {
             row.get::<_, String>(0)
         })?;
-        rows.map(|row| self.view(selected, keys, &serde_json::from_str(&row?)?))
-            .collect()
+        rows.map(|row| {
+            let mut view = self.view(selected, keys, &serde_json::from_str(&row?)?)?;
+            view.requests = self.requests(selected, keys, &view.scope)?;
+            Ok(view)
+        })
+        .collect()
     }
     /// Retrieve transport-ready enrollment after a lost claim response.
     pub fn pending_claim(&self, selected: &str, keys: &Keys, s: &Scope) -> Result<Option<Packet>> {
@@ -471,13 +593,28 @@ impl Device {
         } else {
             "paired"
         };
+        let inventory_id = g.inventory.as_ref().map(id).transpose()?;
+        let mut fresh_for_ms = 0;
+        if g.active() {
+            if let Some((_, since, expires)) = self
+                .fresh
+                .get(&coordinate(s)?)
+                .filter(|(live, ..)| Some(live) == inventory_id.as_ref())
+            {
+                let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+                let remaining = Duration::from_secs(60)
+                    .saturating_sub(since.elapsed())
+                    .min(Duration::from_secs(*expires).saturating_sub(wall));
+                fresh_for_ms = remaining.as_millis().try_into()?;
+            }
+        }
         Ok(HostView {
             scope: s.clone(),
-            fresh: g.active()
-                && self.catalog(s, now()?).is_ok_and(|fresh| {
-                    g.inventory.as_ref().and_then(|p| id(p).ok()).as_deref() == Some(fresh)
-                }),
+            fresh: fresh_for_ms > 0,
+            inventory_id,
+            fresh_for_ms,
             state: state.into(),
+            requests: vec![],
             capacity: g.capacity,
             catalog_revision: g.catalog_revision,
             label: g.label,

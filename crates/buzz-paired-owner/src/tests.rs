@@ -161,38 +161,66 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     let confirm = id(&confirm_packet).unwrap();
     f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
     assert_eq!(id(&f.outgoing(&r)).unwrap(), confirm);
+    let candidate_offer = |a: &Keys| {
+        let agent = a.public_key().to_hex();
+        let t = now().unwrap();
+        let nonce = "e1".repeat(32);
+        let pop = sign_possession(
+            &f.s,
+            &Possession {
+                request_id: &r,
+                intent_id: &i,
+                confirm_id: &confirm,
+                nonce: &nonce,
+                agent: a.public_key(),
+                expires_at: t + 60,
+            },
+            a,
+        )
+        .unwrap();
+        let offer = seal(
+            &f.h,
+            &f.s,
+            Body::KeyOffer {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                confirm_id: confirm.clone(),
+                nonce,
+                agent: agent.clone(),
+                agent_sig: pop,
+            },
+            t,
+            t + 60,
+        )
+        .unwrap();
+        (agent, offer)
+    };
+    let hidden_host = Keys::generate();
+    let (other, p) = Offer::issue(C.into(), hidden_host.public_key(), now().unwrap()).unwrap();
+    let (_, foreign_offer) = candidate_offer(&hidden_host);
+    f.d.pair(C, &f.o, &invitation(&other, &p.expose_hex()))
+        .unwrap();
+    assert!(f
+        .d
+        .receive(
+            C,
+            &f.o,
+            &f.s,
+            &r,
+            &foreign_offer,
+            Some(&hidden_host.public_key())
+        )
+        .is_err());
+    let desktop_agent = Keys::generate();
+    let (_, desktop_offer) = candidate_offer(&desktop_agent);
+    let pk = desktop_agent.public_key();
+    f.d = f.d.with_local_identities(move || Ok(vec![pk]));
+    assert!(f
+        .d
+        .receive(C, &f.o, &f.s, &r, &desktop_offer, Some(&pk))
+        .is_err());
     let a = Keys::generate();
-    let agent = a.public_key().to_hex();
-    let t = now().unwrap();
-    let nonce = "e1".repeat(32);
-    let pop = sign_possession(
-        &f.s,
-        &Possession {
-            request_id: &r,
-            intent_id: &i,
-            confirm_id: &confirm,
-            nonce: &nonce,
-            agent: a.public_key(),
-            expires_at: t + 60,
-        },
-        &a,
-    )
-    .unwrap();
-    let offer = seal(
-        &f.h,
-        &f.s,
-        Body::KeyOffer {
-            request_id: r.clone(),
-            intent_id: i.clone(),
-            confirm_id: confirm,
-            nonce,
-            agent: agent.clone(),
-            agent_sig: pop,
-        },
-        t,
-        t + 60,
-    )
-    .unwrap();
+    let (agent, offer) = candidate_offer(&a);
     assert!(f.d.receive(C, &f.o, &f.s, &r, &offer, None).is_err());
     f.d.receive(C, &f.o, &f.s, &r, &offer, Some(&a.public_key()))
         .unwrap();
@@ -211,6 +239,18 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
     };
     let bad = make_commit("ab".repeat(32));
     let good = make_commit(id(&activate).unwrap());
+    let copy = f.dir.path().join("newly-discovered");
+    std::fs::copy(f.dir.path().join("state"), &copy).unwrap();
+    let pk = a.public_key();
+    let mut interrupted = Device::at(&copy)
+        .unwrap()
+        .with_local_identities(move || Ok(vec![pk]));
+    assert!(interrupted.receive(C, &f.o, &f.s, &r, &good, None).is_err());
+    assert!(interrupted
+        .public_next(C, &f.o, &f.s, &r)
+        .unwrap()
+        .is_none());
+
     assert!(f.d.receive(C, &f.o, &f.s, &r, &bad, None).is_err());
     assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
     assert!(f
@@ -314,6 +354,32 @@ fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
             .host_state,
         "ready"
     );
+    let mut misleading = historical.clone();
+    let Body::Result {
+        request_id,
+        intent_id,
+        commit_id,
+        agent,
+        ..
+    } = open(&f.o, &f.s, &misleading[0], now().unwrap())
+        .unwrap()
+        .body
+    else {
+        panic!()
+    };
+    misleading[0] = f.sign(
+        Body::Result {
+            request_id,
+            intent_id,
+            commit_id,
+            agent,
+            state: "ready".into(),
+            steps: vec!["unit-failed".into()],
+        },
+        86400,
+    );
+    let misleading_summary=serde_json::from_value(serde_json::json!({"request_id":r,"intent_id":id(&historical[5]).unwrap(),"commit_id":id(&historical[1]).unwrap(),"terminal_id":id(&misleading[0]).unwrap()})).unwrap();
+    assert!(crate::history::inspect(&f.o, &f.s, &misleading_summary, &misleading, false).is_err());
     historical.pop();
     assert!(crate::history::inspect(&f.o, &f.s, &summary, &historical, false).is_err());
     assert!(second.requests(C, &f.o, &f.s).unwrap().is_empty());
@@ -368,4 +434,200 @@ fn status_replies_never_create_signing_authority() {
         .hosts("https://different.example", &f.o)
         .unwrap()
         .is_empty());
+}
+
+fn invitation(o: &Offer, proof: &str) -> String {
+    serde_json::json!({"v":1,"community":o.community,"generation":o.generation,"host":o.host.to_hex(),"expires_at":o.expires_at,"proof":proof}).to_string()
+}
+
+#[test]
+fn corrected_invitation_can_enroll_same_generation_and_exact_retry_survives_restart() {
+    let mut f = Setup::new();
+    let host = Keys::generate();
+    let wall = now().unwrap();
+    let (o, p) = Offer::issue(C.into(), host.public_key(), wall).unwrap();
+    let wrong = invitation(&o, &"01".repeat(32));
+    let right = invitation(&o, &p.expose_hex());
+    let (_, bad) = f.d.pair(C, &f.o, &wrong).unwrap();
+    assert!(verify_claim(
+        bad.event.get().as_bytes(),
+        &host,
+        &o,
+        None,
+        &p.digest(),
+        wall
+    )
+    .is_err());
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    assert_eq!(
+        id(&bad).unwrap(),
+        id(&f.d.pair(C, &f.o, &wrong).unwrap().1).unwrap()
+    );
+    let (s, good) = f.d.pair(C, &f.o, &right).unwrap();
+    assert_ne!(id(&good).unwrap(), id(&bad).unwrap());
+    let verified = verify_claim(
+        good.event.get().as_bytes(),
+        &host,
+        &o,
+        None,
+        &p.digest(),
+        wall,
+    )
+    .unwrap();
+    let ack = Packet {
+        event: serde_json::value::to_raw_value(&build_ack(&host, &verified, wall).unwrap())
+            .unwrap(),
+        route: Route {
+            r: None,
+            prev: Some(id(&good).unwrap()),
+            expires_at: o.expires_at,
+        },
+    };
+    // A delayed acknowledgement of a previously submitted correct claim is still ours.
+    f.d.pair(C, &f.o, &wrong).unwrap();
+    f.d.restore(
+        C,
+        &f.o,
+        &Binding {
+            generation: s.generation.clone(),
+            owner: s.owner.to_hex(),
+            host: s.host.to_hex(),
+            state: "active".into(),
+            claim: good,
+            ack,
+            tombstone: None,
+            inventory: None,
+            high_water: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(f.d.view(C, &f.o, &s).unwrap().state, "paired");
+}
+
+#[test]
+fn retry_rotation_delivers_ninth_pending_revocation_across_restart() {
+    let mut f = Setup::new();
+    let mut all = std::collections::BTreeSet::new();
+    for _ in 0..9 {
+        let h = Keys::generate();
+        let wall = now().unwrap();
+        let (o, p) = Offer::issue(C.into(), h.public_key(), wall).unwrap();
+        let (s, claim) = f.d.pair(C, &f.o, &invitation(&o, &p.expose_hex())).unwrap();
+        let c = verify_claim(
+            claim.event.get().as_bytes(),
+            &h,
+            &o,
+            None,
+            &p.digest(),
+            wall,
+        )
+        .unwrap();
+        let ack = Packet {
+            event: serde_json::value::to_raw_value(&build_ack(&h, &c, wall).unwrap()).unwrap(),
+            route: Route {
+                r: None,
+                prev: Some(id(&claim).unwrap()),
+                expires_at: o.expires_at,
+            },
+        };
+        f.d.restore(
+            C,
+            &f.o,
+            &Binding {
+                generation: s.generation.clone(),
+                owner: s.owner.to_hex(),
+                host: s.host.to_hex(),
+                state: "active".into(),
+                claim,
+                ack,
+                tombstone: None,
+                inventory: None,
+                high_water: None,
+            },
+        )
+        .unwrap();
+        f.d.unpair(C, &f.o, &s).unwrap();
+        all.insert(s.generation);
+    }
+    f.b.state = "fenced".into();
+    f.d.restore(C, &f.o, &f.b).unwrap();
+    let first = f.d.next_deliveries(C, &f.o).unwrap();
+    assert_eq!(first.len(), 8);
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    let next = f.d.next_deliveries(C, &f.o).unwrap();
+    let seen = first
+        .iter()
+        .chain(&next)
+        .map(|(s, _, claim)| {
+            assert!(!claim);
+            s.generation.clone()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(seen, all);
+}
+
+#[test]
+fn short_signed_inventory_cannot_grant_a_minute_of_display_freshness() {
+    let fraction = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_millis();
+    if fraction > 400 {
+        std::thread::sleep(std::time::Duration::from_millis((1001 - fraction).into()));
+    }
+    let mut f = Setup::new();
+    let q = f.d.inventory_query(C, &f.o, &f.s).unwrap();
+    let Body::InventoryQuery { nonce, .. } = open(&f.h, &f.s, &q, now().unwrap()).unwrap().body
+    else {
+        panic!()
+    };
+    let p = f.sign(
+        Body::Inventory {
+            nonce,
+            query_id: id(&q).unwrap(),
+            sequence: 1,
+            label: "Short".into(),
+            runtimes: vec!["test/echo".into()],
+            capacity: 1,
+            catalog_revision: "11".repeat(32),
+        },
+        1,
+    );
+    f.d.accept_inventory(C, &f.o, &f.s, &p).unwrap();
+    let v = f.d.view(C, &f.o, &f.s).unwrap();
+    assert_eq!(v.inventory_id.unwrap(), id(&p).unwrap());
+    assert!(v.fresh_for_ms <= 1000);
+}
+
+#[test]
+fn repeated_tap_is_idempotent_after_ipc_loss_and_process_restart() {
+    let mut f = Setup::new();
+    let inventory = id(&f.inventory()).unwrap();
+    let r = random().unwrap();
+    let initial =
+        f.d.create_once(C, &f.o, &f.s, &inventory, &r, f.draft())
+            .unwrap()
+            .1;
+    let draft = f.draft();
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    let replay =
+        f.d.create_once(C, &f.o, &f.s, &inventory, &r, draft.clone())
+            .unwrap()
+            .1;
+    assert_eq!(initial.event.get(), replay.event.get());
+    let mut changed = draft.clone();
+    changed.name = "Different".into();
+    assert!(f
+        .d
+        .create_once(C, &f.o, &f.s, &inventory, &r, changed)
+        .is_err());
+    assert!(f
+        .d
+        .create_once(C, &f.o, &f.s, &"00".repeat(32), &r, draft.clone())
+        .is_err());
+    assert!(f
+        .d
+        .create_once(C, &Keys::generate(), &f.s, &inventory, &r, draft)
+        .is_err());
+    assert_eq!(f.d.requests(C, &f.o, &f.s).unwrap().len(), 1);
 }

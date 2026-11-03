@@ -360,6 +360,14 @@ A pending remote unpair remains visible until the host signs its tombstone.
 The existing “On host” directory cards show conversational agents and confer
 no provisioning authority.
 
+An Add agent tap freezes the selected inventory event, host generation, runtime,
+name, response policy and channel IDs. Retry that tap with its original ID and
+payload. Per-device SQLite is the authority for automated signer responses.
+The compiled owner-only policy gates Create and resume at the native boundary.
+Treat signed host history as observational on a second device. Authoritative
+local Ready includes verification of agent ownership, policy, registration
+and each requested membership.
+
 ## Channel-only runtime controls
 
 Desktop observer controls identify a channel, not a thread session. The harness

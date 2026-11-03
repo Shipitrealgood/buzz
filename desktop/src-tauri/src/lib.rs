@@ -722,6 +722,14 @@ pub fn run() {
             #[cfg(windows)]
             paired_host_refresh,
             #[cfg(windows)]
+            paired_host_create,
+            #[cfg(windows)]
+            paired_host_resume,
+            #[cfg(windows)]
+            paired_host_history_ids,
+            #[cfg(windows)]
+            paired_host_history,
+            #[cfg(windows)]
             paired_host_unpair,
             list_managed_agents,
             list_managed_agent_runtimes,

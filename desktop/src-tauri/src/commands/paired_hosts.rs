@@ -8,6 +8,8 @@ use serde::Serialize;
 use std::{path::PathBuf, sync::atomic::Ordering};
 use tauri::{AppHandle, Manager, State};
 use zeroize::Zeroizing;
+mod create;
+pub use create::*;
 
 fn journal_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(app.path().app_local_data_dir()?.join("paired-hosts"))
@@ -23,8 +25,21 @@ pub(crate) fn reset_paired_host_journal(app: &AppHandle) -> Result<()> {
 }
 fn device(app: &AppHandle) -> Result<Device> {
     let dir = journal_dir(app)?;
-    std::fs::create_dir_all(&dir)?;
-    Device::at(&dir.join("owner.sqlite"))
+    buzz_paired_owner::protect_windows_journal(
+        &dirs::data_local_dir().ok_or_else(|| anyhow!("local application data unavailable"))?,
+        &dir,
+    )?;
+    let app = app.clone();
+    Ok(
+        Device::at(&dir.join("owner.sqlite"))?.with_local_identities(move || {
+            let state = app.state::<AppState>();
+            let _guard = state
+                .managed_agents_store_lock
+                .lock()
+                .map_err(|_| anyhow!("agent inventory unavailable"))?;
+            crate::managed_agents::managed_agent_identity_keys(&app).map_err(anyhow::Error::msg)
+        }),
+    )
 }
 struct Session<'a> {
     state: &'a AppState,
@@ -122,11 +137,12 @@ impl Session<'_> {
         };
         match endpoint.supported().await {
             Ok(false) => {
+                self.keys()?;
                 return Ok(HostDirectory {
                     supported: false,
                     available: true,
                     hosts: vec![],
-                })
+                });
             }
             Err(_) => {
                 self.keys()?;
@@ -134,7 +150,7 @@ impl Session<'_> {
             }
             Ok(true) => (),
         }
-        let bindings = match endpoint.hosts(&self.keys()?).await {
+        let bindings = match endpoint.hosts(&|| self.keys()).await {
             Ok(bindings) => bindings,
             Err(_) => {
                 self.keys()?;
@@ -147,25 +163,14 @@ impl Session<'_> {
         let hosts = device.hosts(&self.origin, &self.keys()?)?;
         let mut available = true;
         // Retry exact saved ciphertext after an exit or interrupted HTTP response.
-        for h in hosts
-            .iter()
-            .filter(|h| matches!(h.state.as_str(), "pair-pending" | "unpair-pending"))
-            .take(8)
-        {
-            let p = if h.state == "pair-pending" {
-                device.pending_claim(&self.origin, &self.keys()?, &h.scope)?
+        for (scope, packet, enrollment) in device.next_deliveries(&self.origin, &self.keys()?)? {
+            let result = if enrollment {
+                endpoint.claim(&self.keys()?, &scope, &packet).await
             } else {
-                device.pending_unpair(&self.origin, &self.keys()?, &h.scope)?
+                endpoint.post(&self.keys()?, &scope, &packet).await
             };
-            if let Some(p) = p {
-                let result = if h.state == "pair-pending" {
-                    endpoint.claim(&self.keys()?, &h.scope, &p).await
-                } else {
-                    endpoint.post(&self.keys()?, &h.scope, &p).await
-                };
-                if result.is_err() {
-                    available = false;
-                }
+            if result.is_err() {
+                available = false;
             }
         }
         self.keys()?;
@@ -231,9 +236,11 @@ pub async fn paired_host_refresh(
     async {
         let session = Session::capture(&state, &expected_relay, &expected_owner).await?;
         let scope = session.scope(&host, &generation)?;
+        let live = create::live_device(&session, &app, &scope)?;
+        let mut device = live.lock().await;
         session
             .endpoint()?
-            .refresh(&mut device(&app)?, &|| session.keys(), &scope)
+            .refresh(&mut device, &|| session.keys(), &scope)
             .await
     }
     .await

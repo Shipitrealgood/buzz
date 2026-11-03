@@ -273,6 +273,31 @@ fn load_agent_store<R: tauri::Runtime>(
     })
 }
 
+/// Public keys already used by this desktop, including instances without a published profile.
+#[cfg(windows)]
+pub(crate) fn managed_agent_identity_keys<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Vec<nostr::PublicKey>, String> {
+    #[derive(serde::Deserialize)]
+    struct Identity {
+        pubkey: String,
+    }
+    let file = match std::fs::File::open(managed_agents_store_path(app)?) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(_) => return Err("desktop identity inventory unavailable".into()),
+    };
+    let rows: Vec<Identity> = serde_json::from_reader(std::io::BufReader::new(file))
+        .map_err(|_| "invalid desktop identity inventory".to_owned())?;
+    rows.into_iter()
+        .filter(|r| !r.pubkey.is_empty())
+        .map(|r| {
+            nostr::PublicKey::from_hex(&r.pubkey)
+                .map_err(|_| "invalid stored agent identity".to_owned())
+        })
+        .collect()
+}
+
 /// Load the keyed agent *instances*. Key-less definitions (former personas,
 /// folded into the same store) are filtered out so every pre-fold call site
 /// keeps seeing exactly the records it always did.

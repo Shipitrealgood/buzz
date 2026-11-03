@@ -8,13 +8,28 @@ import { canonicalNpub, truncateNpub } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
-type Session = { expectedRelay: string; expectedOwner: string };
+import { PairedAgentCreate } from "./PairedAgentCreate";
+import { PairedHostRequests, terminalHostRequest } from "./PairedHostRequests";
+
+export type HostRequest = {
+  request_id: string;
+  name: string;
+  runtime: string;
+  state: string;
+  agent: string | null;
+  steps: string[];
+  issue: string | null;
+};
+export type Session = { expectedRelay: string; expectedOwner: string };
 export type Host = {
   scope: { community: string; generation: string; owner: string; host: string };
   state: string;
   label: string | null;
   runtimes: string[];
+  requests: HostRequest[];
   fresh: boolean;
+  inventory_id: string | null;
+  fresh_for_ms: number;
   catalog_revision: string | null;
   capacity: number | null;
 };
@@ -109,10 +124,14 @@ function PairForm({
 
 function HostRow({
   item,
+  creating,
+  close,
   session,
   reload,
 }: {
   item: Host;
+  creating: boolean;
+  close: () => void;
   session: Session;
   reload: () => void;
 }) {
@@ -127,12 +146,15 @@ function HostRow({
     if (!confirmed) return;
     const timer = window.setTimeout(
       () => setConfirmed(null),
-      Math.max(0, confirmedUntil.current - Date.now()),
+      Math.max(0, confirmedUntil.current - performance.now()),
     );
     return () => window.clearTimeout(timer);
   }, [confirmed]);
   const current =
-    item.state === "paired" && confirmed && Date.now() < confirmedUntil.current
+    item.state === "paired" &&
+    confirmed &&
+    item.inventory_id === confirmed.inventory_id &&
+    performance.now() < confirmedUntil.current
       ? confirmed
       : item;
   const { generation, host } = item.scope;
@@ -150,7 +172,7 @@ function HostRow({
       setConfirmUnpair(false);
       setConfirmed(null);
       const action = ++activeAction.current;
-      const started = Date.now();
+      const started = performance.now();
       try {
         const result = await invokeTauri<Host>(command, {
           ...session,
@@ -158,8 +180,8 @@ function HostRow({
           generation,
         });
         if (activeAction.current !== action) return;
-        if (result.fresh) {
-          confirmedUntil.current = started + 60_000;
+        if (result.fresh && result.inventory_id && result.fresh_for_ms > 0) {
+          confirmedUntil.current = started + result.fresh_for_ms;
           setConfirmed(result);
         }
       } catch (cause) {
@@ -179,6 +201,22 @@ function HostRow({
       void act("paired_host_refresh");
     }
   }, [item.state, item.label, act]);
+  const checkedForCreate = React.useRef(false);
+  React.useEffect(() => {
+    if (!creating) {
+      checkedForCreate.current = false;
+      return;
+    }
+    if (!checkedForCreate.current) {
+      checkedForCreate.current = true;
+      if (!current.fresh && !busy) void act("paired_host_refresh");
+    }
+  }, [creating, current.fresh, busy, act]);
+  const [reviewed, setReviewed] = React.useState(false);
+  React.useEffect(() => {
+    if (!creating) setReviewed(false);
+    else if (current.fresh) setReviewed(true);
+  }, [creating, current.fresh]);
   return (
     <li className="space-y-2 rounded-md border p-3">
       <div className="font-medium">{current.label ?? "Enrolled host"}</div>
@@ -239,6 +277,24 @@ function HostRow({
           </div>
         </div>
       )}
+      {creating &&
+        item.state === "paired" &&
+        (current.fresh || reviewed ? (
+          <PairedAgentCreate
+            current={current}
+            session={session}
+            reload={reload}
+            close={close}
+          />
+        ) : (
+          <div>
+            <p>Confirming installed runtimes…</p>
+            <Button size="sm" variant="outline" onClick={close}>
+              Cancel create
+            </Button>
+          </div>
+        ))}
+      <PairedHostRequests item={item} session={session} reload={reload} />
       {notice && (
         <p role="alert" className="text-sm text-destructive">
           {notice}
@@ -249,6 +305,8 @@ function HostRow({
 }
 
 export function MyHosts({ session }: { session: Session }) {
+  const [selection, setSelection] = React.useState("");
+  const [creating, setCreating] = React.useState("");
   const directory = useQuery({
     queryKey: ["paired-hosts", session.expectedRelay, session.expectedOwner],
     queryFn: () => invokeTauri<Directory>("paired_host_list", session),
@@ -257,7 +315,14 @@ export function MyHosts({ session }: { session: Session }) {
     staleTime: 15_000,
     refetchInterval: ({ state }) =>
       state.data?.hosts.some(
-        (h) => h.state === "pair-pending" || h.state === "unpair-pending",
+        (h) =>
+          h.state === "pair-pending" ||
+          h.state === "unpair-pending" ||
+          h.requests?.some(
+            (r) =>
+              !terminalHostRequest(r.state) &&
+              r.state !== "expired-awaiting-host",
+          ),
       )
         ? 5000
         : false,
@@ -298,10 +363,54 @@ export function MyHosts({ session }: { session: Session }) {
           Pair a Linux host to see its installed runtimes.
         </p>
       )}
+      {directory.data?.supported &&
+        directory.data.available &&
+        directory.data.hosts.some((h) => h.state === "paired") && (
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm" htmlFor="paired-create-host">
+              Host for new agent
+            </label>
+            <select
+              id="paired-create-host"
+              value={selection}
+              onChange={(e) => {
+                setSelection(e.target.value);
+                setCreating("");
+              }}
+            >
+              <option value="">Select a host</option>
+              {directory.data.hosts
+                .filter((h) => h.state === "paired")
+                .map((h) => (
+                  <option
+                    key={h.scope.generation + h.scope.host}
+                    value={h.scope.generation + h.scope.host}
+                  >
+                    {h.label ?? "Host"} · {truncateNpub(h.scope.host)}
+                  </option>
+                ))}
+            </select>
+            <Button
+              size="sm"
+              disabled={
+                !directory.data.hosts.some(
+                  (h) =>
+                    h.state === "paired" &&
+                    h.scope.generation + h.scope.host === selection,
+                )
+              }
+              onClick={() => setCreating(selection)}
+            >
+              Add agent
+            </Button>
+          </div>
+        )}
       <ul className="grid gap-2">
         {directory.data?.hosts.map((item) => (
           <HostRow
             key={item.scope.generation + item.scope.host}
+            creating={creating === item.scope.generation + item.scope.host}
+            close={() => setCreating("")}
             item={item}
             session={session}
             reload={reload}

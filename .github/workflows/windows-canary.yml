@@ -244,6 +244,10 @@ jobs:
             touch "desktop/src-tauri/binaries/${bin}-${TARGET}.exe"
           done
 
+      - name: Verify isolated Windows paired-host SQLite permissions
+        shell: powershell
+        run: ./crates/buzz-paired-owner/windows/test-journal-acl.ps1
+
       - name: Verify paired-host owner on Windows
         shell: bash
         run: |
@@ -256,7 +260,7 @@ jobs:
         working-directory: desktop/src-tauri
         run: |
           set -euo pipefail
-          for suite in nostr_convert:: commands::agent_discovery::relay_directory::; do
+          for suite in nostr_convert:: commands::agent_discovery::relay_directory:: commands::paired_hosts::; do
             cargo test --locked --target "$TARGET" --lib "$suite" | tee "$RUNNER_TEMP/discovery-tests.log"
             grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/discovery-tests.log"
           done

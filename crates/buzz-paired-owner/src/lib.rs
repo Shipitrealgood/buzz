@@ -6,6 +6,8 @@ mod device;
 mod history;
 mod http;
 mod ready;
+#[cfg(windows)]
+mod windows_store;
 use anyhow::{ensure, Result};
 pub use buzz_core::paired_message::{Packet, Policy, Scope};
 pub use create::{Draft, RequestView};
@@ -15,6 +17,8 @@ pub use http::{Binding, Endpoint, Page};
 use nostr::{Event, Keys};
 use rand::{rngs::SysRng, TryRng};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(windows)]
+pub use windows_store::protect_windows_journal;
 
 fn random() -> Result<String> {
     let mut bytes = [0; 32];
