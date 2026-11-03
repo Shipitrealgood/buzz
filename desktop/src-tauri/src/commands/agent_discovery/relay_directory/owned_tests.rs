@@ -243,6 +243,73 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
         outside[0].channel_ids.is_empty(),
         "publication still needs membership"
     );
+    // A different viewer shares a bot-role stream and an ordinary-role DM
+    // with the same attested agent. Exact reads must preserve both membership
+    // and the declared actor policy. Missing either party removes the result.
+    *state.keys.lock().unwrap() = stranger.clone();
+    let viewer = stranger.public_key().to_hex();
+    for (id, role, has_viewer, has_agent) in [
+        ("stream-a", "bot", true, true),
+        ("stream-b", "member", true, true),
+        ("other-actor", "member", false, true),
+        ("other-agent", "member", true, false),
+    ] {
+        let mut tags = vec![Tag::parse(["d", id]).unwrap()];
+        if has_viewer {
+            tags.push(Tag::parse(["p", &viewer, "", "member"]).unwrap());
+        }
+        if has_agent {
+            tags.push(Tag::parse(["p", &agent_key, "", role]).unwrap());
+        }
+        events.lock().unwrap().push(
+            EventBuilder::new(Kind::Custom(39002), "")
+                .tags(tags)
+                .sign_with_keys(&relay)
+                .unwrap(),
+        );
+    }
+    for (index, (name, mode)) in [
+        ("Claude", "anyone"),
+        ("Grok", "anyone"),
+        ("Scout", "owner-only"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        events.lock().unwrap().push(
+            EventBuilder::new(
+                Kind::Custom(10100),
+                serde_json::json!({
+                    "name":name, "host":host, "respond_to":mode, "channel_add_policy":"owner_only",
+                })
+                .to_string(),
+            )
+            .custom_created_at(nostr::Timestamp::from(
+                nostr::Timestamp::now().as_secs() + index as u64 + 1,
+            ))
+            .sign_with_keys(&agent)
+            .unwrap(),
+        );
+        let all = list_relay_agents_for_state(&state).await.unwrap();
+        assert_eq!(all[0].channel_ids, ["stream-a", "stream-b"]);
+        let selected = list_relay_agents_for_selection(&state, Some(&requested), Some("stream-b"))
+            .await
+            .unwrap();
+        assert_eq!(selected[0].channel_ids, ["stream-b"]);
+        assert_eq!(
+            serde_json::to_value(&selected[0]).unwrap()["respond_to"],
+            *mode
+        );
+        assert_ne!(selected[0].owner_pubkey.as_deref(), Some(viewer.as_str()));
+    }
+    for missing in ["other-actor", "other-agent"] {
+        assert!(
+            list_relay_agents_for_selection(&state, Some(&requested), Some(missing))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
     server.abort();
     crate::relay_admission::reset_rate_limit_gate();
 }

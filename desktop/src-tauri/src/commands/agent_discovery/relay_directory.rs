@@ -205,22 +205,18 @@ async fn list_relay_agents_for_selection(
                     "relay agent owner-profile query failed",
                 ),
             )?;
-            let mut owned_candidates =
-                nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
-            // A DM roster may use an ordinary role. The caller already named
-            // these exact identities, so their verified OA can establish which
-            // are the viewer's agents without broadening the discovery query.
-            owned_candidates.extend(
-                nostr_convert::verified_agent_owners_from_profiles(&profile_events)
-                    .into_iter()
-                    .filter(|(_, owner)| owner == &viewer_pubkey)
-                    .map(|(agent, _)| agent),
+            let mut known_agents = nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
+            // OA identifies the selected agent even when its viewer is not
+            // its owner. The signed destination roster establishes membership;
+            // the resolved response policy separately establishes who may send.
+            known_agents.extend(
+                nostr_convert::verified_agent_owners_from_profiles(&profile_events).into_keys(),
             );
             let mut member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
                 &membership_events,
                 &relay_pubkey,
                 &viewer_pubkey,
-                &owned_candidates,
+                &known_agents,
             );
             member_agent_channel_ids.retain(|pubkey, _| requested_pubkeys.contains(pubkey));
             (
