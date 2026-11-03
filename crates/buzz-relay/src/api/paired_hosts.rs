@@ -260,10 +260,6 @@ async fn process(
     if !post && !bytes.is_empty() {
         return Err(invalid());
     }
-    // Count authenticated-door attempts separately from outstanding business
-    // events. In particular an arbitrary signer cannot fill Redis replay keys
-    // or acquire the DB writer at an unbounded rate. The socket peer is the
-    // only IP source; forwarded headers are never trusted here.
     let ip = parts
         .extensions
         .get::<ConnectInfo<SocketAddr>>()
@@ -274,7 +270,6 @@ async fn process(
     let bucket = mac(state, &["IP", &t.to_string(), &ip.to_string()])?
         .finalize()
         .into_bytes();
-    ingress_budget(state, &tenant, &bucket).await?;
     let (actor, event_id) = buzz_auth::nip98::verify_exact_request(
         std::str::from_utf8(&auth).map_err(|_| unauthorized())?,
         &url,
@@ -282,19 +277,10 @@ async fn process(
         post.then_some(&bytes[..]),
     )
     .map_err(|_| unauthorized())?;
-    // The inclusive ±60s signature window needs more than 120s of real retention.
-    if !state
-        .nip98_replay
-        .try_mark(&tenant, &event_id, 125)
-        .await
-        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?
-    {
-        return Err(unauthorized());
-    }
     let tail = uri.path().strip_prefix(PREFIX).ok_or_else(invalid)?;
     let segments: Vec<_> = tail.trim_start_matches('/').split('/').collect();
     let allow = state.config.pubkey_allowlist_enabled;
-    if post {
+    let packet = if post {
         if uri.query().is_some() {
             return Err(invalid());
         }
@@ -305,7 +291,38 @@ async fn process(
             _ => return Err(invalid()),
         };
         let origin = format!("https://{}", tenant.host());
-        let p = parse(&bytes, &origin, g, actor, endpoint)?;
+        Some(parse(&bytes, &origin, g, actor, endpoint)?)
+    } else {
+        None
+    };
+    // Over a normal reverse proxy many legitimate keys share this TCP peer.
+    // Its outer bucket bounds unknown-key fanout. A direct member or a host
+    // targeted on this exact generation can always use its own allowance.
+    if !source_capacity(state, &tenant, &bucket).await? {
+        let generation = segments.get(1).and_then(|g| id(g).ok());
+        let known = state
+            .db
+            .known_paired_principal(t, actor.as_bytes(), generation.as_ref())
+            .await
+            .map_err(db_error)?;
+        if !known {
+            return Err(error(StatusCode::TOO_MANY_REQUESTS));
+        }
+    }
+    let recovery = packet
+        .as_ref()
+        .is_some_and(|p| matches!(p.op.as_str(), "unpair" | "unpaired"));
+    principal_budget(state, &tenant, &actor, &event_id, recovery).await?;
+    // The inclusive ±60s signature window needs more than 120s of real retention.
+    if !state
+        .nip98_replay
+        .try_mark(&tenant, &event_id, 125)
+        .await
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?
+    {
+        return Err(unauthorized());
+    }
+    if let Some(p) = packet {
         state
             .db
             .post_paired_packet(t, allow, &p, &bucket.into())
@@ -316,11 +333,11 @@ async fn process(
     let q: Query = serde_urlencoded::from_str(uri.query().unwrap_or("")).map_err(|_| invalid())?;
     read_page(state, &tenant, actor, &segments, q).await
 }
-async fn ingress_budget(
+async fn source_capacity(
     state: &AppState,
     tenant: &TenantContext,
     bucket: &[u8],
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     let mut conn = state
         .redis_pool
         .get()
@@ -333,10 +350,51 @@ async fn ingress_budget(
     );
     let count:i64=redis::cmd("EVAL").arg("local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n").arg(1).arg(key)
         .query_async(&mut *conn).await.map_err(|_|error(StatusCode::SERVICE_UNAVAILABLE))?;
-    if count > 600 {
-        return Err(error(StatusCode::TOO_MANY_REQUESTS));
+    Ok(count <= 600)
+}
+// Bound the Redis replay allocations even for a busy established signer.
+// The same captured HTTP proof cannot repeatedly spend that signer's budget.
+async fn principal_budget(
+    state: &AppState,
+    tenant: &TenantContext,
+    actor: &nostr::PublicKey,
+    event_id: &nostr::EventId,
+    recovery: bool,
+) -> Result<(), Error> {
+    let lane = if recovery { "recovery" } else { "normal" };
+    let key = format!(
+        "buzz:{}:paired-host-signer:{lane}:{}",
+        tenant.community(),
+        actor.to_hex()
+    );
+    let mut conn = state
+        .redis_pool
+        .get()
+        .await
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?;
+    let decision: i64 = redis::cmd("EVAL")
+        .arg(
+            r#"
+        if redis.call('SISMEMBER',KEYS[1],ARGV[1])==1 then return -1 end
+        local n=redis.call('SCARD',KEYS[1])
+        if n>=tonumber(ARGV[2]) then return 0 end
+        redis.call('SADD',KEYS[1],ARGV[1])
+        if n==0 then redis.call('EXPIRE',KEYS[1],60) end
+        return 1
+    "#,
+        )
+        .arg(1)
+        .arg(key)
+        .arg(&event_id.to_bytes()[..])
+        .arg(if recovery { 60 } else { 600 })
+        .query_async(&mut *conn)
+        .await
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE))?;
+    match decision {
+        1 => Ok(()),
+        -1 => Err(unauthorized()),
+        _ => Err(error(StatusCode::TOO_MANY_REQUESTS)),
     }
-    Ok(())
 }
 fn db_error(e: buzz_db::DbError) -> Error {
     match e {
@@ -430,3 +488,6 @@ mod postgres_tests;
 
 #[cfg(test)]
 mod phase_postgres_tests;
+
+#[cfg(test)]
+mod admission_postgres_tests;

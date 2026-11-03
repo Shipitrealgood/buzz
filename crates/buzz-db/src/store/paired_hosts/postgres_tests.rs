@@ -180,3 +180,43 @@ async fn competing_bindings_and_private_tenant_reads() {
             .unwrap();
     assert_eq!(rows, 0);
 }
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn one_member_cannot_fill_another_owners_target_host() {
+    let (db, t) = setup().await;
+    let host = 75;
+    let bad = 11;
+    let good = 12;
+    for owner in [bad, good] {
+        member(&db, t, &[owner; 32]).await;
+    }
+    for g in 1..=16 {
+        let claim = packet(g, bad, host, false);
+        db.post_paired_packet(t, false, &claim, &[0; 32])
+            .await
+            .unwrap();
+        // Exact retransmission returns its saved decision without charging.
+        db.post_paired_packet(t, false, &claim, &[0; 32])
+            .await
+            .unwrap();
+    }
+    let denied = db
+        .post_paired_packet(t, false, &packet(17, bad, host, false), &[0; 32])
+        .await;
+    assert!(matches!(denied, Err(DbError::AccessDenied(_))));
+    let claim = packet(70, good, host, false);
+    db.post_paired_packet(t, false, &claim, &[0; 32])
+        .await
+        .unwrap();
+    let mut ack = packet(70, good, host, true);
+    ack.expiry = claim.expiry;
+    db.post_paired_packet(t, false, &ack, &[0; 32])
+        .await
+        .unwrap();
+    let binding = db
+        .read_paired(t, &[good; 32], false, Read::Binding(claim.generation))
+        .await
+        .unwrap();
+    assert_eq!(binding.data["state"].get(), r#""active""#);
+}

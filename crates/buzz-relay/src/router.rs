@@ -437,7 +437,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .merge(media_router)
         .merge(git_router)
         .merge(git_policy_router);
-    if state.config.paired_hosts_enabled && !state.config.nip_fi.mode.restricts() {
+    if state.config.serves_paired_hosts() {
         merged = merged.merge(api::paired_hosts::router(state.clone()));
     }
     for optional in [accessory_router, admin_router].into_iter().flatten() {

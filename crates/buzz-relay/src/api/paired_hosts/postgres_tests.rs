@@ -68,7 +68,12 @@ impl Fixture {
             STANDARD.encode(serde_json::to_vec(&event).unwrap())
         )
     }
-    async fn send(&self, path: &str, body: Option<Vec<u8>>, proof: &str) -> (StatusCode, Value) {
+    pub(super) async fn send(
+        &self,
+        path: &str,
+        body: Option<Vec<u8>>,
+        proof: &str,
+    ) -> (StatusCode, Value) {
         let request = Request::builder()
             .method(if body.is_some() { "POST" } else { "GET" })
             .uri(format!("{PREFIX}{path}"))

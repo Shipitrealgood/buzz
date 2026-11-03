@@ -51,6 +51,24 @@ fn require(ok: bool) -> Result<()> {
 }
 
 impl Db {
+    /// Eligibility for a rate-limit exception on a busy shared TCP peer.
+    /// This grants no access. The actual read or write repeats its full
+    /// admission checks inside a lifecycle-admitted transaction.
+    pub async fn known_paired_principal(
+        &self,
+        community: CommunityId,
+        signer: &[u8; 32],
+        generation: Option<&[u8; 32]>,
+    ) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM relay_members WHERE community_id=$1 AND pubkey=encode($2,'hex'))
+                OR EXISTS (SELECT 1 FROM paired_host_bindings WHERE community_id=$1 AND host_key=$2 AND generation=$3)
+                OR EXISTS (SELECT 1 FROM paired_host_events WHERE community_id=$1 AND host_key=$2 AND generation=$3
+                    AND operation='pair-claim' AND expires_at >= extract(epoch FROM now())-86400)"
+        ).bind(community.as_uuid()).bind(&signer[..]).bind(generation.map(|g| &g[..]))
+        .fetch_one(&self.pool).await?)
+    }
+
     async fn paired_tx(&self, community: CommunityId) -> Result<AdmittedTx> {
         let mut tx = crate::begin_community_write_transaction(
             &self.pool,
@@ -150,15 +168,24 @@ impl Db {
                 .bind(now - 86400)
                 .execute(tx.conn())
                 .await?;
-                let allowed:bool=sqlx::query_scalar(
+                let allowed: bool = sqlx::query_scalar(
                     r#"SELECT count(*) < 4096 AND count(*) FILTER (WHERE owner_key = $2)<128
-                       AND count(*) FILTER (WHERE host_key = $3)<128 AND count(*) FILTER (WHERE generation = $4
+                       AND count(*) FILTER (WHERE host_key = $3)<128
+                       AND count(*) FILTER (WHERE owner_key = $2 AND host_key = $3)<16
+                       AND count(*) FILTER (WHERE generation = $4
                        AND owner_key = $2)<64 AND count(*) FILTER (WHERE generation = $4
                        AND host_key = $3)<64 AND count(*) FILTER (WHERE source_bucket = $5)<256
                        FROM paired_host_events WHERE community_id = $1
                        AND operation = 'pair-claim' AND expires_at >= $6"#,
                 )
-                    .bind(t).bind(&p.owner[..]).bind(&p.host[..]).bind(&p.generation[..]).bind(&source_bucket[..]).bind(now-86400).fetch_one(tx.conn()).await?;
+                .bind(t)
+                .bind(&p.owner[..])
+                .bind(&p.host[..])
+                .bind(&p.generation[..])
+                .bind(&source_bucket[..])
+                .bind(now - 86400)
+                .fetch_one(tx.conn())
+                .await?;
                 require(allowed)?;
                 insert(&mut tx, p, Some(source_bucket)).await?;
             }

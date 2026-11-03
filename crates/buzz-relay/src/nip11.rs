@@ -406,7 +406,7 @@ pub(crate) async fn nip11_document(state: &crate::state::AppState, raw_host: &st
                 fi["public_profile"] = profile;
             }
         }
-        if state.config.paired_hosts_enabled && !state.config.nip_fi.mode.restricts() {
+        if state.config.serves_paired_hosts() {
             info.paired_hosts_v1 = Some(true);
         }
         if state.config.buzz_v1_enabled {

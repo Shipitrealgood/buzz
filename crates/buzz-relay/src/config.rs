@@ -656,6 +656,13 @@ fn inert_env_vars<'a>(names: &[&'a str], lookup: impl Fn(&str) -> Option<String>
 }
 
 impl Config {
+    /// The route and its NIP-11 advertisement require the same secure public URL.
+    pub(crate) fn serves_paired_hosts(&self) -> bool {
+        self.paired_hosts_enabled
+            && !self.nip_fi.mode.restricts()
+            && self.relay_url.trim_start().starts_with("wss://")
+    }
+
     /// Loads configuration from environment variables, falling back to development defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_addr_raw =
