@@ -86,8 +86,8 @@ pub(crate) struct StatusQuery {
 pub struct Device {
     pub(crate) db: Connection,
     pub(crate) local_keys: Option<Box<dyn Fn() -> Result<Vec<PublicKey>> + Send>>,
-    queries: HashMap<String, (String, String, Instant)>,
-    fresh: HashMap<String, (String, Instant, u64)>,
+    pub(crate) queries: HashMap<String, (String, String, Instant)>,
+    pub(crate) fresh: HashMap<String, (String, Instant, u64)>,
     pub(crate) status: HashMap<(String, String), StatusQuery>,
 }
 pub(crate) fn coordinate(s: &Scope) -> Result<String> {
@@ -103,7 +103,7 @@ pub(crate) fn grant(db: &Connection, s: &Scope) -> Result<Grant> {
     ensure!(g.scope == *s, "wrong journal scope");
     Ok(g)
 }
-fn save(db: &Connection, g: &Grant) -> Result<()> {
+pub(crate) fn save(db: &Connection, g: &Grant) -> Result<()> {
     db.execute("INSERT INTO grants(scope,data) VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET data=excluded.data",params![coordinate(&g.scope)?,serde_json::to_string(g)?])?;
     Ok(())
 }

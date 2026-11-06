@@ -31,6 +31,15 @@ use super::{
 mod thread_roots;
 mod thread_window;
 
+fn private_registry_filter(raw: &[Value]) -> bool {
+    raw.iter().any(|f| {
+        f.get("host_registry").is_some()
+            || f.get("kinds")
+                .and_then(Value::as_array)
+                .is_some_and(|k| k.contains(&serde_json::json!(43103)))
+    })
+}
+
 #[cfg(test)]
 #[path = "bridge/workflow_webhook_postgres_tests.rs"]
 mod workflow_webhook_postgres_tests;
@@ -1510,6 +1519,12 @@ async fn query_member_events(
     // depth_limit, feed_types) that nostr::Filter silently drops.
     let raw_filters: Vec<Value> = serde_json::from_slice(body)
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if private_registry_filter(&raw_filters) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "host registry requires scoped WebSocket context",
+        ));
+    }
     if let Some(result) = super::artifact::query(state, tenant, &pubkey, &raw_filters, false).await
     {
         return result;
@@ -2206,6 +2221,12 @@ async fn count_member_events(
     let pubkey_bytes = pubkey.to_bytes().to_vec();
     let raw: Vec<Value> = serde_json::from_slice(body)
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if private_registry_filter(&raw) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "host registry requires scoped WebSocket context",
+        ));
+    }
     if let Some(result) = super::artifact::query(state, tenant, &pubkey, &raw, true).await {
         return result;
     }
@@ -9361,6 +9382,7 @@ pub(crate) mod postgres_tests {
                 conn_id: uuid::Uuid::new_v4(),
                 tenant: TenantContext::resolved(self.community, self.host.clone()),
                 remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: self.reader.public_key(),

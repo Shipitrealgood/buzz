@@ -1,0 +1,875 @@
+
+running 870 tests
+test error::tests::connection_unavailable_covers_only_pool_and_io_failures ... ok
+test runtime::cold_start::tests::classifier_table_covers_every_retry_and_class_arm ... ok
+test runtime::cold_start::tests::cold_start_overrides_do_not_change_relay_defaults_pool_size_or_session_policy ... ok
+test runtime::cold_start::tests::cold_connection_can_exceed_the_old_three_second_budget ... ok
+test runtime::cold_start::tests::hung_initialization_is_bounded_to_97_seconds_including_backoff ... ok
+test runtime::cold_start::tests::permanent_errors_fail_immediately_and_do_not_expose_connection_details ... ok
+test runtime::cold_start::tests::retry_exhaustion_propagates_the_last_error_after_three_attempts ... ok
+test runtime::cold_start::tests::transient_failure_backs_off_before_a_successful_attempt ... ok
+test runtime::connection_observability::tests::pool_timeout_is_distinguished_from_other_failures ... ok
+test runtime::connection_observability::tests::vocabulary_and_series_budget_are_frozen ... ok
+test runtime::migration::postgres_tests::admin_schema_parity_between_desired_state_and_migrations ... ignored, requires Postgres
+test runtime::connection_observability::tests::dropped_step_is_cancelled_exactly_once_without_sensitive_labels ... ok
+test runtime::migration::postgres_tests::cancelled_migration_cannot_expose_shared_lock_while_ddl_backend_lives ... ignored, requires Postgres
+test runtime::migration::postgres_tests::all_non_operator_global_tables_have_not_null_community_id ... ok
+test runtime::migration::postgres_tests::channels_community_id_is_immutable_after_insert ... ok
+test runtime::migration::postgres_tests::desired_state_schema_layout_is_complete_and_schemabot_shaped ... ok
+test runtime::migration::postgres_tests::deletion_surface_parity_between_migration_0029_and_schema_sql ... ok
+test runtime::migration::postgres_tests::events_pkey_repair_runs_before_reused_apply_and_matches_reconcile ... ok
+test runtime::migration::postgres_tests::embedded_migrator_contains_consolidated_initial_schema ... ok
+test runtime::migration::postgres_tests::migrated_schema_enforces_owner_provenance_contract ... ignored, requires Postgres
+test runtime::migration::postgres_tests::migration_0044_drops_populated_nip_fi_ledger_cleanly ... ignored, requires Postgres
+test runtime::migration::postgres_tests::migration_0055_rejects_half_filled_direct_timeout ... ignored, requires Postgres
+test runtime::migration::postgres_tests::migration_0060_refuses_active_legacy_leases_without_mutation ... ignored, requires Postgres
+test runtime::migration::postgres_tests::every_pgschema_apply_runs_post_apply_reconciliation ... ok
+test runtime::migration::postgres_tests::migration_lint_accepts_scoped_key_constraints_led_by_community_id ... ok
+test runtime::migration::postgres_tests::migration_lint_detects_scoped_key_constraints_not_led_by_community_id ... ok
+test runtime::migration::postgres_tests::migration_lint_detects_tables_missing_community_id_by_default ... ok
+test runtime::migration::postgres_tests::owner_deletion_auto_approval_migration_matches_desired_schema ... ok
+test runtime::migration::postgres_tests::owner_deletion_quota_reservation_index_matches_desired_schema ... ok
+test runtime::migration::postgres_tests::pgschema_reapply_keeps_runtime_partitions ... ignored, requires Postgres
+test runtime::migration::postgres_tests::pgschemaignore_exempts_exactly_the_declared_monthlies ... ok
+test runtime::migration::postgres_tests::populated_upgrade_preserves_search_policy_except_for_private_kinds ... ignored, requires Postgres
+test runtime::migration::postgres_tests::pre_0007_ambiguous_nip_rs_data_blocks_without_mutation_and_allows_retry ... ignored, requires Postgres
+test runtime::migration::postgres_tests::push_match_trigger_is_narrowed_to_message_kinds_additively ... ok
+test runtime::migration::postgres_tests::run_migrations_applies_consolidated_initial_schema_on_fresh_database ... ignored, requires Postgres
+test runtime::migration::postgres_tests::schema_destruction_lock_excludes_shared_holders_and_releases_on_both_paths ... ignored, requires Postgres
+test runtime::migration::postgres_tests::scoped_primary_key_unique_and_foreign_key_constraints_lead_with_community_id ... ok
+test runtime::migration::postgres_tests::workflow_run_error_codes_are_additive_and_backfilled_without_parsing_diagnostics ... ok
+test runtime::migration::retirement_postgres_tests::migration_schema_push_retirement_preserves_ttl_and_published_checksums ... ignored, requires Postgres
+test runtime::migration::retirement_postgres_tests::migration_schema_ttl_retirement_drops_every_partition_trigger_and_keeps_checksums ... ignored, requires Postgres
+test runtime::migration::schema_fence_bootstrap_postgres_tests::migration_schema_bootstrap_keeps_only_explicit_legacy_fences ... ignored, requires Postgres
+test runtime::observability::tests::cancelled_attempt_records_terminal_and_refreshes_zero ... ok
+test runtime::observability::tests::compatibility_metrics_only_cover_preexisting_acquisition_seams ... ok
+test runtime::observability::tests::concurrent_attempts_publish_an_exact_balanced_waiter_count ... ok
+test runtime::observability::tests::label_vocabularies_are_closed_and_documented ... ok
+test runtime::observability::tests::postgres_tests::advisory_lock_records_success_contention_timeout_and_error ... ignored, requires Postgres
+test runtime::observability::tests::postgres_tests::deletion_catalog_readiness_records_timeout_and_recovers ... ignored, requires Postgres
+test runtime::observability::tests::postgres_tests::pool_acquire_records_success_timeout_and_error_with_wait_time ... ignored, requires Postgres
+test runtime::observability::tests::postgres_tests::production_db_methods_emit_exact_pool_operation_labels ... ignored, requires Postgres
+test runtime::observability::tests::postgres_tests::serving_write_gate_records_cancel_timeout_success_and_recovery ... ignored, requires Postgres
+test runtime::observability::tests::primitives_record_fixed_success_error_and_timeout_labels ... ok
+test runtime::observability::tests::transaction_timer_observe_classifies_result_outcomes ... ok
+test runtime::observability::tests::waiter_publication_is_serialized_with_state_mutation ... ok
+test runtime::observability::tests::waiter_refresh_omits_reader_pairs_when_no_reader_pool_is_configured ... ok
+test runtime::pool_role_tests::database_pool_active_connections_use_saturating_arithmetic ... ok
+test runtime::pool_role_tests::database_pool_role_vocabulary_is_exact ... ok
+test runtime::pool_role_tests::database_pool_stats_are_read_from_the_physical_pool_handle ... ok
+test runtime::postgres_tests::armed_pool_rejects_old_channel_inserts_through_public_api ... ignored, requires Postgres
+test runtime::postgres_tests::channel_cursor_above_fence_stays_on_writer_preventing_middle_hole ... ignored, requires Postgres
+test runtime::postgres_tests::channel_cursor_predicate_is_not_budget_gated ... ok
+test runtime::postgres_tests::channel_window_routes_head_to_writer_and_cursor_pages_to_replica ... ignored, requires Postgres
+test runtime::postgres_tests::cluster_global_replica_floor_probe_waits_for_shared_writer_and_records_after_release ... ignored, requires Postgres
+test runtime::postgres_tests::community_write_transaction_compatibility_metrics_are_limited_to_legacy_entrypoints ... ok
+test runtime::postgres_tests::connect_read_pool_is_lazy_and_independently_sized ... ok
+test runtime::postgres_tests::count_events_routed_is_bounded_only ... ignored, requires Postgres
+test runtime::postgres_tests::created_at_floor_guard_aborts_old_channel_rows_at_commit ... ignored, requires Postgres
+test runtime::postgres_tests::e_tag_any_runs_with_real_binds_on_p_join_and_count ... ignored, requires Postgres
+test runtime::postgres_tests::event_write_transaction_preserves_legacy_acquisition_metrics ... ok
+test runtime::postgres_tests::fence_probe_refuses_to_start_without_verified_floor_guard ... ignored, requires Postgres
+test runtime::postgres_tests::fleet_sweep_stops_at_first_unavailable_connection ... ok
+test runtime::postgres_tests::floor_guard_blocks_updates_that_move_rows_below_the_fence ... ignored, requires Postgres
+test runtime::postgres_tests::for_query_predicate_truth_table ... ok
+test runtime::postgres_tests::head_fetch_routes_by_configured_budget ... ignored, requires Postgres
+test runtime::postgres_tests::is_relay_member_is_bounded_routed_and_fails_closed ... ignored, requires Postgres
+test runtime::postgres_tests::lazy_reader_pool_still_spawns_fence_probe ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::plan_frees_a_starter_name_that_only_archived_channels_hold ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::plan_keeps_each_listed_name_on_its_oldest_unarchived_channel ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::plan_picks_a_free_name_when_the_short_one_is_taken ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::script_renames_each_planned_channel_once_whatever_its_name ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::script_stops_at_the_first_auth_refusal ... ignored, requires Postgres
+test runtime::postgres_tests::listed_channel_name_postgres_tests::script_stops_for_a_community_the_relay_does_not_serve ... ignored, requires Postgres
+test runtime::migration::postgres_tests::migration_execution_cannot_bypass_schema_destruction_lock ... ok
+test runtime::postgres_tests::migration_schema_database_guard_covers_legacy_writer_and_nip09_deletion ... ignored, requires Postgres
+test runtime::postgres_tests::migration_schema_operator_listener_outbox_is_not_tenant_scoped ... ignored, requires Postgres
+test runtime::postgres_tests::push_gateway_profile_migration_converges_brownfield_authority ... ignored, requires Postgres
+test runtime::postgres_tests::query_events_routed_defaults_dark_and_routes_covered_when_enabled ... ignored, requires Postgres
+test runtime::postgres_tests::read_budget_zero_disables_and_large_values_clamp_to_staleness ... ok
+test runtime::postgres_tests::read_falls_back_to_writer_when_no_replica_configured ... ok
+test runtime::postgres_tests::read_pool_stats_reports_reader_ceiling_not_writer ... ok
+test runtime::postgres_tests::read_session_degrades_to_writer_when_replica_connection_dies ... ignored, requires Postgres
+test runtime::postgres_tests::read_session_statement_cancel_propagates_without_writer_rerun ... ignored, requires Postgres
+test runtime::postgres_tests::reader_min_connections_is_a_fifth_of_max_with_a_floor_of_one ... ok
+test runtime::postgres_tests::reader_pool_postgres_tests::proof_timeout_mid_begin_leaves_no_reader_transaction_open ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::reader_boot_ping_warms_pool_to_max_in_background ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::reader_boot_ping_warms_pool_to_min_connections ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::reader_warm_at_production_budget_ends_partial_when_dials_stall ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::routed_read_proof_times_out_to_writer_on_unresponsive_reader ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::stalled_reader_sessions_release_their_slots_for_new_connections ... ignored, requires Postgres
+test runtime::postgres_tests::reader_pool_postgres_tests::terminated_warm_reader_connection_fails_closed_to_writer ... ignored, requires Postgres
+test runtime::postgres_tests::readiness_check_cancellation_balances_waiter_and_inflight_connection ... ignored, requires Postgres
+test runtime::postgres_tests::readiness_check_classifies_closed_pool_query_timeout_and_query_error ... ignored, requires Postgres
+test runtime::postgres_tests::readiness_check_distinguishes_pool_exhaustion_from_success ... ignored, requires Postgres
+test runtime::postgres_tests::replica_floor_writer_transaction_holds_shared_lock ... ignored, requires Postgres
+test runtime::postgres_tests::replica_non_cancel_failure_still_falls_back_to_writer ... ignored, requires Postgres
+test runtime::postgres_tests::replica_statement_cancel_propagates_without_writer_rerun ... ignored, requires Postgres
+test runtime::postgres_tests::replica_thread_failure_falls_back_to_writer ... ignored, requires Postgres
+test runtime::postgres_tests::replica_window_failure_falls_back_to_writer ... ignored, requires Postgres
+test runtime::postgres_tests::routed_fallback_spends_one_acquire_budget_when_aurora_cache_is_cold ... ignored, requires Postgres
+test runtime::postgres_tests::routed_reads_are_confined_to_the_requested_community ... ignored, requires Postgres
+test runtime::postgres_tests::routed_request_holds_one_snapshot_across_page_and_aux ... ignored, requires Postgres
+test runtime::postgres_tests::serving_write_guard_insert_indexes_mentions_in_event_transaction ... ignored, requires Postgres
+test runtime::postgres_tests::session_statement_timeouts_bound_writer_and_reader_sessions ... ignored, requires Postgres
+test runtime::postgres_tests::session_timeout_env_overlay_zero_passthrough_and_invalid_fallback ... ok
+test runtime::postgres_tests::session_timeouts_install_through_db_new_and_bound_lock_waits ... ignored, requires Postgres
+test runtime::postgres_tests::thread_full_replica_page_above_fence_is_reverified_on_writer ... ignored, requires Postgres
+test runtime::postgres_tests::thread_replies_cursor_pages_route_to_replica_with_writer_terminal_verification ... ignored, requires Postgres
+test runtime::postgres_tests::thread_window_postgres_tests::migration_schema_thread_window_prebuild_does_not_queue_behind_writer ... ignored, requires Postgres
+test runtime::postgres_tests::thread_window_postgres_tests::migration_schema_thread_window_prebuild_validation_and_old_ledger ... ignored, requires Postgres
+test runtime::postgres_tests::thread_window_postgres_tests::thread_window_upper_fence_terminal_snapshot_and_fallback ... ignored, requires Postgres
+test runtime::postgres_tests::thread_window_statement_cancel_propagates_without_writer_rerun ... ignored, requires Postgres
+test runtime::postgres_tests::writer_pool_metrics_record_connection_created_after_startup ... ignored, requires Postgres
+test runtime::postgres_tests::writer_pool_metrics_record_every_initial_connection_ready ... ignored, requires Postgres
+test runtime::postgres_tests::writer_pool_metrics_stop_after_session_timeout_setup_failure ... ignored, requires Postgres
+test runtime::postgres_tests::writer_pool_rejects_non_read_committed_database_default ... ignored, requires Postgres
+test runtime::postgres_tests::writer_pool_safety_hook_is_single_and_composed ... ok
+test runtime::postgres_tests::writer_statement_timeout_is_always_bounded ... ok
+test runtime::push_enqueue::tests::postgres_tests::enqueue_admits_active_tenant_and_rejects_quiescing_tenant ... ignored, requires Postgres
+test runtime::push_enqueue::tests::saturation_and_shutdown_never_wait_for_a_receiver ... ok
+test runtime::reader_warm_tests::unreachable_reader_skips_the_warm_pass ... ok
+test runtime::reader_warm_tests::warm_pass_stops_after_one_wave_that_opens_nothing ... ok
+test runtime::reader_warm_tests::warm_toward_is_bounded_when_dials_keep_missing ... ok
+test runtime::reader_warm_tests::warm_toward_opens_exactly_the_target ... ok
+test runtime::reader_warm_tests::warm_toward_tops_up_a_partially_failed_wave ... ok
+test runtime::reader_warm_tests::warm_wave_size_is_the_shortfall_capped_at_the_concurrency_bound ... ok
+test runtime::replica_fence::postgres_tests::aurora_identity_function_name_is_the_postgres_one ... ok
+test runtime::replica_fence::postgres_tests::aurora_identity_probe_reports_false_on_plain_postgres ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::cluster_global_probe_commits_tokens_and_sessions_prove_coverage ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::cluster_global_probe_rotates_epoch_on_same_epoch_token_regression ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::cluster_global_sample_writer_fails_closed_when_activity_is_masked ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::cluster_global_sample_writer_waits_for_shared_floor_lock_before_sampling_time ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::fence_starts_closed_and_opens_on_record ... ok
+test runtime::replica_fence::postgres_tests::migration_schema_cluster_global_sample_writer_sees_open_transactions_and_ignores_idle ... ignored, requires Postgres
+test runtime::replica_fence::postgres_tests::record_epoch_change_resets_and_same_epoch_regression_fails ... ok
+test runtime::replica_fence::postgres_tests::resolve_picks_greatest_retained_token_at_or_below_observation ... ok
+test runtime::replica_fence::postgres_tests::ring_capacity_evicts_oldest_entries ... ok
+test runtime::replica_fence::postgres_tests::stale_fence_reads_as_closed ... ok
+test store::admin_moderation::postgres_tests::action_dto_emits_nullable_fields_as_json_null_not_absent ... ok
+test store::admin_moderation::postgres_tests::feedback_survives_community_purge_with_null_provenance_in_list_and_detail ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::list_reports_names_same_community_event_author_including_deleted ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_active_action_breaks_equal_timestamp_ties_by_id_desc ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_active_action_excludes_reopen_audit_rows ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_has_no_message_for_non_event_target ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_has_no_message_when_event_row_is_missing ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_reads_only_the_same_community_target_and_includes_deleted_content ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_detail_surfaces_succeeded_enforcement_on_a_dismissed_reopened_report ... ignored, requires Postgres
+test store::admin_moderation::postgres_tests::report_reads_hide_private_kind_targets ... ignored, requires Postgres
+test store::admission_postgres_tests::allowlist_backfill_requires_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::allowlist_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::api_token_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::archived_identity_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::channel_and_membership_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::channel_reap_admits_active_tenant_and_skips_quiescing_tenant ... ignored, requires Postgres
+test store::admission_postgres_tests::channel_reap_rechecks_admission_after_candidate_read ... ignored, requires Postgres
+test store::admission_postgres_tests::channel_reap_returns_committed_rows_after_earlier_tenant_error ... ignored, requires Postgres
+test store::admission_postgres_tests::dm_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::empty_allowlist_backfill_skips_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::fleet_sweep_returns_committed_results_when_database_drops_mid_page ... ignored, requires Postgres
+test store::admission_postgres_tests::git_name_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::invite_sweep_admits_active_tenant_and_skips_quiescing_tenant ... ignored, requires Postgres
+test store::admission_postgres_tests::invite_sweep_rechecks_admission_after_candidate_read ... ignored, requires Postgres
+test store::admission_postgres_tests::match_claim_admits_active_tenant_and_skips_quiescing_tenant ... ignored, requires Postgres
+test store::admission_postgres_tests::match_claim_rechecks_admission_and_continues_after_candidate_read ... ignored, requires Postgres
+test store::admission_postgres_tests::match_reap_admits_active_tenant_and_skips_quiescing_tenant ... ignored, requires Postgres
+test store::admission_postgres_tests::moderation_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::owner_mutations_report_pending_deletion_when_admission_refuses ... ignored, requires Postgres
+test store::admission_postgres_tests::periodic_reaps_continue_after_tenant_error_and_retry_retained_rows ... ignored, requires Postgres
+test store::admission_postgres_tests::personal_read_writer_requires_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::push_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::relay_admin_domain_writer_requires_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::relay_invite_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::relay_member_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::thread_metadata_writer_requires_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::user_writers_require_application_admission ... ignored, requires Postgres
+test store::admission_postgres_tests::workflow_prune_admits_active_tenant_and_skips_quiescing_tenant ... ignored, requires Postgres
+test store::admission_postgres_tests::workflow_writers_require_application_admission ... ignored, requires Postgres
+test store::allowlist::postgres_tests::allowlist_is_scoped_to_community ... ignored, requires Postgres
+test store::api_token::postgres_tests::active_lookup_by_hash_is_scoped_to_community ... ignored, requires Postgres
+test store::api_token::postgres_tests::lookup_by_hash_is_scoped_to_community ... ignored, requires Postgres
+test store::archived_identities::postgres_tests::archived_identity_state_is_community_scoped ... ignored, requires Postgres
+test store::artifact_postgres_tests::artifacts_of_a_later_channel_type_are_read_only_by_name ... ignored, requires Postgres
+test store::artifact_postgres_tests::concurrent_artifacts_on_ttl_channel_commit ... ignored, requires Postgres
+test store::artifact_postgres_tests::head_outside_authorized_channel_matches_missing_head ... ignored, requires Postgres
+test store::artifact_postgres_tests::lifecycle_cas_queries_move_redaction_and_retention ... ignored, requires Postgres
+test store::artifact_postgres_tests::quiescing_community_rejects_artifact_at_admission_before_coordinate_lock ... ignored, requires Postgres
+test store::artifact_postgres_tests::repeated_moves_get_distinct_source_safe_markers ... ignored, requires Postgres
+test store::artifact_postgres_tests::root_anchor_and_tenant_boundaries ... ignored, requires Postgres
+test store::artifact_postgres_tests::sync_snapshot_pages_are_one_cut_and_head_includes_deletions ... ignored, requires Postgres
+test store::artifact_postgres_tests::system_channel_artifacts_are_read_only_by_name ... ignored, requires Postgres
+test store::artifact_postgres_tests::unlisted_channel_artifacts_are_read_by_name_for_non_members ... ignored, requires Postgres
+test store::channel::group_metadata_tag_tests::access_flags_follow_settings ... ok
+test store::channel::group_metadata_tag_tests::hides_private_system_channels ... ok
+test store::channel::group_metadata_tag_tests::publishes_auto_join_only_while_effective ... ok
+test store::channel::group_metadata_tag_tests::publishes_labels_between_the_type_and_the_creator ... ok
+test store::channel::group_metadata_tag_tests::publishes_the_explicit_join_role_value ... ok
+test store::channel::group_metadata_tag_tests::publishes_the_type_creator_and_creation_time ... ok
+test store::channel::group_metadata_tag_tests::publishes_the_unlisted_flag_as_stored ... ok
+test store::channel::postgres_tests::a_create_whose_event_fails_leaves_no_channel ... ignored, requires Postgres
+test store::channel::postgres_tests::a_listed_create_beside_a_failed_create_of_its_name_succeeds ... ignored, requires Postgres
+test store::channel::postgres_tests::a_listed_create_beside_an_open_create_of_its_name_is_refused_once_committed ... ignored, requires Postgres
+test store::channel::postgres_tests::a_resend_beside_a_failed_create_creates_the_channel ... ignored, requires Postgres
+test store::channel::postgres_tests::a_resend_beside_an_open_create_confirms_it_once_committed ... ignored, requires Postgres
+test store::channel::postgres_tests::another_create_for_a_taken_channel_writes_nothing ... ignored, requires Postgres
+test store::channel::postgres_tests::get_channel_is_scoped_when_channel_uuid_collides_across_communities ... ignored, requires Postgres
+test store::channel::postgres_tests::join_role_defaults_to_member_and_updates_round_trip ... ignored, requires Postgres
+test store::channel::postgres_tests::reap_expired_ephemeral_channels_returns_row_community_and_host ... ignored, requires Postgres
+test store::channel::postgres_tests::soft_delete_captures_members_at_its_serialization_point ... ignored, requires Postgres
+test store::channel::postgres_tests::soft_delete_waits_for_membership_lock ... ignored, requires Postgres
+test store::channel::postgres_tests::test_unarchive_expired_ephemeral_channel_renews_ttl_deadline ... ignored, requires Postgres
+test store::channel_members::postgres_tests::accessible_channel_ids_are_not_truncated_at_one_thousand ... ignored, requires Postgres
+test store::channel_members::postgres_tests::app_roster_guard_covers_generic_and_parameterized_writers_without_trigger ... ignored, requires Postgres
+test store::channel_members::postgres_tests::app_roster_guard_locked_writer_rejects_stale_and_accepts_current_without_trigger ... ignored, requires Postgres
+test store::channel_members::postgres_tests::app_roster_guard_matches_trigger_for_roster_input_table ... ignored, requires Postgres
+test store::channel_members::postgres_tests::app_roster_guard_rechecks_after_concurrent_membership_commit_without_trigger ... ignored, requires Postgres
+test store::channel_members::postgres_tests::desired_schema_rejects_stale_legacy_roster_role ... ignored, requires Postgres
+test store::channel_members::postgres_tests::first_member_put_joins_once_and_never_undoes_a_leave ... ignored, requires Postgres
+test store::channel_members::postgres_tests::get_members_returns_full_roster_beyond_1000 ... ignored, requires Postgres
+test store::channel_members::postgres_tests::get_users_bulk_is_scoped_when_pubkey_exists_in_multiple_communities ... ignored, requires Postgres
+test store::channel_members::postgres_tests::join_role_change_waits_for_a_roster_publication_on_an_ephemeral_channel ... ignored, requires Postgres
+test store::channel_members::postgres_tests::kicked_owner_rejoins_as_member_not_owner ... ignored, requires PostgreSQL
+test store::channel_members::postgres_tests::kind_9002_join_role_change_waits_for_a_roster_publication_on_an_ephemeral_channel ... ignored, requires Postgres
+test store::channel_members::postgres_tests::large_roster_reconciliation_candidates_respect_snapshot_count_and_signer ... ignored, requires Postgres
+test store::channel_members::postgres_tests::large_roster_reconciliation_skips_archived_and_deleted_communities ... ignored, requires Postgres
+test store::channel_members::postgres_tests::locked_member_snapshot_blocks_post_capture_membership_mutation ... ignored, requires Postgres
+test store::channel_members::postgres_tests::locked_member_snapshot_holds_shared_community_fence_lock ... ignored, requires Postgres
+test store::channel_members::postgres_tests::member_may_promote_a_guest_to_member_only ... ignored, requires Postgres
+test store::channel_members::postgres_tests::membership_writes_serialize_on_the_shared_channel_lock ... ignored, requires PostgreSQL
+test store::channel_members::postgres_tests::migrations_run_without_the_roster_trigger ... ignored, requires Postgres
+test store::channel_members::postgres_tests::owner_can_still_manage_roles_after_demotion_guard ... ignored, requires Postgres
+test store::channel_members::postgres_tests::put_member_enforces_announce_admission ... ignored, requires Postgres
+test store::channel_members::postgres_tests::put_member_waits_for_a_concurrent_archive ... ignored, requires Postgres
+test store::channel_members::postgres_tests::put_member_waits_for_a_concurrent_join_role_change ... ignored, requires Postgres
+test store::channel_members::postgres_tests::put_members_decides_each_person_in_order ... ignored, requires Postgres
+test store::channel_members::postgres_tests::put_members_with_event_stores_the_event_with_its_writes ... ignored, requires Postgres
+test store::channel_members::postgres_tests::remove_member_rejects_an_actor_demoted_while_it_waited ... ignored, requires PostgreSQL
+test store::channel_members::postgres_tests::removed_creator_cannot_rejoin_a_private_channel ... ignored, requires PostgreSQL
+test store::channel_members::postgres_tests::removed_owner_is_restored_only_by_a_current_owner ... ignored, requires PostgreSQL
+test store::channel_members::postgres_tests::repro_private_channel_member_can_demote_owner ... ignored, requires Postgres
+test store::channel_members::postgres_tests::repro_unprivileged_member_can_demote_owner ... ignored, requires Postgres
+test store::channel_members::postgres_tests::test_agent_owner_can_remove_bot ... ignored, requires Postgres
+test store::channel_members::postgres_tests::test_random_user_cannot_remove_bot ... ignored, requires Postgres
+test store::channel_members::postgres_tests::unprivileged_member_cannot_demote_a_co_owner ... ignored, requires Postgres
+test store::channel_name_postgres_tests::a_change_that_would_list_a_taken_name_changes_nothing ... ignored, requires Postgres
+test store::channel_name_postgres_tests::a_listed_name_is_taken_only_for_listed_channels ... ignored, requires Postgres
+test store::channel_name_postgres_tests::an_archived_channel_keeps_its_name_until_it_is_deleted ... ignored, requires Postgres
+test store::community::postgres_tests::archive_disconnect_fence_tracks_the_exact_archive_transition ... ignored, requires Postgres
+test store::community::postgres_tests::archive_queued_behind_transfer_rechecks_the_current_owner ... ignored, requires Postgres
+test store::community::postgres_tests::communities_of_channels_present_for_existing_absent_for_missing ... ignored, requires Postgres
+test store::community::postgres_tests::community_implementation_tests_and_spans_have_single_owners ... ok
+test store::community::postgres_tests::completed_owner_deletions_count_toward_lifetime_cap ... ignored, requires Postgres
+test store::community::postgres_tests::concurrent_same_owner_create_returns_the_winning_row_to_both_callers ... ignored, requires Postgres
+test store::community::postgres_tests::create_community_with_owner_enforces_per_owner_limit ... ignored, requires Postgres
+test store::community::postgres_tests::create_community_with_owner_is_atomic_and_create_only ... ignored, requires Postgres
+test store::community::postgres_tests::ensure_configured_community_reports_insert_winner ... ignored, requires Postgres
+test store::community::postgres_tests::inactive_community_fence_holds_the_row_lock_through_disconnect ... ignored, requires Postgres
+test store::community::postgres_tests::lifecycle_fences_do_not_wait_on_foreign_key_share_locks ... ignored, requires Postgres
+test store::community::postgres_tests::list_communities_owned_by_returns_only_owner_rows ... ignored, requires Postgres
+test store::community::postgres_tests::lookup_community_by_host_matches_case_insensitive_host_index ... ignored, requires Postgres
+test store::community::postgres_tests::owner_quota_serializes_concurrent_create_and_transfer_with_reservation ... ignored, requires Postgres
+test store::community::postgres_tests::unarchive_community_owned_by_restores_admission_idempotently ... ignored, requires Postgres
+test store::deletion::postgres_tests::abort_preserves_audit_and_allows_fresh_request ... ignored, requires Postgres
+test store::deletion::postgres_tests::abort_serializes_before_fence_without_deadlock ... ignored, requires Postgres
+test store::deletion::postgres_tests::abort_serializes_before_quiescing_without_deadlock ... ignored, requires Postgres
+test store::deletion::postgres_tests::accepted_owner_deletion_blocks_legacy_owner_convergence_without_membership_change ... ignored, requires Postgres
+test store::deletion::postgres_tests::accepted_owner_request_blocks_unarchive_and_transfer_and_suppresses_owner_list_row ... ignored, requires Postgres
+test store::deletion::postgres_tests::approval_boundary_blocks_claim_until_exact_inventory_is_approved ... ignored, requires Postgres
+test store::deletion::postgres_tests::approved_request_cannot_be_retargeted_rewritten_or_claimed_without_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::begin_quiescing_waits_for_open_admitted_writer_note_update ... ignored, requires Postgres
+test store::deletion::postgres_tests::blocked_claimed_owner_submission_cannot_heartbeat_or_approve ... ignored, requires Postgres
+test store::deletion::postgres_tests::blocked_owner_submission_cannot_be_claimed ... ignored, requires Postgres
+test store::deletion::postgres_tests::checkpointed_resume_is_idempotent_and_tombstone_blocks_name_reuse ... ignored, requires Postgres
+test store::deletion::postgres_tests::community_fence_rejects_fresh_begin_transaction_after_fence ... ignored, requires Postgres
+test store::deletion::postgres_tests::compliant_writer_shared_xact_lock_blocks_deletion_exclusive_xact_lock ... ignored, requires Postgres
+test store::deletion::postgres_tests::concurrent_owner_admission_duplicates_return_one_stable_request ... ignored, requires Postgres
+test store::deletion::postgres_tests::concurrent_owner_admission_serializes_before_legacy_owner_rotation ... ignored, requires Postgres
+test store::deletion::postgres_tests::concurrent_owner_admission_serializes_before_normal_transfer ... ignored, requires Postgres
+test store::deletion::postgres_tests::concurrent_owner_admission_serializes_before_unarchive ... ignored, requires Postgres
+test store::deletion::postgres_tests::deletion_lock_admission_rejects_pinned_snapshot_isolation ... ignored, requires Postgres
+test store::deletion::postgres_tests::deletion_whole_tenant_stages_outlive_the_writer_statement_timeout ... ignored, requires Postgres
+test store::deletion::postgres_tests::desired_state_schema_bootstrap_progresses_beyond_fencing ... ignored, requires Postgres
+test store::deletion::postgres_tests::desired_state_schema_enforces_owner_provenance_contract ... ignored, requires Postgres
+test store::deletion::postgres_tests::destructive_stages_serialize_with_migrations_and_fail_closed_on_new_scoped_tables ... ignored, requires Postgres
+test store::deletion::postgres_tests::fence_waits_for_open_write_and_rejects_it_after_transition ... ignored, requires Postgres
+test store::deletion::postgres_tests::manifest_key_chunks_bind_freeze_execution_and_cleanup ... ignored, requires Postgres
+test store::deletion::postgres_tests::migration_schema_fence_objects_are_optional_for_serving_and_deletion ... ignored, requires Postgres
+test store::deletion::postgres_tests::migration_schema_paired_host_tables_obey_fence_and_purge ... ignored, requires Postgres
+test store::deletion::postgres_tests::migration_schema_user_fences_survive_community_and_profile_deletion ... ignored, requires Postgres
+test store::deletion::postgres_tests::operator_unblock_preserves_approval_and_records_recovery ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_admission_rejects_legacy_co_owners_without_persisting_a_request ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_admission_rejects_non_archived_non_owner_and_stale_owner ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_admission_replay_converges_after_stage_advancement_and_rejects_retargeting ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_admission_requires_current_owner_and_archived_active_target ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_atomically_approves_exact_inventory_and_converges ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_claim_is_owner_only_concurrent_and_reclaimable ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_rechecks_archived_current_owner_before_automatic_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_rejects_deleted_at_before_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_rejects_different_sole_owner_before_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_rejects_inactive_state_before_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_rejects_later_co_owner_before_approval ... ignored, requires Postgres
+test store::deletion::postgres_tests::owner_preparation_retry_block_and_privileged_abort_are_recoverable ... ignored, requires Postgres
+test store::deletion::postgres_tests::paired_host_tables_obey_fence_and_purge ... ignored, requires Postgres
+test store::deletion::postgres_tests::preclaim_setup_failure_is_durable_without_a_lease ... ignored, requires Postgres
+test store::deletion::postgres_tests::privileged_abort_fences_a_live_owner_preparation_lease ... ignored, requires Postgres
+test store::deletion::postgres_tests::privileged_abort_of_submitted_owner_request_releases_the_request_fence ... ignored, requires Postgres
+test store::deletion::postgres_tests::privileged_abort_spans_only_the_reversible_pre_destruction_boundary ... ignored, requires Postgres
+test store::deletion::postgres_tests::purge_postgres_succeeds_with_relay_admin_action_rows ... ignored, requires Postgres
+test store::deletion::postgres_tests::quiescing_rejects_new_leases_but_renews_admitted_lease_until_release ... ignored, requires Postgres
+test store::deletion::postgres_tests::retry_exhaustion_blocks_only_the_consecutive_stage_and_progress_resets_it ... ignored, requires Postgres
+test store::deletion::postgres_tests::same_owner_convergence_serializes_with_abort_without_deadlock ... ignored, requires Postgres
+test store::deletion::postgres_tests::serving_lease_acquire_waits_for_fence_lock_then_refuses ... ignored, requires Postgres
+test store::deletion::postgres_tests::serving_lease_reaper_is_bounded_and_reports_stats ... ignored, requires Postgres
+test store::deletion::postgres_tests::serving_lease_reaper_remains_global_across_tombstoned_tenant ... ignored, requires Postgres
+test store::deletion::postgres_tests::serving_lease_sql_timeout_discards_the_connection ... ignored, requires Postgres
+test store::deletion::postgres_tests::serving_lease_statement_timeout_cancels_slow_statement ... ignored, requires Postgres
+test store::deletion::postgres_tests::stale_claim_and_fence_generation_fail_closed ... ignored, requires Postgres
+test store::deletion::postgres_tests::stale_owner_preparation_generation_cannot_freeze_or_approve ... ignored, requires Postgres
+test store::deletion::postgres_tests::sustained_admission_cannot_starve_fence_after_quiescing ... ignored, requires Postgres
+test store::deletion::postgres_tests::taxonomy_sweep_uses_database_completion_order ... ignored, requires Postgres
+test store::deletion::postgres_tests::user_fences_survive_community_and_profile_deletion ... ignored, requires Postgres
+test store::deletion::tests::errors_are_utf8_bounded ... ok
+test store::deletion::tests::frozen_inventory_digest_is_canonical_for_v5_manifest_entries ... ok
+test store::deletion::tests::frozen_inventory_digest_is_stable ... ok
+test store::deletion::tests::key_stream_digest_requires_strict_order_and_is_chunking_invariant ... ok
+test store::deletion::tests::manifest_key_chunks_must_hash_to_the_frozen_summaries ... ok
+test store::deletion::tests::scoped_table_exclusions_match_sql_during_transition ... ok
+test store::deletion::tests::stage_order_is_exact_and_terminal ... ok
+test store::deletion::tests::stale_lease_classifier_does_not_swallow_other_access_denials ... ok
+test store::deletion::tests::storage_manifest_shape_invariants_fail_closed ... ok
+test store::deletion::tests::versioned_manifest_entries_decode_and_validate_chunks ... ok
+test store::dm::tests::participant_hash_deduplicates ... ok
+test store::dm::tests::participant_hash_differs_for_different_sets ... ok
+test store::dm::tests::participant_hash_is_order_independent ... ok
+test store::dm::tests::participant_hash_returns_32_bytes ... ok
+test store::entity_deletion::postgres_tests::approval_is_atomic_idempotent_and_bound_to_inventory ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::approval_refuses_changed_inventory_and_unexpected_stage_history ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::approval_refuses_to_repair_missing_evidence ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::approval_rolls_back_when_evidence_cannot_be_saved ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::concurrent_submissions_converge_and_conflicts_preserve_request ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::desired_schema_has_plain_intake_without_database_guards ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::dropped_heartbeat_leaves_no_open_transaction_for_the_release ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::invalid_submissions_do_not_create_rows ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::migration_schema_approval_preserves_legacy_intake_and_resubmission_prepares_it ... ignored, requires Postgres
+test store::entity_deletion::postgres_tests::migration_schema_entity_intake_preserves_existing_data ... ignored, requires Postgres
+test store::entity_deletion::stages::postgres_tests::stage_storage_accepts_caller_policy_and_rolls_back_invalid_decisions ... ignored, requires Postgres
+test store::event::e_tag_filter_shape_tests::channel_scope_sql_does_not_depend_on_channel_count ... ok
+test store::event::e_tag_filter_shape_tests::e_tag_query_filters_in_materialized_fence_before_order_limit ... ok
+test store::event::e_tag_filter_shape_tests::non_e_tag_query_is_not_fenced ... ok
+test store::event::e_tag_filter_shape_tests::p_tag_query_bounds_mention_side_by_time ... ok
+test store::event::postgres_tests::access_scope_is_applied_before_historical_page_limit ... ignored, requires Postgres
+test store::event::postgres_tests::canvas_head_checked_rejects_non_canvas_kinds_before_opening_a_transaction ... ok
+test store::event::postgres_tests::channel_head_canvas_deletion_serializes_on_advisory_key ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_accepts_same_second_lower_id ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_concurrent_authors_only_one_advances ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_concurrent_first_create_only_one_wins ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_deleted_replay_returns_revision_mismatch ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_expect_no_head_creates_first_canvas ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_expect_no_head_rejects_when_head_exists ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_expected_head_matches_and_advances ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_expected_head_mismatch_rejects ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_expected_head_missing_rejects ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_rejects_behind_clock_writer ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_rejects_same_second_higher_id ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_replay_of_head_is_duplicate ... ignored, requires Postgres
+test store::event::postgres_tests::channel_head_checked_replay_skips_stale_precondition ... ignored, requires Postgres
+test store::event::postgres_tests::channel_scoped_mention_reads_share_one_prepared_statement ... ignored, requires Postgres
+test store::event::postgres_tests::coordinate_delete_spares_head_newer_than_the_deletion ... ignored, requires Postgres
+test store::event::postgres_tests::count_events_cancels_at_read_deadline_when_timeout_disabled ... ignored, requires Postgres
+test store::event::postgres_tests::db_untagged_canvas_append_serializes_on_advisory_key ... ignored, requires Postgres
+test store::event::postgres_tests::event_insert_in_existing_transaction_rolls_back_with_caller ... ignored, requires Postgres
+test store::event::postgres_tests::event_insert_ttl_refresh_handles_permanent_ephemeral_duplicate_and_activation_race ... ignored, requires Postgres
+test store::event::postgres_tests::explicit_multi_channel_scope_is_applied_before_historical_page_limit ... ignored, requires Postgres
+test store::event::postgres_tests::extract_d_tag_boundary_kinds ... ok
+test store::event::postgres_tests::extract_d_tag_empty_value_preserved ... ok
+test store::event::postgres_tests::extract_d_tag_first_d_wins ... ok
+test store::event::postgres_tests::extract_d_tag_from_nip33_event ... ok
+test store::event::postgres_tests::extract_d_tag_missing_becomes_empty_string ... ok
+test store::event::postgres_tests::extract_d_tag_nip29_group_metadata ... ok
+test store::event::postgres_tests::extract_d_tag_non_nip33_returns_none ... ok
+test store::event::postgres_tests::extract_d_tag_preserves_full_value ... ok
+test store::event::postgres_tests::extract_d_tag_single_element_d_tag_ignored ... ok
+test store::event::postgres_tests::extract_not_before_absent_returns_none ... ok
+test store::event::postgres_tests::extract_not_before_from_reminder ... ok
+test store::event::postgres_tests::extract_not_before_non_numeric_returns_none ... ok
+test store::event::postgres_tests::extract_not_before_non_reminder_returns_none ... ok
+test store::event::postgres_tests::get_event_by_id_is_scoped_when_event_id_collides_across_communities ... ignored, requires Postgres
+test store::event::postgres_tests::huddle_started_content_requires_matching_ephemeral_field ... ok
+test store::event::postgres_tests::huddle_started_links_batches_valid_creator_links_and_ignores_malformed_content ... ignored, requires Postgres
+test store::event::postgres_tests::i4_huddle_link_deletion_blocked_by_join_transaction_for_share ... ignored, requires Postgres — link deletion contends with join transaction via FOR SHARE
+test store::event::postgres_tests::insert_deletion_event_resend_repairs_a_live_target ... ignored, requires Postgres
+test store::event::postgres_tests::insert_deletion_event_target_failure_stores_nothing_and_resend_applies ... ignored, requires Postgres
+test store::event::postgres_tests::insert_event_mention_failure_rolls_back_the_event_insert ... ignored, requires Postgres
+test store::event::postgres_tests::insert_event_mention_success_commits_atomically_with_event ... ignored, requires Postgres
+test store::event::postgres_tests::insert_event_with_thread_metadata_mention_failure_rolls_back_the_event_insert ... ignored, requires Postgres
+test store::event::postgres_tests::insert_event_with_thread_metadata_mention_success_commits_atomically ... ignored, requires Postgres
+test store::event::postgres_tests::p_tag_read_with_mention_bounds_keeps_results ... ignored, requires Postgres
+test store::event::postgres_tests::permanent_channel_event_commits_do_not_lock_the_channel_row ... ignored, requires Postgres
+test store::event::postgres_tests::plain_read_is_cancelled_at_deadline_when_timeout_disabled ... ignored, requires Postgres
+test store::event::postgres_tests::pushed_down_tag_filters_reject_positional_decoys ... ignored, requires Postgres
+test store::event::postgres_tests::read_deadline_only_tightens_and_restores_timeout ... ignored, requires Postgres
+test store::event::postgres_tests::read_deadline_restores_timeout_after_error ... ignored, requires Postgres
+test store::event::postgres_tests::session_deadline_reads_skip_the_tighten_and_release_locks ... ignored, requires Postgres
+test store::event::postgres_tests::shared_gate_rejects_positional_decoy ... ignored, requires Postgres
+test store::event::postgres_tests::tag_value_queries_are_not_cached_as_prepared_statements ... ignored, requires Postgres
+test store::event_follow_up_postgres_tests::desired_event_follow_up_contract_app_only ... ignored, requires Postgres
+test store::event_follow_up_postgres_tests::desired_event_follow_up_contract_dual ... ignored, requires Postgres
+test store::event_follow_up_postgres_tests::migration_schema_event_follow_up_contract_app_only ... ignored, requires Postgres
+test store::event_follow_up_postgres_tests::migration_schema_event_follow_up_contract_dual ... ignored, requires Postgres
+test store::feed::postgres_tests::activity_query_excludes_workflow_execution_kinds ... ok
+test store::feed::postgres_tests::activity_query_includes_agent_job_kinds ... ok
+test store::feed::postgres_tests::channel_id_bytes_encoding_is_correct ... ok
+test store::feed::postgres_tests::channel_id_list_with_multiple_entries_are_distinct ... ok
+test store::feed::postgres_tests::channel_id_list_with_single_entry ... ok
+test store::feed::postgres_tests::empty_channel_list_means_global_only ... ok
+test store::feed::postgres_tests::insert_mentions_indexes_p_tags_past_bind_parameter_cap ... ignored, requires Postgres
+test store::feed::postgres_tests::json_tag_format_for_p_tag_mention ... ok
+test store::feed::postgres_tests::json_tag_format_is_compact_not_pretty ... ok
+test store::feed::postgres_tests::json_tag_format_p_tag_is_first_element ... ok
+test store::feed::postgres_tests::json_tag_format_round_trips_through_serde ... ok
+test store::feed::postgres_tests::mentions_query_includes_stream_message_kind ... ok
+test store::feed::postgres_tests::mentions_query_is_tenant_scoped_and_joins_mentions_by_composite_key ... ok
+test store::feed::postgres_tests::multiple_channel_ids_produce_distinct_byte_sequences ... ok
+test store::feed::postgres_tests::needs_action_kinds_do_not_overlap_with_activity_kinds ... ok
+test store::feed::postgres_tests::needs_action_query_includes_approval_and_reminder_kinds ... ok
+test store::feed::postgres_tests::needs_action_query_is_tenant_scoped_and_joins_mentions_by_composite_key ... ok
+test store::feed::postgres_tests::nil_uuid_channel_id_bytes_are_all_zeros ... ok
+test store::feed::postgres_tests::non_empty_channel_list_includes_global_and_accessible_channels ... ok
+test store::feed::postgres_tests::pubkey_hex_encoding_32_byte_key ... ok
+test store::feed::postgres_tests::pubkey_hex_encoding_all_ff ... ok
+test store::feed::postgres_tests::pubkey_hex_encoding_all_zeros ... ok
+test store::feed::postgres_tests::pubkey_hex_encoding_is_lowercase ... ok
+test store::feed::postgres_tests::query_activity_is_scoped_and_empty_channels_are_global_only ... ignored, requires Postgres
+test store::feed::postgres_tests::query_mentions_is_scoped_across_communities ... ignored, requires Postgres
+test store::feed::postgres_tests::query_needs_action_is_scoped_across_communities ... ignored, requires Postgres
+test store::git_repo::postgres_tests::names_are_scoped_per_community ... ignored, requires Postgres
+test store::git_repo::postgres_tests::release_is_owner_scoped_and_frees_the_name ... ignored, requires Postgres
+test store::git_repo::postgres_tests::repo_name_owner_reflects_reservation ... ignored, requires Postgres
+test store::git_repo::postgres_tests::reserve_classifies_fresh_idempotent_and_collision ... ignored, requires Postgres
+test store::legacy_channel_types_postgres_tests::reads_that_name_no_channel_leave_out_a_type_added_later ... ignored, requires Postgres
+test store::moderation::postgres_tests::expired_ban_does_not_hide_active_timeout ... ignored, requires Postgres
+test store::moderation::postgres_tests::illegal_report_auto_escalates_at_ingest ... ignored, requires Postgres
+test store::moderation::postgres_tests::non_illegal_report_lands_open_at_ingest ... ignored, requires Postgres
+test store::moderation::postgres_tests::report_reingest_returns_same_id_and_preserves_resolution ... ignored, requires Postgres
+test store::moderation::postgres_tests::resolve_report_returns_false_after_report_is_closed ... ignored, requires Postgres
+test store::moderation::postgres_tests::restrictions_are_confined_to_their_community ... ignored, requires Postgres
+test store::moderation::postgres_tests::unban_with_audit_rolls_back_lift_when_audit_insert_fails ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::admission_lookup_returns_only_registered_issuers ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::backfill_keeps_only_an_operator_bind_made_after_it_listed ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::backfill_queries_find_and_bind_unbound_suffix_hosts ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::bind_to_active_skips_a_community_whose_deletion_started ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::binding_insert_failure_rolls_back_the_community_on_every_path ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::create_with_owner_binds_in_the_insert_transaction ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::ensure_binds_only_when_it_creates_the_row ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::operator_bind_takes_locks_in_deletion_order ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::snapshot_and_admission_lookup_skip_archived_and_deleting_communities ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::snapshot_load_over_its_row_cap_fails ... ignored, requires Postgres
+test store::nip_fi_binding::postgres_tests::unbind_refuses_the_last_issuer ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::claim_deliveries_skips_rows_past_retention ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::deliverable_event_requires_registration_live_event_and_channel_access ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::event_and_listener_outbox_roll_back_together ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::event_insert_enqueues_registered_listener_in_same_transaction ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::expired_claim_is_recovered_and_old_claim_token_is_fenced ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::reapers_delete_expired_rows_and_preserve_recent_rows ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::repeated_registration_renews_created_at ... ignored, requires Postgres
+test store::operator_listener::postgres_tests::thread_metadata_insert_fans_out_once_to_matching_listeners ... ignored, requires Postgres
+test store::operator_listener::tests::a_workflow_owner_attribution_is_not_a_listener_target ... ok
+test store::operator_listener::tests::only_message_kinds_are_listener_mentions ... ok
+test store::paired_hosts::postgres_tests::competing_bindings_and_private_tenant_reads ... ignored, requires Postgres
+test store::paired_hosts::postgres_tests::one_member_cannot_fill_another_owners_target_host ... ignored, requires Postgres
+test store::paired_hosts::postgres_tests::pairing_killed_ack_transaction_retains_only_offer_and_retry_converges ... ignored, requires Postgres
+test store::partition::maintenance::tests::advancement_crosses_the_year_boundary ... ok
+test store::partition::maintenance::tests::advancement_is_capped_at_the_supported_horizon ... ok
+test store::partition::maintenance::tests::advancement_requires_its_own_policy_flag ... ok
+test store::partition::maintenance::tests::create_kill_switch_also_stops_advancement ... ok
+test store::partition::maintenance::tests::full_monthly_runway_is_a_noop_even_when_disabled ... ok
+test store::partition::maintenance::tests::only_a_catch_all_serving_the_current_month_awaits_advance ... ok
+test store::partition::maintenance::tests::only_ddl_failures_count_as_create_errors ... ok
+test store::partition::maintenance::tests::outcome_labels_are_stable ... ok
+test store::partition::maintenance::tests::postgres_tests::audit_retries_when_a_listed_partition_is_dropped ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::canonical_catch_all_name_is_replaced_in_one_transaction ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::catch_all_foreign_key_committed_while_waiting_on_the_parent_is_refused ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::catch_all_foreign_keys_outside_the_parent_are_refused ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::catch_all_with_child_only_trigger_is_refused ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::client_deadline_rolls_back_and_discards_the_session ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::cluster_global_parent_readers_follow_monthly_creation_and_catch_all_advancement ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::cluster_global_reader_grant_failure_rolls_back_partition_replacement ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::concurrent_runners_converge_on_one_layout ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::counterpart_contention_fails_fast_and_rolls_back ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::counterpart_reader_does_not_block_advancement ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::deadlock_victim_is_classified_as_a_lock_timeout ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::empty_catch_all_advances_to_canonical_layout_and_is_idempotent ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::foreign_key_committed_while_waiting_on_the_parent_is_locked_nowait ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::foreign_key_referencing_the_parent_committed_while_waiting_is_refused ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::fresh_install_catch_all_advances_on_the_first_pass ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::held_maintenance_lock_skips_without_ddl ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::incoming_foreign_key_is_refused_under_lock ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::parent_contention_times_out_without_blocking_the_other_table ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::populated_catch_all_is_refused_before_any_lock ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::replan_that_finds_only_disabled_work_is_skipped_disabled ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::stale_audit_after_a_concurrent_advance_is_a_noop ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::unrelated_catch_all_name_is_an_operator_error ... ignored, requires Postgres
+test store::partition::maintenance::tests::postgres_tests::writer_checking_a_foreign_key_behind_maintenance_does_not_deadlock ... ignored, requires Postgres
+test store::partition::maintenance::tests::repaired_layout_plans_three_monthlies_and_an_april_catch_all ... ok
+test store::partition::maintenance::tests::unsafe_catch_all_states_require_an_operator ... ok
+test store::partition::tests::classifies_names_and_bounds ... ok
+test store::partition::tests::extra_trigger_degradation_has_a_metric ... ok
+test store::partition::tests::legacy_leaf_degrades_until_its_upper_bound_reaches_the_current_month ... ok
+test store::partition::tests::month_arithmetic_crosses_year_boundary ... ok
+test store::partition::tests::month_coverage_can_span_multiple_nested_leaves ... ok
+test store::partition::tests::only_a_mid_audit_drop_is_retried ... ok
+test store::partition::tests::overlapping_ranges_are_anomalous ... ok
+test store::partition::tests::parses_pg16_range_bound_formats ... ok
+test store::partition::tests::postgres_tests::always_enabled_parent_trigger_preserves_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::anomalous_child_and_trigger_mismatch_degrade_without_aborting ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::audit_pins_non_iso_session_rendering ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::audit_transaction_applies_and_restores_statement_timeout ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::canonical_name_attached_to_wrong_parent_is_a_real_creation_error ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::canonical_name_with_wrong_bounds_is_a_real_creation_error ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::catch_all_skips_create_without_catalog_mutation ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::child_only_nested_leaf_trigger_degrades_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::create_pins_non_iso_date_style ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::create_pins_non_utc_time_zone ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::default_partitions_report_occupancy_without_mutation ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::disabled_child_trigger_degrades_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::disabled_nested_leaf_trigger_degrades_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::fresh_layout_is_serving_safe_and_audit_is_read_only ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::kill_switch_audits_but_does_not_create ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::nested_children_without_leaves_do_not_prove_coverage ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::nested_descendant_leaves_prove_coverage_but_remain_degraded ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::nested_different_partition_key_does_not_prove_coverage ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::occupied_catch_all_is_reported_as_degraded ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::occupied_cross_schema_catch_all_is_reported_as_degraded ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::occupied_nested_catch_all_is_reported_on_leaf_and_root_child ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::parent_default_does_not_mask_gap_below_explicit_sibling ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::pending_detach_never_proves_coverage ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::repaired_layout_recognizes_bounds_not_catch_all_name ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::report_retains_successful_table_when_another_table_errors ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::same_named_cross_schema_children_keep_distinct_trigger_metadata ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::scratch_schema_is_dropped_when_a_test_panics_holding_a_lock ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::statement_triggers_are_not_part_of_leaf_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::total_audit_timeout_bounds_blocked_occupancy_probes ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::uncovered_months_are_created_with_trigger_parity ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::unrelated_canonical_relation_is_a_real_creation_error ... ignored, requires Postgres
+test store::partition::tests::postgres_tests::wrong_root_partition_key_never_proves_coverage ... ignored, requires Postgres
+test store::partition::tests::rejects_unbounded_partition_audit_horizon_before_connecting ... ok
+test store::partition::tests::repaired_incident_layout_is_historical_once_its_months_have_passed ... ok
+test store::partition::tests::report_outcome_ranks_errors_then_unsafe_then_degraded ... ok
+test store::personal_read::arrival_postgres_tests::arrivals_one_microsecond_apart_in_the_same_second_are_ordered ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::future_dated_anchor_does_not_swallow_later_arrivals ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::late_arrival_with_old_author_time_is_unread ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::latest_message_behind_a_full_probe_of_reactions_is_found ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::mark_as_read_clears_a_late_arrival_inside_the_latest_probe ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::mark_as_read_clears_a_late_arrival_outside_the_latest_probe ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::mark_as_read_with_the_sidebar_anchor_clears_a_late_arrival ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::mark_thread_read_with_the_sidebar_anchor_clears_a_late_reply ... ignored, requires Postgres
+test store::personal_read::arrival_postgres_tests::marking_either_of_two_identical_arrivals_reads_both ... ignored, requires Postgres
+test store::personal_read::participation::tests::target_selection_caps_unique_parents_independently_of_sql_timeout ... ok
+test store::personal_read::participation::tests::target_selection_keeps_channel_identity ... ok
+test store::personal_read::participation_postgres_tests::a_deleted_message_is_no_witness_and_a_surviving_reply_still_is ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::a_directed_reply_counts_outside_the_actors_conversations ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::a_lookup_timeout_decides_nothing_and_preserves_the_callers_transaction ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::a_reply_counts_only_in_a_conversation_the_actor_wrote_or_replied_to ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::eligibility_frontier_and_membership_each_leave_replies_out ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::membership_is_exact_behind_a_busy_parent ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::membership_is_scoped_to_the_replys_own_channel ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::the_parent_budget_leaves_undecided_replies_out ... ignored, requires Postgres
+test store::personal_read::participation_postgres_tests::threads_are_capped_after_replies_that_do_not_count_are_removed ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_author_horizon_unresolved_ancestry_and_deletion ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_channel_and_thread_never_inherit_each_other ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_counts_only_arrivals_after_the_account_starts ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_diff_alone_leaves_the_sidebar_row_unchanged ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_first_applied_intent_starts_the_account_once ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_frontier_is_monotonic_and_rejects_malformed_anchors ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_intent_does_not_lock_shared_conversation_rows ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_latest_includes_own_and_excludes_deleted_auxiliary ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_latest_old_message_is_not_an_empty_channel ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_latest_skips_a_reply_without_ancestry ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_sidebar_author_window_excludes_expired_and_late_old_messages ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_sidebar_is_read_only_and_does_not_wait_for_account ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_sidebar_marked_history_past_the_scan_cap_is_read_and_keeps_latest ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_sidebar_window_budget_counts_boundary_and_ineligible_tail ... ignored, requires Postgres
+test store::personal_read::postgres_tests::personal_read_unstarted_account_is_caught_up_past_the_scan_cap ... ignored, requires Postgres
+test store::personal_read::projection::tests::thread_rows_order_newest_first_break_ties_by_root_and_cap_at_twenty_five ... ok
+test store::personal_read::projection_postgres_tests::sidebar_ancestry_fact_matches_shared_nip10_parser ... ignored, requires Postgres
+test store::personal_read::projection_postgres_tests::sidebar_compacted_tags_preserve_directed_and_corruption_rules ... ignored, requires Postgres
+test store::personal_read::projection_postgres_tests::sidebar_directed_fact_follows_dm_mention_and_broadcast_rules ... ignored, requires Postgres
+test store::personal_read::projection_postgres_tests::sidebar_sql_eligibility_follows_kind_author_deletion_and_horizon ... ignored, requires Postgres
+test store::personal_read::threads_postgres_tests::channel_frontier_never_covers_an_epoch_zero_reply ... ignored, requires Postgres
+test store::personal_read::threads_postgres_tests::mark_through_rejects_unresolved_missing_auxiliary_and_malformed_anchors ... ignored, requires Postgres
+test store::personal_read::threads_postgres_tests::targeted_sidebar_returns_only_requested_joined_channels_in_one_snapshot ... ignored, requires Postgres
+test store::personal_read::threads_postgres_tests::thread_on_a_never_unread_root_is_selectable_and_readable_by_itself ... ignored, requires Postgres
+test store::personal_read::threads_postgres_tests::thread_summaries_order_cap_and_anchor ... ignored, requires Postgres
+test store::product_feedback::postgres_tests::duplicate_event_keeps_first_community_provenance ... ignored, requires migrated Postgres
+test store::push::delivery_postgres_tests::concurrent_discovery_preserves_exclusive_claims_and_recovery_fencing ... ignored, requires Postgres
+test store::push::delivery_postgres_tests::discovery_pages_past_busy_communities_without_claiming_them ... ignored, requires Postgres
+test store::push::delivery_postgres_tests::discovery_preserves_claim_eligibility_and_recovers_expired_workers ... ignored, requires Postgres
+test store::push::delivery_postgres_tests::empty_communities_do_not_require_wake_claims ... ignored, requires Postgres
+test store::push::delivery_postgres_tests::invalid_backlog_cannot_hide_ready_communities ... ignored, requires Postgres
+test store::push::postgres_tests::acceptance_constraint_failure_rolls_back_source_event ... ignored, requires Postgres
+test store::push::postgres_tests::batch_claim_is_single_community_and_setwise_ops_honor_the_fence ... ignored, requires Postgres
+test store::push::postgres_tests::concurrent_enqueue_is_atomic_and_community_scoped ... ignored, requires Postgres
+test store::push::postgres_tests::delivered_wake_is_retained_while_rematch_is_queued ... ignored, requires Postgres
+test store::push::postgres_tests::endpoint_invalidation_is_scoped_to_community_and_generation ... ignored, requires Postgres
+test store::push::postgres_tests::exhausted_match_job_is_reaped_and_cannot_pin_retention ... ignored, requires Postgres
+test store::push::postgres_tests::exhausted_match_reaper_skips_quiescing_tenant_and_reaps_active_bystanders ... ignored, requires Postgres
+test store::push::postgres_tests::gate_orders_lease_activation_after_in_flight_enqueue ... ignored, requires Postgres
+test store::push::postgres_tests::matcher_application_is_allowlisted_and_deleted_events_are_discarded ... ignored, requires Postgres
+test store::push::postgres_tests::matcher_claim_and_load_support_size_one_pool ... ignored, requires Postgres
+test store::push::postgres_tests::matcher_claim_is_exclusive_across_workers ... ignored, requires Postgres
+test store::push::postgres_tests::matcher_claim_skips_quiescing_tenant_while_active_bystanders_progress ... ignored, requires Postgres
+test store::push::postgres_tests::matcher_load_error_preserves_claimed_job_for_recovery ... ignored, requires Postgres
+test store::push::postgres_tests::replacement_and_revoke_are_community_scoped_and_dual_ordered ... ignored, requires Postgres
+test store::push::postgres_tests::replacing_naturally_expired_lease_replaces_old_state ... ignored, requires Postgres
+test store::push::postgres_tests::send_revalidation_suppresses_rotated_claim_and_retry_preserves_id ... ignored, requires Postgres
+test store::push::postgres_tests::setwise_enqueue_maps_outcomes_per_request ... ignored, requires Postgres
+test store::push::postgres_tests::source_event_collision_is_protocol_outcome_without_event_insert ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_chokepoint_transaction_holds_shared_community_deletion_lock ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_insert_fails_closed_and_rolls_back_when_community_is_fenced ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_insert_with_thread_metadata_mention_failure_rolls_back_everything ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_insert_with_thread_metadata_mention_success_commits_atomically ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_single_tx_cross_community_target_rejected ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_single_tx_duplicate_short_circuit_stores_no_event ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_single_tx_event_insert_failure_rolls_back_reaction ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_single_tx_reactivates_soft_deleted_reaction ... ignored, requires Postgres
+test store::reaction::postgres_tests::reaction_single_tx_stores_wrapped_max_shortcode ... ignored, requires Postgres
+test store::reaction::postgres_tests::reactions_are_scoped_to_community ... ignored, requires Postgres
+test store::read_state::postgres_tests::cluster_global_read_state_snapshot_replacement_during_preflight_keeps_one_mvcc_cut ... ignored, requires Postgres
+test store::read_state::postgres_tests::read_state_snapshot_encoded_bytes_bound_and_writer_not_replica ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::action_lease_prevents_concurrent_mutation ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::admin_delete_cluster_global_lease_expiring_during_row_lock_wait_changes_nothing ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::admin_delete_cluster_global_lease_expiring_during_write_changes_nothing ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::admin_delete_rolled_back_by_marker_fence_changes_nothing ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::admin_delete_updates_thread_summary_once_across_actions ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::admin_delete_with_already_expired_lease_changes_nothing ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::auto_escalated_report_reopens_like_an_admin_escalated_one ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::cancel_after_mutation_committed_is_rejected ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::claim_stranded_action_batch_claims_pending_actions ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::crash_redrive_with_mutation_committed_skips_to_finalization ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::decision_only_concurrent_close_no_orphan_audit ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::deploy_kick_member_removed_vs_already_gone ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::deploy_kick_member_waits_for_roster_publication ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::different_request_id_against_processing_report_returns_conflict ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::execute_ban_with_marker_is_atomic ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::execute_kick_with_marker_tracks_provenance ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::finalize_carries_timeout_until_for_timeout_notice ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::finalize_enqueues_affected_user_notice_for_restriction ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::finalize_maps_delete_and_kick_to_content_actioned_notice ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::finalize_skips_affected_user_notice_when_no_target_pubkey ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::finalize_without_step_marker_is_rejected ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::outbox_rows_created_at_finalize_not_at_claim ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::racing_moderators_exactly_one_claim_one_conflict ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::record_failure_is_a_no_op_after_lease_reclaim ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_audit_row_is_never_claimed_by_recovery_worker ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_is_idempotent_on_request_id_even_after_reresolve ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_missing_report_returns_not_found ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_open_report_is_rejected_as_not_reopenable ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_processing_report_is_rejected_as_not_reopenable ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::reopen_terminal_report_returns_open_and_records_succeeded_audit_row ... ignored, requires Postgres
+test store::relay_admin_actions::postgres_tests::same_request_id_retry_returns_same_action_id ... ignored, requires Postgres
+test store::relay_invite::owner_admission_postgres_tests::failed_policy_evidence_rolls_back_verified_owner_and_membership ... ignored, requires Postgres
+test store::relay_invite::owner_admission_postgres_tests::issuer_timeout_denies_temporarily_without_revoking_invite ... ignored, requires Postgres
+test store::relay_invite::owner_admission_postgres_tests::successful_claim_reports_only_committed_user_creation ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::bounded_claim_exhausts_and_existing_member_retry_does_not_consume ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::concurrent_claims_serialize_the_final_slot ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::expiry_and_tenant_scope_return_typed_failures ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::mint_after_quiescing_returns_typed_fence_without_persisting ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::mint_validation_rejects_invalid_bounds_before_database_access ... ok
+test store::relay_invite::postgres_tests::policy_evidence_failure_rolls_back_membership_and_consumption ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::retention_sweep_deletes_only_invites_older_than_cutoff ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::retention_sweep_skips_quiescing_tenant_while_active_bystanders_progress ... ignored, requires Postgres
+test store::relay_invite::postgres_tests::unlimited_invites_count_each_new_member ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::active_ban_lazily_revokes_new_protocol_rows ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::admission_first_then_ban_preserves_the_committed_use_and_denies_retries ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::ban_permanently_revokes_issued_invites_but_not_another_tenant ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::claimant_ban_and_timeout_commit_before_queued_claim_without_consuming_a_use ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::issuer_agent_revocation_survives_owner_unban ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::malformed_legacy_issuers_return_a_typed_revoked_claim ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::nonmember_restrictions_cover_both_claim_formats_and_owner ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::owner_materialization_commits_before_queued_agent_claim ... ignored, requires Postgres
+test store::relay_invite::revocation_postgres_tests::stalled_production_mint_ignores_lifted_history_and_later_audit_touches ... ignored, requires Postgres
+test store::relay_invite::upgrade_postgres_tests::migration_schema_0075_adds_invite_columns_without_rewriting_history ... ignored, requires Postgres
+test store::relay_invite::upgrade_postgres_tests::migration_schema_desired_pgschema_reconcile_matches_populated_upgrade ... ignored, requires Postgres
+test store::relay_invite::upgrade_postgres_tests::migration_schema_legacy_claim_lazily_revokes_history_after_a_fenced_community_reactivates ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::authorization_owner_writer_waits_before_claim_owner_row_and_links_once ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::ensure_user_insert_and_conflict_do_not_take_admission_lock ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::linked_authorization_owner_and_missing_agent_do_not_wait_on_admission ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::linking_banned_owner_revokes_agent_invites_but_timeout_does_not ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::marker_writers_serialize_before_rows_and_commit_revocation_with_marker ... ignored, requires Postgres
+test store::relay_invite::writer_protocol_postgres_tests::unknown_claim_code_is_rejected_without_waiting_on_admission ... ignored, requires Postgres
+test store::relay_members::postgres_tests::a_failed_list_write_rolls_back_the_membership_change ... ignored, requires Postgres
+test store::relay_members::postgres_tests::concurrent_joins_all_land_in_the_list ... ignored, requires Postgres
+test store::relay_members::postgres_tests::every_membership_write_commits_its_list ... ignored, requires Postgres
+test store::relay_members::postgres_tests::invite_claim_persists_policy_version_and_legacy_claim_does_not ... ignored, requires Postgres
+test store::relay_members::postgres_tests::member_removal_deletes_acceptances_without_cascades ... ignored, requires Postgres
+test store::relay_members::postgres_tests::member_removal_waits_for_and_removes_concurrent_acceptance ... ignored, requires Postgres
+test store::relay_members::postgres_tests::membership_is_confined_to_its_community ... ignored, requires Postgres
+test store::relay_members::postgres_tests::owner_bootstrap_is_confined_to_its_community ... ignored, requires Postgres
+test store::relay_members::postgres_tests::owner_limit_defaults_when_unset_or_invalid ... ok
+test store::relay_members::postgres_tests::owner_limit_honors_positive_override ... ok
+test store::relay_members::postgres_tests::owner_quota_admits_only_under_active_and_lifetime_caps ... ok
+test store::relay_members::postgres_tests::owner_transfer_and_list_repair_both_commit ... ignored, requires Postgres
+test store::relay_members::postgres_tests::owner_transfer_and_member_removal_both_commit ... ignored, requires Postgres
+test store::relay_members::postgres_tests::provision_owner_still_bootstraps_initial_owner ... ignored, requires Postgres
+test store::relay_members::postgres_tests::rewrite_repairs_a_missing_or_stale_list ... ignored, requires Postgres
+test store::relay_members::postgres_tests::same_second_return_to_an_earlier_membership_writes_a_new_list ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_already_owner_is_noop ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_demotes_old_owner_to_member ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_is_community_scoped ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_no_owner_returns_no_owner ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_promotes_existing_member ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_rejects_archived_community_without_membership_change ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_returns_limit_reached_for_maxed_transferee ... ignored, requires Postgres
+test store::relay_members::postgres_tests::transfer_ownership_returns_owner_conflict_when_expected_mismatches ... ignored, requires Postgres
+test store::relay_operators::postgres_tests::audit_insert_failure_rolls_back_roster_mutation ... ignored, requires Postgres — audit INSERT failure rolls back the roster mutation
+test store::relay_operators::postgres_tests::audit_order_follows_seq_under_backward_clock ... ignored, requires Postgres — audit order follows seq, not the non-monotonic wall clock
+test store::relay_operators::postgres_tests::concurrent_deletes_racing_to_zero_leave_one_operator ... ignored, requires Postgres — roster lock serializes concurrent cross-target deletes
+test store::relay_operators::postgres_tests::concurrent_upserts_serialize_and_record_true_pre_image ... ignored, requires Postgres — per-target lock serializes concurrent roster mutations
+test store::relay_operators::postgres_tests::config_present_allows_deleting_last_db_operator ... ignored, requires Postgres — config fallback allows emptying the DB roster
+test store::relay_operators::postgres_tests::deleting_sole_db_operator_without_config_is_rejected ... ignored, requires Postgres — last-operator invariant on self-delete
+test store::relay_operators::postgres_tests::demoting_sole_db_operator_without_config_is_rejected ... ignored, requires Postgres — last-operator invariant on self-demotion
+test store::relay_operators::postgres_tests::roster_mutations_write_pre_image_audit_rows ... ignored, requires Postgres — roster audit trail across grant/change/revoke
+test store::reminder::postgres_tests::claim_due_reminder_is_won_by_exactly_one_of_two_racing_pods ... ignored, requires Postgres
+test store::reminder::postgres_tests::query_due_reminders_returns_row_community_and_host_per_tenant ... ignored, requires Postgres
+test store::reminder::postgres_tests::release_due_reminder_rolls_back_only_the_matching_stamp ... ignored, requires Postgres
+test store::reminder::postgres_tests::reminder_claim_and_release_are_confined_to_their_community ... ignored, requires Postgres
+test store::replaceable::postgres_tests::addressable_replacement_rolls_back_when_mention_indexing_fails ... ignored, requires Postgres
+test store::replaceable::postgres_tests::concurrent_parameterized_replacement_keeps_deterministic_head ... ignored, requires Postgres
+test store::replaceable::postgres_tests::coordinate_deletion_racing_nip_rs_replacement_never_soft_deletes_read_state ... ignored, requires Postgres
+test store::replaceable::postgres_tests::duplicate_nip_rs_discriminator_tags_keep_legacy_retention ... ignored, requires Postgres
+test store::replaceable::postgres_tests::migration_schema_mesh_status_replacement_keeps_one_physical_row ... ignored, requires Postgres
+test store::replaceable::postgres_tests::migration_schema_nip09_deletion_purges_retention_free_rows_and_mentions ... ignored, requires Postgres
+test store::replaceable::postgres_tests::migration_schema_nip_rs_hard_delete_fence_fails_closed_and_scopes_opt_in_to_transaction ... ignored, requires Postgres
+test store::replaceable::postgres_tests::migration_schema_nip_rs_transaction_operation_restores_hard_delete_opt_in ... ignored, requires Postgres
+test store::replaceable::postgres_tests::nip09_deletion_purges_retention_free_rows_and_mentions ... ignored, requires Postgres
+test store::replaceable::postgres_tests::nip_rs_replacement_hard_deletes_payload_and_watermark_rejects_replay ... ignored, requires Postgres
+test store::replaceable::postgres_tests::parameterized_duplicate_restores_live_head_inside_caller_transaction ... ignored, requires Postgres
+test store::replaceable::postgres_tests::parameterized_replacement_in_existing_transaction_honors_revision_and_rollback ... ignored, requires Postgres
+test store::replaceable::postgres_tests::parameterized_replacement_rolls_back_when_mention_indexing_fails ... ignored, requires Postgres
+test store::replaceable::postgres_tests::replaceable_writes_fail_closed_when_community_is_fenced ... ignored, requires Postgres
+test store::replaceable::postgres_tests::stale_legacy_roster_cannot_replace_new_locked_snapshot ... ignored, requires Postgres
+test store::replaceable::postgres_tests::superseded_heads_drop_their_mention_rows ... ignored, requires Postgres
+test store::storage_accounting::postgres_tests::complete_snapshot_replaces_atomically_and_worker_lock_excludes_overlap ... ignored, requires Postgres
+test store::storage_accounting::postgres_tests::lost_lock_session_cannot_overwrite_successor_snapshot ... ignored, requires Postgres
+test store::thread::postgres_tests::channel_window_exact_multiple_final_page_reports_exhausted ... ignored, requires Postgres
+test store::thread::postgres_tests::channel_window_joins_thread_summaries_with_participants ... ignored, requires Postgres
+test store::thread::postgres_tests::channel_window_pages_same_second_ties_without_loss ... ignored, requires Postgres
+test store::thread::postgres_tests::channel_window_top_level_predicate ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_metadata_by_event_is_scoped_when_event_id_collides_across_communities ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_replies_bounds_corrupt_row_refills ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_replies_pages_same_second_ties_without_loss ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_replies_reaches_nested_depth_two_replies ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_replies_reconstructs_stored_events ... ignored, requires Postgres
+test store::thread::postgres_tests::get_thread_replies_skips_unreconstructable_row ... ignored, requires Postgres
+test store::thread::postgres_tests::insert_thread_metadata_nested_reply_creates_root_stub ... ignored, requires Postgres
+test store::thread::postgres_tests::participant_summaries_read_only_the_newest_replies ... ignored, requires Postgres
+test store::thread::postgres_tests::resolve_deleted_roots_preserves_community_scope_for_colliding_ids ... ignored, requires Postgres
+test store::thread_window::postgres_tests::migration_schema_thread_window_cardinalities_and_index ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_aux_byte_budget_stops_consumption_and_survives_retry ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_aux_query_budget_fails_on_65th_real_scan ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_aux_tombstone_ids_and_raw_cursor_survive_damaged_payload ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_reply_byte_budget_stops_before_collecting_page ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_window_cardinalities_and_index ... ignored, requires Postgres
+test store::thread_window::postgres_tests::thread_window_predicates_corruption_and_legacy ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::an_unlisted_system_channel_is_read_only_by_name ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::channel_created_unlisted_is_never_listed ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::group_metadata_publishes_the_stored_unlisted_flag ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::only_the_named_unlisted_channels_are_loaded ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::unlisted_open_channel_is_named_only_for_non_members ... ignored, requires Postgres
+test store::unlisted_channels_postgres_tests::unlisted_private_channel_stays_private_and_opens_unlisted ... ignored, requires Postgres
+test store::usage::postgres_tests::abandoned_fleet_collection_releases_its_reader_slot ... ignored, requires Postgres
+test store::usage::postgres_tests::fleet_collection_is_replica_only_and_skips_without_reader ... ignored, requires Postgres
+test store::usage::postgres_tests::fleet_snapshots_have_fixed_result_shapes ... ignored, requires Postgres
+test store::usage::postgres_tests::fleet_snapshots_match_seeded_stock_and_activity_exactly ... ignored, requires Postgres
+test store::usage::postgres_tests::test_active_user_counts_unknown_bucket_for_profileless_poster ... ignored, requires Postgres
+test store::usage::postgres_tests::test_channel_counts_drops_to_zero_after_last_channel_deleted ... ignored, requires Postgres
+test store::usage::postgres_tests::test_channel_counts_scoped_and_excludes_deleted ... ignored, requires Postgres
+test store::usage::postgres_tests::test_community_count_increases ... ignored, requires Postgres
+test store::usage::postgres_tests::test_community_hosts_excludes_archived_and_deleted_communities ... ignored, requires Postgres
+test store::usage::postgres_tests::test_community_hosts_returns_mapping ... ignored, requires Postgres
+test store::usage::postgres_tests::test_git_repo_counts_scoped_per_community ... ignored, requires Postgres
+test store::usage::postgres_tests::test_usage_metrics_lock_has_single_owner_and_releases_on_drop ... ignored, requires Postgres
+test store::usage::postgres_tests::test_user_counts_excludes_deactivated ... ignored, requires Postgres
+test store::usage::postgres_tests::test_user_counts_scoped_per_community ... ignored, requires Postgres
+test store::usage::tests::finish_usage_read_records_every_attempt_in_route_decisions ... ok
+test store::user::postgres_tests::like_escape_backslash ... ok
+test store::user::postgres_tests::like_escape_combined ... ok
+test store::user::postgres_tests::like_escape_normal_input_unchanged ... ok
+test store::user::postgres_tests::like_escape_percent ... ok
+test store::user::postgres_tests::like_escape_underscore ... ok
+test store::user::postgres_tests::test_get_policy_unknown_pubkey ... ignored, requires Postgres
+test store::user::postgres_tests::test_owner_only_with_no_owner ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_agent_owner_already_owned ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_agent_owner_and_get_policy ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_agent_owner_nonexistent_agent ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_channel_add_policy ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_channel_add_policy_nonexistent_user ... ignored, requires Postgres
+test store::user::postgres_tests::test_set_channel_add_policy_rejects_invalid ... ignored, requires Postgres
+test store::user_deletion::discovery::tests::public_key_formats_identify_the_same_subject ... ok
+test store::user_deletion::discovery_postgres_tests::channel_memberships_discover_participants_deduplicate_and_preserve_owners ... ignored, requires Postgres
+test store::user_deletion::discovery_postgres_tests::current_inventory_includes_all_lifecycle_states_and_excludes_removed_memberships ... ignored, requires Postgres
+test store::user_deletion::discovery_postgres_tests::oversized_inventory_fails_instead_of_truncating ... ignored, requires Postgres
+test store::user_deletion::discovery_postgres_tests::owner_preview_is_available_but_submission_rolls_back_until_scope_is_supported ... ignored, requires Postgres
+test store::user_deletion::postgres_tests::inventory_failure_rolls_back_request_and_legacy_manifests_remain_readable ... ignored, requires Postgres
+test store::user_deletion::postgres_tests::migration_schema_user_target_constraint_matches_desired_state ... ignored, requires Postgres
+test store::user_deletion::postgres_tests::user_approval_validates_inventory_shape_before_saving_evidence ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::batch_order_is_stable_and_agent_locks_are_community_scoped ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::competing_inserts_wait_then_preserve_or_reject_original_provenance ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::desired_schema_is_global_and_has_no_cascades_or_triggers ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::fences_are_atomic_idempotent_scoped_and_preserve_provenance ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::identity_locks_share_conflict_and_release_at_transaction_end ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::insert_requires_approved_inventory_and_current_unexpired_worker ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::migration_schema_is_global_and_has_no_cascades_or_triggers ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::read_waits_for_gate_then_observes_committed_restriction ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::rejects_missing_requests_and_invalid_owner_shape ... ignored, requires Postgres
+test store::user_deletion_fences::postgres_tests::rejects_stale_snapshot_isolation_and_oversized_lock_sets ... ignored, requires Postgres
+test store::user_deletion_fences::tests::lock_mapping_is_stable_across_processes_and_releases ... ok
+test store::verified_profiles::postgres_tests::migration_schema_profile_lifecycle_publishes_updates_and_orders ... ignored, requires Postgres
+test store::verified_profiles::postgres_tests::migration_schema_profiles_publish_only_for_eligible_keys ... ignored, requires Postgres
+test store::verified_profiles::postgres_tests::profile_lifecycle_publishes_updates_and_orders ... ignored, requires Postgres
+test store::verified_profiles::postgres_tests::profiles_publish_only_for_eligible_keys ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::legacy_stored_deletion_repair_has_one_committed_dispatch_owner ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::quiescing_community_rejects_workflow_deletion_at_admission_before_replacement_lock ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_preserves_newer_definition_and_cleans_legacy_orphan ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_removes_both_projections_and_is_scoped_and_retryable ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_removes_children_without_cascades ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_rolls_back_both_representations_on_failure ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_waits_for_and_removes_concurrent_cross_workflow_approval ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_waits_for_and_removes_concurrent_run ... ignored, requires Postgres
+test store::workflow::deletion::postgres_tests::workflow_deletion_waits_for_concurrent_fire_attach_without_deadlock ... ignored, requires Postgres
+test store::workflow::postgres_tests::approval_is_confined_to_its_community ... ignored, requires Postgres
+test store::workflow::postgres_tests::approval_record_clone_is_independent ... ok
+test store::workflow::postgres_tests::approval_record_denied_with_note ... ok
+test store::workflow::postgres_tests::approval_record_fields_are_accessible ... ok
+test store::workflow::postgres_tests::approval_record_granted_with_pubkey_and_note ... ok
+test store::workflow::postgres_tests::approval_status_display_is_lowercase ... ok
+test store::workflow::postgres_tests::approval_status_from_str_rejects_unknown ... ok
+test store::workflow::postgres_tests::approval_status_from_str_round_trips ... ok
+test store::workflow::postgres_tests::attach_links_run_to_claim_and_is_idempotent ... ignored, requires Postgres
+test store::workflow::postgres_tests::claim_confined_to_its_community ... ignored, requires Postgres
+test store::workflow::postgres_tests::concurrent_same_window_claims_exactly_one_wins ... ignored, requires Postgres
+test store::workflow::postgres_tests::disable_for_owner_scopes_to_owner_and_channel ... ignored, requires Postgres
+test store::workflow::postgres_tests::latest_after_prune_below_interval_breaks_anchor ... ignored, requires Postgres
+test store::workflow::postgres_tests::run_status_display_is_lowercase ... ok
+test store::workflow::postgres_tests::run_status_from_str_rejects_unknown ... ok
+test store::workflow::postgres_tests::run_status_from_str_round_trips ... ok
+test store::workflow::postgres_tests::workflow_delete_is_confined_to_its_community ... ignored, requires Postgres
+test store::workflow::postgres_tests::workflow_lookup_is_confined_to_its_community ... ignored, requires Postgres
+test store::workflow::postgres_tests::workflow_record_channel_id_can_be_none ... ok
+test store::workflow::postgres_tests::workflow_record_clone_is_independent ... ok
+test store::workflow::postgres_tests::workflow_record_disabled_has_enabled_false ... ok
+test store::workflow::postgres_tests::workflow_record_fields_are_accessible ... ok
+test store::workflow::postgres_tests::workflow_record_status_variants ... ok
+test store::workflow::postgres_tests::workflow_run_record_clone_is_independent ... ok
+test store::workflow::postgres_tests::workflow_run_record_execution_trace_is_json_array ... ok
+test store::workflow::postgres_tests::workflow_run_record_failed_with_error_message ... ok
+test store::workflow::postgres_tests::workflow_run_record_fields_are_accessible ... ok
+test store::workflow::postgres_tests::workflow_run_record_no_trigger_event ... ok
+test store::workflow::postgres_tests::workflow_status_display_is_lowercase ... ok
+test store::workflow::postgres_tests::workflow_status_equality ... ok
+test store::workflow::postgres_tests::workflow_status_from_str_rejects_unknown ... ok
+test store::workflow::postgres_tests::workflow_status_from_str_round_trips ... ok
+test runtime::postgres_tests::match_nothing_reads_take_no_connection ... ok
+
+test result: ok. 192 passed; 0 failed; 678 ignored; 0 measured; 0 filtered out; finished in 0.54s
+

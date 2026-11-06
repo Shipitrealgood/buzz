@@ -142,6 +142,12 @@ async fn check_fanout_access(
     matches: Vec<(crate::subscription::ConnId, crate::subscription::SubId)>,
     threaded: Option<&crate::state::ThreadedChannelVisibility>,
 ) -> FanoutAccess {
+    let matches =
+        if u32::from(stored_event.event.kind.as_u16()) == buzz_core::kind::KIND_HOST_REGISTRY_V2 {
+            Vec::new()
+        } else {
+            matches
+        };
     let verified = |allowed| FanoutAccess {
         allowed,
         unverified: Vec::new(),
@@ -644,6 +650,14 @@ async fn enqueue_event_created_audit(
 /// and delegates persistent events to [`super::ingest::ingest_event`].
 #[tracing::instrument(skip_all, fields(event_id, kind))]
 pub async fn handle_event(event: Event, conn: Arc<ConnectionState>, state: Arc<AppState>) {
+    if conn.registry.generation().is_some() {
+        conn.send(RelayMessage::ok(
+            &event.id.to_hex(),
+            false,
+            "restricted: host scope",
+        ));
+        return;
+    }
     let start = std::time::Instant::now();
     let event_id_hex = event.id.to_hex();
     let kind_u32 = event_kind_u32(&event);
@@ -1788,6 +1802,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::TenantContext::resolved(community_b, "b.example"),
             remote_addr: "127.0.0.1:1234".parse().expect("socket addr"),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: agent.public_key(),
@@ -1875,6 +1890,7 @@ mod tests {
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: keys.public_key(),
@@ -2036,6 +2052,7 @@ mod tests {
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: owner.public_key(),
@@ -2158,6 +2175,7 @@ mod tests {
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: keys.public_key(),
@@ -3672,6 +3690,7 @@ mod tests {
                 conn_id: uuid::Uuid::new_v4(),
                 tenant,
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: keys.public_key(),
@@ -4037,6 +4056,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: key.public_key(),
@@ -4230,6 +4250,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                     buzz_auth::AuthContext {
                         pubkey: agent_keys.public_key(),

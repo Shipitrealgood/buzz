@@ -1,0 +1,6 @@
+validated PostgreSQL test discovery across 6 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+validated PostgreSQL test discovery across 7 Rust source files
+PostgreSQL test discovery validation failed:
+  - /home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-relay/src/handlers/host_registry/postgres_tests.rs:1091: process_crash_before_and_after_commit_retries_exact_ack requires only PostgreSQL/Redis but is excluded by an external_infra* module; move it into PostgreSQL discovery

@@ -631,6 +631,7 @@ pub(crate) fn test_conn(
         conn_id: Uuid::new_v4(),
         tenant: tenant.clone(),
         remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+        registry: crate::handlers::host_registry::Connection::default(),
         auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
             buzz_auth::AuthContext {
                 pubkey: reader.public_key(),

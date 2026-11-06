@@ -1,0 +1,14 @@
+
+running 9 tests
+test checker::tests::auth_allow_with_foreign_claim_bites_m2 ... ok
+test checker::tests::auth_deny_with_foreign_claim_is_fine ... ok
+test checker::tests::cross_community_row_bites_non_interference ... ok
+test checker::tests::empty_trace_is_coverage_breach ... ok
+test checker::tests::impl_bug_action_bites_coverage_breach ... ok
+test checker::tests::required_critical_action_missing_bites_coverage_breach ... ok
+test checker::tests::sanitized_error_alone_is_well_formed ... ok
+test checker::tests::state_after_changing_mid_request_is_state_mismatch ... ok
+test checker::tests::write_insert_then_read_with_only_resolved_rows_passes ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -540,6 +540,10 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
         }
     };
 
+    if super::host_registry::authenticate(&event, &challenge, &conn, &state).await {
+        return;
+    }
+
     // Record the declared span fields now that we have the values.
     tracing::Span::current()
         .record("event_id", event_id_hex.as_str())
@@ -1212,6 +1216,7 @@ mod tests {
                 "test.local".to_string(),
             ),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(AuthState::Pending {
                 challenge: challenge.clone(),
                 started_at: Instant::now(),
@@ -1361,6 +1366,7 @@ mod tests {
                 "test.local".to_string(),
             ),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(AuthState::Pending {
                 challenge: challenge.clone(),
                 started_at: Instant::now(),
@@ -1450,6 +1456,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(pending(&challenge)),
                 subscriptions: Default::default(),
                 send_tx,
@@ -2403,6 +2410,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.to_string(),
                     started_at: Instant::now(),
@@ -3292,6 +3300,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: std::time::Instant::now(),
@@ -3498,6 +3507,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: std::time::Instant::now(),
@@ -3687,6 +3697,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: std::time::Instant::now(),
@@ -3865,6 +3876,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: Instant::now(),
@@ -3983,6 +3995,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: Instant::now(),
@@ -4138,6 +4151,7 @@ mod tests {
                     "test.local".to_string(),
                 ),
                 remote_addr: "127.0.0.1:1234".parse().unwrap(),
+                registry: crate::handlers::host_registry::Connection::default(),
                 auth_state: std::sync::Mutex::new(AuthState::Pending {
                     challenge: challenge.clone(),
                     started_at: Instant::now(),

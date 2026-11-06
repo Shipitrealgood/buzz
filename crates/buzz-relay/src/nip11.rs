@@ -40,6 +40,9 @@ pub struct RelayInfo {
     /// Private paired-host API on this resolved community.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paired_hosts_v1: Option<bool>,
+    /// Explicit private fork protocol; stock relays do not implement it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_registry: Option<serde_json::Value>,
     /// NIP-AR artifact query transport and enforced resource limits.
     pub artifacts: serde_json::Value,
     /// Relay operator's public key (hex), if published.
@@ -286,6 +289,7 @@ impl RelayInfo {
             icon: icon.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             read_state_snapshot: None,
             paired_hosts_v1: None,
+            host_registry: None,
             buzz_v1: None,
             artifacts: serde_json::json!({
                 "version": 1, "revision_kind": 45010, "removal_kind": 45011,
@@ -405,6 +409,12 @@ pub(crate) async fn nip11_document(state: &crate::state::AppState, raw_host: &st
             if let Some(fi) = info.federated_identity.as_mut() {
                 fi["public_profile"] = profile;
             }
+        }
+        if state.config.serves_host_registry() {
+            info.pubkey = Some(state.relay_keypair.public_key().to_hex());
+            info.host_registry = Some(
+                serde_json::json!({"versions":[2],"kind":43103,"admission":"host-scoped","reads":"req-v2"}),
+            );
         }
         if state.config.serves_paired_hosts() {
             info.paired_hosts_v1 = Some(true);

@@ -327,3 +327,28 @@ mod tests {
         assert!(i.validate(&cat, &rev).is_err());
     }
 }
+
+// The library and daemon share the actual durable store and existing journals.
+// Only the registration facade is exported to native integration callers.
+extern crate self as buzz_hostd;
+mod clock;
+// Also built in the daemon; registration links only its durable-store subset.
+#[allow(dead_code)]
+mod store;
+// Also built in the daemon; registration links only its durable-store subset.
+#[allow(dead_code)]
+mod request;
+// Also built in the daemon; registration links only its durable-store subset.
+#[allow(dead_code)]
+mod onboard;
+// Also built in the daemon; registration links only its durable-store subset.
+#[allow(dead_code)]
+mod transport;
+// Also built in the daemon; registration links only its durable-store subset.
+/// Durable registration-only host facade; no process/provider operations.
+pub mod registration;
+#[allow(dead_code)]
+mod unit;
+
+use clock::Clock;
+use store::Store;

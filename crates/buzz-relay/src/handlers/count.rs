@@ -23,6 +23,10 @@ pub async fn handle_count(
     conn: Arc<ConnectionState>,
     state: Arc<AppState>,
 ) {
+    if conn.registry.generation().is_some() {
+        conn.send(RelayMessage::closed(&sub_id, "restricted: host scope"));
+        return;
+    }
     // Require auth
     let (pubkey_bytes, token_channel_ids) = {
         match conn.auth_state_snapshot() {
@@ -428,6 +432,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: keys.public_key(),

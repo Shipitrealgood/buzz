@@ -48,3 +48,6 @@ fn session(scope: &Scope, selected: &str, keys: &Keys) -> Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+/// Private root-WebSocket registration and native journal adapter.
+pub mod registry;

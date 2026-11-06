@@ -60,6 +60,10 @@ pub async fn handle_req(
     conn: Arc<ConnectionState>,
     state: Arc<AppState>,
 ) {
+    if conn.registry.generation().is_some() {
+        super::close::refuse(&sub_id, "restricted: host scope", &conn, &state).await;
+        return;
+    }
     let (conn_id, pubkey_bytes, token_channel_ids) = {
         match conn.auth_state_snapshot() {
             AuthState::Authenticated(ctx) => {
@@ -1906,6 +1910,9 @@ pub(crate) fn is_author_only_event(event: &nostr::Event, requester_pubkey_bytes:
 /// (NIP-98 `/query`, `/count`, FTS search) — instead of inlining the three
 /// individual predicates at each site.
 pub(crate) fn event_visible_to_reader(event: &nostr::Event, requester_pubkey_bytes: &[u8]) -> bool {
+    if u32::from(event.kind.as_u16()) == buzz_core::kind::KIND_HOST_REGISTRY_V2 {
+        return false;
+    }
     if is_author_only_event(event, requester_pubkey_bytes) {
         return false;
     }
@@ -1971,6 +1978,7 @@ mod tests {
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(AuthState::Failed),
             subscriptions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             send_tx,
@@ -2475,6 +2483,7 @@ mod tests {
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(AuthState::Failed),
             subscriptions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             send_tx,
@@ -2535,6 +2544,7 @@ mod tests {
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(AuthState::Failed),
             subscriptions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             send_tx: send_tx.clone(),
@@ -3696,6 +3706,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: keys.public_key(),
@@ -3825,6 +3836,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: keys.public_key(),
@@ -3960,6 +3972,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: keys.public_key(),
@@ -4101,6 +4114,7 @@ mod tests {
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: std::sync::Mutex::new(crate::connection::AuthState::Authenticated(
                 buzz_auth::AuthContext {
                     pubkey: keys.public_key(),

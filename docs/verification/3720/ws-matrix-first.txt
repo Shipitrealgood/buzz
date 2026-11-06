@@ -1,0 +1,20 @@
+
+running 6 tests
+test handlers::host_registry::postgres_tests::host_scope_denies_every_other_message_and_bootstrap ... ok
+test handlers::host_registry::postgres_tests::live_delivery_reauthorizes_on_second_relay_node ... 
+thread 'handlers::host_registry::postgres_tests::live_delivery_reauthorizes_on_second_relay_node' (24) panicked at crates/buzz-relay/src/handlers/host_registry/postgres_tests.rs:160:95:
+stale subscription leaked after removal: Event { subscription_id: "live", event: Event { id: EventId(17487f4228285b6c43ae1ac28ae319c11a7f6198ae8d33464e69e8b312c8f115), pubkey: PublicKey(aefd85f496aa229c75e7df8814550979fb9f959688bbe56613f03fddb2383246), created_at: Timestamp(1794002212), kind: Custom(43103), tags: [Tag(["v", "2"]), Tag(["community", "https://registry-29136ee0b5494c66a933ceb166723b1c.test"]), Tag(["p", "c80f23b1ac0e1bae42c7c1b3a4471100c3699803da33dd7d140126f7888f2f2b"]), Tag(["op", "registry-change"]), Tag(["q", "83e2bf2c3d07e5b87f74ca279ac48a87e3224a06b29eab2180b1ab69d7e9bfaf"]), Tag(["view", "live"])], content: "ApP+uVxlGaN7XSxe/+S9TR1noYWPkpPZdFegpwUzoduRWVUgd+Xz3o2NSNtG2S0gZrqXnvr1b6JgNSoVJ2vVsW/GhnJmInocHdpH85/dQ4Q4FdvGzWBPXSCiVA+KqZx2jzEhRThdgueHjmRO2y2B8i/TEihvlyuZmwYkZ0PXeqQ1hGvdCjbINdyVFaW0rd9cXQU3axNOfq9TMUAapHOyEpzg/2aVsvseAysi4lmB4h67+Rr20WhWuAHa+l2PWIRJaNv2iisflhbVD6EwSm1ZvgzKI3JWzYy51U8j6Te10uJcuse1tKVScAEDBYCzCi7DGGp2p85+SUt47ItEHt6l7nBeK3Uu8itUP7hkfR0VvPUQHkI0OzV5wLF/ISGaAxTtstGK2ql7XCirdkgtdNJfM1o7ztdiy7EMRgdGKUUjblgL2OE4KSKqJENEsUQWcTgcb47kxKBE/cdQktTd7CR+EPu6ynuVc7Qz7dIVGWUDYUe6lg63AifYg4Vs5wQx3HvJ3XuxNxtmPyKp74h38IpCtnvtgGlMJUMVXSvM/hkAQ9hMeTLYPcX685NQhy9AW+zbs5NZaMlh9FG9z+9NJKq4U3T6Tg==", sig: Signature(69295ba060987d139e6c70efef57012bfb8e47151753af65204d36dd7d8038018781c2c1168ee697698431c79819d9f122d60b41a1a1eb958490127497eb40c3) } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test handlers::host_registry::postgres_tests::owner_membership_wrong_parties_and_tenants ... ok
+test handlers::host_registry::postgres_tests::parent_generation_and_operation_identity_are_enforced ... ok
+test handlers::host_registry::postgres_tests::registration_journey_two_journals_and_revocation ... ok
+test handlers::host_registry::postgres_tests::unique_live_binding_survives_competing_signed_host_acks ... ok
+
+failures:
+
+failures:
+    handlers::host_registry::postgres_tests::live_delivery_reauthorizes_on_second_relay_node
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 2179 filtered out; finished in 1.68s
+

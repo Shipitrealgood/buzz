@@ -433,7 +433,7 @@ pub(crate) fn packet_id(p: &Packet) -> Result<String> {
     Ok(serde_json::from_str::<Header>(p.event.get())?.id)
 }
 
-fn save(
+pub(crate) fn save(
     tx: &Transaction<'_>,
     g: &str,
     op: &str,

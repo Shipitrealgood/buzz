@@ -90,6 +90,19 @@ impl NostrWsConnection {
         Ok(Self::from_stream(ws, url))
     }
 
+    /// Connect using an explicit TLS connector, for selected communities with a
+    /// private CA. Default connection methods keep the standard public roots.
+    pub async fn connect_with_tls_connector(
+        url: &str,
+        connector: tokio_tungstenite::Connector,
+    ) -> Result<Self, WsClientError> {
+        let request = url.into_client_request()?;
+        let (ws, _) =
+            tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector))
+                .await?;
+        Ok(Self::from_stream(ws, url))
+    }
+
     /// [`Self::connect`], but opens a plaintext TCP connection to `addr`
     /// (`host:port`) instead of resolving the URL's host.
     ///

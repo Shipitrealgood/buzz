@@ -1,0 +1,653 @@
+{
+  "base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "head": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "scope": "all primary spans; every new Rust file and all changed-line ranges",
+  "strict_clippy": "baseline-blocked; this is supplemental evidence only",
+  "command": "cargo clippy -p buzz-relay -p buzz-core -p buzz-auth -p buzz-hostd -p buzz-paired-owner -p buzz-db -p buzz-conformance -p buzz-ws-client --all-targets --locked --offline --message-format=json",
+  "diff_sha256": "4bdbbc4e33d7f5500564942f4cfe0f7f469796b0428332e4fef9d2c9f0534514",
+  "changed_file_sha256": {
+    "crates/buzz-core/src/host_registry.rs": "e22757773c5aeaa6139183ed24e2ff0cc0e598255858779721ca9314d2ee57bc",
+    "crates/buzz-core/src/kind.rs": "f8539eb3e730851afedd8301a1fecfd4021ed66ae2233d3776e580dd39b4f4b5",
+    "crates/buzz-core/src/lib.rs": "f90d47472a5ec6a6604f23318786ce789dd7403883a3da66953dd7e7bd38e238",
+    "crates/buzz-core/src/paired_host.rs": "048d2ac85635c0b1732d9a1559910f58652de10c963c02ee12c420af77ebed46",
+    "crates/buzz-db/src/store/paired_hosts.rs": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7",
+    "crates/buzz-db/src/store/paired_hosts/phases.rs": "fcd09e16f9c49f1bc116dc778b84f6709026eb05f10fc78e5d69d0e6d2b5bd04",
+    "crates/buzz-db/src/store/paired_hosts/registry.rs": "b6ce613f851bbd0dafeb8550ac2f17ae71c8dbbbed103bb28be22fbf74b3aaac",
+    "crates/buzz-hostd/src/lib.rs": "af2e2ff0237fc6c11763a2e28138ed7556d9e8400db0bcb981a56a170f77e1bd",
+    "crates/buzz-hostd/src/registration.rs": "49c9b87e2a5e68b875427c6e84bc406b83c3b616a9bb2a104c7f6bf6ab0cfab1",
+    "crates/buzz-hostd/src/store.rs": "44cdfd5320d512a78a5b9f657ee11a9605e8e575edad4f65cb32efb8c133176b",
+    "crates/buzz-paired-owner/src/device.rs": "7708a935b0980bd4845425d50553724e671da1cc1d787a35dbe305e5a77bae4d",
+    "crates/buzz-paired-owner/src/lib.rs": "43732adfaa83a96813cf42906d929d66f3105f7ab8ed5e6f0b27e84686b74c9f",
+    "crates/buzz-paired-owner/src/registry.rs": "b17a30d953722823e1fd635be7598d2e3720c241a05e041fc1efeaeea2117276",
+    "crates/buzz-relay/src/api/bridge.rs": "b1fd40f07187e68ed5283384ceddf209fc12828065c6d2a343b4b582ef4dfb9f",
+    "crates/buzz-relay/src/api/paired_hosts.rs": "399504c89d7c62cb6bfc43662b25f757e4ebc3079e28e3d3f6c0653199923707",
+    "crates/buzz-relay/src/config.rs": "f8c0808392e508c80496af615f87bf201bc51bc642a2a7a6b6f8c97cac17176d",
+    "crates/buzz-relay/src/connection.rs": "94bc61afaff8e7ea4e555589277d44f22841716007fa6ad7dda221905da4a834",
+    "crates/buzz-relay/src/handlers/artifact_sync.rs": "4af1bacbd8bc1bfd44dae307fec012d0cf4120c953884810fed9a0603b9089b2",
+    "crates/buzz-relay/src/handlers/auth.rs": "dbabe38d5bb0ed50609839f086ac925e82455bf77e8f327fd2ff630c81bc3a89",
+    "crates/buzz-relay/src/handlers/count.rs": "949974ac094ef03d37f686d2313d118c07b5d14c372978c8e39293e06bdc2108",
+    "crates/buzz-relay/src/handlers/event.rs": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84",
+    "crates/buzz-relay/src/handlers/group_state_postgres_tests.rs": "c764949f52cb484cff6996896c0c1185e305b2faf4f16c3a70adc72063213ab1",
+    "crates/buzz-relay/src/handlers/host_registry.rs": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b",
+    "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs": "e4f2b2deebff7752ed1b84289a227850800cb7bf8c1fed5dde59abd75f475205",
+    "crates/buzz-relay/src/handlers/mod.rs": "0d5b7988ef02229809298bd4bac2f900b0951a307c7f70db525591058bf83a91",
+    "crates/buzz-relay/src/handlers/req.rs": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f",
+    "crates/buzz-relay/src/nip11.rs": "7319a3f57e725d347eb9b25361a204d2c770b570a9b284e448e4ca508d1a4679",
+    "crates/buzz-relay/src/state.rs": "827743b8a632a4680652dc820ffcfa5c79d9053ae47482e960a1b7bb7d7e3688",
+    "crates/buzz-ws-client/src/connection.rs": "d2e660261d8bb375c1a7d10b5c766ca0ef80c15e21b15e0fa60c351355c5d57f",
+    "crates/buzz-ws-client/src/lib.rs": "ecceb368b28a9d253fe8edc98f0f8dacdecda54cb3071cf981a34ea97708002e"
+  },
+  "diagnostics": [
+    {
+      "level": "warning",
+      "code": "clippy::large_enum_variant",
+      "message": "large size difference between variants",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-core/src/paired_message/body.rs",
+          "start": 9,
+          "end": 110,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::wrong_self_convention",
+      "message": "methods called `from_*` usually take no `self`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-core/src/paired_message/body.rs",
+          "start": 133,
+          "end": 133,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (9/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/request.rs",
+          "start": 207,
+          "end": 217,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 181,
+          "end": 181,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (8/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 201,
+          "end": 210,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 255,
+          "end": 255,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 280,
+          "end": 280,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::explicit_auto_deref",
+      "message": "deref which would be done by auto-deref",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-paired-owner/examples/staging.rs",
+          "start": 66,
+          "end": 66,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 181,
+          "end": 181,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (9/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/request.rs",
+          "start": 207,
+          "end": 217,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (8/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 201,
+          "end": 210,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 255,
+          "end": 255,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 280,
+          "end": 280,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::useless_borrows_in_formatting",
+      "message": "redundant reference in `writeln!` argument",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/main.rs",
+          "start": 70,
+          "end": 70,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 181,
+          "end": 181,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (9/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/request.rs",
+          "start": 207,
+          "end": 217,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (8/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 201,
+          "end": 210,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 255,
+          "end": 255,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 280,
+          "end": 280,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::useless_borrows_in_formatting",
+      "message": "redundant reference in `writeln!` argument",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/main.rs",
+          "start": 70,
+          "end": 70,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (9/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/request.rs",
+          "start": 207,
+          "end": 217,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 181,
+          "end": 181,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/onboard.rs",
+          "start": 188,
+          "end": 188,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (8/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 201,
+          "end": 210,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 255,
+          "end": 255,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::needless_borrow",
+      "message": "this expression creates a reference which is immediately dereferenced by the compiler",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-hostd/src/transport.rs",
+          "start": 280,
+          "end": 280,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::unnecessary_get_then_check",
+      "message": "unnecessary use of `get(\"claim\").is_some()`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts/reads.rs",
+          "start": 298,
+          "end": 298,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::unnecessary_get_then_check",
+      "message": "unnecessary use of `get(\"ack\").is_some()`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts/reads.rs",
+          "start": 299,
+          "end": 299,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::unnecessary_get_then_check",
+      "message": "unnecessary use of `get(\"claim\").is_some()`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts/reads.rs",
+          "start": 298,
+          "end": 298,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::unnecessary_get_then_check",
+      "message": "unnecessary use of `get(\"ack\").is_some()`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts/reads.rs",
+          "start": 299,
+          "end": 299,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::large_enum_variant",
+      "message": "large size difference between variants",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-core/src/paired_message/body.rs",
+          "start": 9,
+          "end": 110,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::wrong_self_convention",
+      "message": "methods called `from_*` usually take no `self`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-core/src/paired_message/body.rs",
+          "start": 133,
+          "end": 133,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::items_after_test_module",
+      "message": "items after a test module",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-relay/src/api/bridge.rs",
+          "start": 3215,
+          "end": 3215,
+          "changed": false
+        },
+        {
+          "path": "crates/buzz-relay/src/api/bridge.rs",
+          "start": 10067,
+          "end": 10067,
+          "changed": true
+        }
+      ],
+      "classification": "new-code"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::too_many_arguments",
+      "message": "this function has too many arguments (8/7)",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-relay/src/api/paired_hosts/phase_postgres_tests.rs",
+          "start": 5,
+          "end": 14,
+          "changed": false
+        }
+      ],
+      "classification": "baseline-or-dependency"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::single_match",
+      "message": "you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+          "start": 679,
+          "end": 708,
+          "changed": true
+        }
+      ],
+      "classification": "new-code"
+    },
+    {
+      "level": "warning",
+      "code": "clippy::single_match",
+      "message": "you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`",
+      "primary_spans": [
+        {
+          "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+          "start": 712,
+          "end": 741,
+          "changed": true
+        }
+      ],
+      "classification": "new-code"
+    }
+  ],
+  "unexplained_output": [],
+  "new_or_error_count": 3,
+  "result": "FAIL"
+}

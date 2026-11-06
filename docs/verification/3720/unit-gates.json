@@ -1,0 +1,67 @@
+[
+  {
+    "gate": "core",
+    "exit": 0,
+    "receipt": "docs/verification/3720/core-terminal.txt"
+  },
+  {
+    "gate": "auth",
+    "exit": 0,
+    "receipt": "docs/verification/3720/auth-terminal.txt"
+  },
+  {
+    "gate": "owner",
+    "exit": 0,
+    "receipt": "docs/verification/3720/owner-terminal.txt"
+  },
+  {
+    "gate": "hostd-library",
+    "exit": 0,
+    "receipt": "docs/verification/3720/hostd-library-terminal.txt"
+  },
+  {
+    "gate": "hostd-daemon",
+    "exit": 0,
+    "receipt": "docs/verification/3720/hostd-daemon-terminal.txt"
+  },
+  {
+    "gate": "host-activate",
+    "exit": 0,
+    "receipt": "docs/verification/3720/host-activate-terminal.txt"
+  },
+  {
+    "gate": "host-runtime",
+    "exit": 0,
+    "receipt": "docs/verification/3720/host-runtime-terminal.txt"
+  },
+  {
+    "gate": "db-unit",
+    "exit": 0,
+    "receipt": "docs/verification/3720/db-unit-terminal.txt"
+  },
+  {
+    "gate": "writer-source-policy",
+    "exit": 0,
+    "receipt": "docs/verification/3720/writer-source-policy-terminal.txt"
+  },
+  {
+    "gate": "conformance",
+    "exit": 0,
+    "receipt": "docs/verification/3720/conformance-terminal.txt"
+  },
+  {
+    "gate": "conformance-replay",
+    "exit": 0,
+    "receipt": "docs/verification/3720/conformance-replay-terminal.txt"
+  },
+  {
+    "gate": "conformance-property",
+    "exit": 0,
+    "receipt": "docs/verification/3720/conformance-property-terminal.txt"
+  },
+  {
+    "gate": "ws-client",
+    "exit": 0,
+    "receipt": "docs/verification/3720/ws-client-terminal.txt"
+  }
+]

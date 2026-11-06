@@ -1,0 +1,4 @@
+validated PostgreSQL test discovery across 0 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+expected fixture package discovery, got: 

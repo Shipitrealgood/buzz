@@ -361,6 +361,10 @@ pub async fn handle_sync(
     state: Arc<AppState>,
     permit: OwnedSemaphorePermit,
 ) {
+    if conn.registry.generation().is_some() {
+        refuse(&sub_id, "restricted: host scope", &conn, &state).await;
+        return;
+    }
     let filter = match filter {
         Ok(filter) => filter,
         Err(reason) => {

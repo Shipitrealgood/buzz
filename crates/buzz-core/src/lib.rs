@@ -90,3 +90,6 @@ pub mod test_helpers {
 pub mod artifact;
 /// NIP-AR sync filter parsing and limits.
 pub mod artifact_sync;
+
+/// Private root-WebSocket host registration fork protocol.
+pub mod host_registry;

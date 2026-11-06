@@ -577,6 +577,9 @@ pub const KIND_JOB_ERROR: u32 = 43006;
 /// Private paired-host enrollment envelope, exchanged only via dedicated transport.
 pub const KIND_PAIRED_HOST_V1: u32 = 43102;
 
+/// Private root-WebSocket host registry v2 (local fork allocation; separate from v1).
+pub const KIND_HOST_REGISTRY_V2: u32 = 43103;
+
 /// Relay-signed notification: the target pubkey was added to a channel.
 /// Stored globally (channel_id = None) with p-tag = target, h-tag = channel UUID.
 pub const KIND_MEMBER_ADDED_NOTIFICATION: u32 = 44100;
@@ -782,6 +785,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_JOB_CANCEL,
     KIND_JOB_ERROR,
     KIND_PAIRED_HOST_V1,
+    KIND_HOST_REGISTRY_V2,
     KIND_MEMBER_ADDED_NOTIFICATION,
     KIND_MEMBER_REMOVED_NOTIFICATION,
     KIND_AGENT_TURN_METRIC,

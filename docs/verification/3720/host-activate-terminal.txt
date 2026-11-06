@@ -1,0 +1,8 @@
+
+running 3 tests
+test tests::authenticates_connecting_uid_not_inode_group ... ok
+test tests::rejects_overridden_or_preexisting_foreign_instance ... ok
+test tests::counts_all_irreversible_reservations_at_the_root_boundary ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -189,6 +189,8 @@ pub struct Config {
     pub buzz_v1_enabled: bool,
     /// Opt-in private host enrollment pilot. Disabled by default.
     pub paired_hosts_enabled: bool,
+    /// Opt-in private host registry fork protocol v2.
+    pub host_registry_enabled: bool,
     /// Author-time unread tracking duration, independent of NIP-RS retention.
     pub buzz_v1_retention_seconds: u32,
     /// Comma-separated list of allowed CORS origins.
@@ -659,6 +661,13 @@ impl Config {
     /// The route and its NIP-11 advertisement require the same secure public URL.
     pub(crate) fn serves_paired_hosts(&self) -> bool {
         self.paired_hosts_enabled
+            && !self.nip_fi.mode.restricts()
+            && self.relay_url.trim_start().starts_with("wss://")
+    }
+
+    /// Advertise and serve the complete v2 capability only under compatible admission.
+    pub(crate) fn serves_host_registry(&self) -> bool {
+        self.host_registry_enabled
             && !self.nip_fi.mode.restricts()
             && self.relay_url.trim_start().starts_with("wss://")
     }
@@ -1451,6 +1460,7 @@ impl Config {
             require_auth_token,
             buzz_v1_enabled,
             paired_hosts_enabled: std::env::var("BUZZ_PAIRED_HOSTS_V1").as_deref() == Ok("true"),
+            host_registry_enabled: std::env::var("BUZZ_HOST_REGISTRY_V2").as_deref() == Ok("true"),
             buzz_v1_retention_seconds,
             cors_origins,
             relay_private_key,

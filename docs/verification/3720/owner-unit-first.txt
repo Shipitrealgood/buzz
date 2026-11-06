@@ -1,0 +1,18 @@
+
+running 13 tests
+test http::session_tests::switch_between_host_pages_stops_second_authenticated_read ... ok
+test http::session_tests::lock_between_candidate_queries_stops_second_authenticated_read ... ok
+test ready::tests::read_back_requires_agent_signature_correct_owner_and_requested_policy ... ok
+test tests::corrected_invitation_can_enroll_same_generation_and_exact_retry_survives_restart ... ok
+test tests::enroll_inventory_revocation_and_restart ... ok
+test tests::directory_retains_history_gap_across_worker_success_failure_and_verified_recovery ... ok
+test tests::only_initiating_tap_can_automate_credentials_after_exact_commit ... ok
+test tests::repeated_tap_is_idempotent_after_ipc_loss_and_process_restart ... ok
+test tests::retry_rotation_delivers_ninth_pending_revocation_across_restart ... ok
+test tests::short_signed_inventory_cannot_grant_a_minute_of_display_freshness ... ok
+test tests::status_replies_never_create_signing_authority ... ok
+test tests::fresh_complete_replacement_challenge_recovers_an_expired_unaccepted_confirm ... ok
+test tests::verified_precommit_closure_retires_an_undelivered_outbox_item ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.33s
+

@@ -89,6 +89,8 @@ pub struct ConnectionState {
     pub remote_addr: SocketAddr,
     /// Current NIP-42 authentication state.
     pub auth_state: StdMutex<AuthState>,
+    /// Private host capability and per-connection registration work limits.
+    pub(crate) registry: crate::handlers::host_registry::Connection,
     /// Active subscriptions keyed by subscription ID.
     pub subscriptions: ConnectionSubscriptions,
     /// Sender for outbound data messages (EVENT, NOTICE, OK, etc.).
@@ -596,6 +598,7 @@ async fn handle_active_connection(
         conn_id,
         tenant,
         remote_addr: addr,
+        registry: crate::handlers::host_registry::Connection::default(),
         auth_state: StdMutex::new(AuthState::Pending {
             challenge: challenge.clone(),
             started_at: Instant::now(),
@@ -1327,6 +1330,10 @@ async fn handle_text_message(text: String, conn: Arc<ConnectionState>, state: Ar
         return;
     }
 
+    if handlers::host_registry::dispatch(&text, Arc::clone(&conn), Arc::clone(&state)).await {
+        return;
+    }
+
     let msg = match ClientMessage::parse(&text) {
         Ok(m) => m,
         Err(e) => {
@@ -1555,6 +1562,7 @@ pub(crate) mod tests {
             conn_id: Uuid::new_v4(),
             tenant: TenantContext::resolved(community, "test.local".to_string()),
             remote_addr: "127.0.0.1:1234".parse().expect("socket addr"),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: StdMutex::new(auth),
             subscriptions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             send_tx,
@@ -3208,6 +3216,7 @@ pub(crate) mod tests {
                 "test.local".to_string(),
             ),
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
+            registry: crate::handlers::host_registry::Connection::default(),
             auth_state: StdMutex::new(AuthState::Failed),
             subscriptions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             send_tx,

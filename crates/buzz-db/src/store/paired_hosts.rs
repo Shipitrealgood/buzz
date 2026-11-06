@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 use sqlx::Row;
 
 mod phases;
+mod registry;
+pub use registry::{RegistryPage, RegistryRead, RegistrySession};
 mod reads;
 pub use reads::{Fields, Page, Read};
 
@@ -95,15 +97,20 @@ impl Db {
     ) -> Result<()> {
         let mut tx = self.paired_tx(community).await?;
         require(p.owner != p.host)?;
+        let v2 = p.route.get("v").and_then(Value::as_u64) == Some(2);
         let removed_owner_tombstone = p.op == "unpaired";
-        authorize(
-            &mut tx,
-            &p.owner,
-            &p.host,
-            allowlist,
-            removed_owner_tombstone,
-        )
-        .await?;
+        if v2 && removed_owner_tombstone {
+            require(!principal_restricted(tx.conn(), community, &hex::encode(p.host)).await?)?;
+        } else {
+            authorize(
+                &mut tx,
+                &p.owner,
+                &p.host,
+                allowlist,
+                removed_owner_tombstone,
+            )
+            .await?;
+        }
         let t = *community.as_uuid();
         let binding = sqlx::query(
             r#"SELECT owner_key, host_key, claim_id, ack_id, state, tombstone_id, fence_seq
@@ -119,6 +126,23 @@ impl Db {
                 b.get::<Vec<u8>, _>("owner_key") == p.owner
                     && b.get::<Vec<u8>, _>("host_key") == p.host,
             )?;
+        }
+        // A generation has one wire version, pinned by its first retained claim.
+        let incompatible: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND ((event_json::jsonb->>'kind')::int=43103)<>$3)"
+        ).bind(t).bind(&p.generation[..]).bind(v2).fetch_one(tx.conn()).await?;
+        require(!incompatible)?;
+        if v2 {
+            let operation = p.request.ok_or_else(denied)?;
+            let signer = if matches!(p.op.as_str(), "pair-claim" | "status-query" | "unpair") {
+                &p.owner
+            } else {
+                &p.host
+            };
+            let conflict: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND request_id=$3 AND event_json::jsonb->>'pubkey'=encode($4,'hex') AND event_id<>$5)"
+            ).bind(t).bind(&p.generation[..]).bind(&operation[..]).bind(&signer[..]).bind(&p.id[..]).fetch_one(tx.conn()).await?;
+            require(!conflict)?;
         }
         if let Some(old) = sqlx::query(
             r#"SELECT route_json, event_json FROM paired_host_events
@@ -149,7 +173,7 @@ impl Db {
             "pair-claim" => {
                 require(
                     binding.is_none()
-                        && p.request.is_none()
+                        && (v2 || p.request.is_none())
                         && p.prev.is_none()
                         && p.expiry > now
                         && p.expiry - p.created <= 630
@@ -192,7 +216,7 @@ impl Db {
             "pair-ack" => {
                 require(
                     binding.is_none()
-                        && p.request.is_none()
+                        && (v2 || p.request.is_none())
                         && now <= p.expiry.saturating_add(86400)
                         && p.expiry - p.created <= 630,
                 )?;
@@ -235,7 +259,7 @@ impl Db {
             "unpair" | "unpaired" => {
                 let b = binding.ok_or_else(denied)?;
                 require(
-                    p.request.is_none()
+                    (v2 || p.request.is_none())
                         && p.prev.as_ref().map(|id| &id[..])
                             == Some(b.get::<Vec<u8>, _>("ack_id").as_slice())
                         && p.expiry - p.created <= 86400,
@@ -254,6 +278,25 @@ impl Db {
                     sqlx::query("UPDATE paired_host_bindings SET state='fenced',fence_seq=$3 WHERE community_id=$1 AND generation=$2")
                         .bind(t).bind(&p.generation[..]).bind(seq).execute(tx.conn()).await?;
                 }
+            }
+            "status-query" | "status" if v2 => {
+                phases::admit_transient(&mut tx, p).await?;
+                let b = binding.ok_or_else(denied)?;
+                require(
+                    b.get::<&str, _>("state") == "active"
+                        && now < p.expiry
+                        && p.expiry - p.created <= 60,
+                )?;
+                let parent = p.prev.ok_or_else(denied)?;
+                if p.op == "status-query" {
+                    require(parent.as_slice() == b.get::<Vec<u8>, _>("ack_id"))?;
+                } else {
+                    let matches: bool = sqlx::query_scalar(
+                        "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND event_id=$5 AND operation='status-query' AND expires_at>=$6)"
+                    ).bind(t).bind(&p.generation[..]).bind(&p.owner[..]).bind(&p.host[..]).bind(&parent[..]).bind(p.expiry).fetch_one(tx.conn()).await?;
+                    require(matches)?;
+                }
+                insert(&mut tx, p, None).await?;
             }
             _ => phases::advance(&mut tx, &binding.ok_or_else(denied)?, p, now).await?,
         }

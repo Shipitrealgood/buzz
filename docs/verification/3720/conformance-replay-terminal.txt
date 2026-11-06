@@ -1,0 +1,11 @@
+
+running 6 tests
+test bad_host_channel_mismatch_is_illegal_transition ... ok
+test coverage_breach_is_caught ... ok
+test empty_trace_is_coverage_breach ... ok
+test foreign_row_leak_is_non_interference ... ok
+test good_trace_passes_check ... ok
+test missing_required_action_is_coverage_breach ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -164,6 +164,14 @@ fn cursor_key(state: &AppState, scope: &[&str]) -> Result<ring::aead::LessSafeKe
     Ok(ring::aead::LessSafeKey::new(key))
 }
 fn seal(state: &AppState, scope: &[&str], data: &str) -> Result<String, Error> {
+    seal_cursor(state, scope, data, 64)
+}
+pub(crate) fn seal_cursor(
+    state: &AppState,
+    scope: &[&str],
+    data: &str,
+    width: usize,
+) -> Result<String, Error> {
     use ring::{
         aead::{Aad, Nonce},
         rand::{SecureRandom, SystemRandom},
@@ -173,8 +181,8 @@ fn seal(state: &AppState, scope: &[&str], data: &str) -> Result<String, Error> {
         .fill(&mut nonce)
         .map_err(|_| invalid())?;
     // Fixed-size encrypted positions conceal both the sequence and its width.
-    let mut plain = vec![0; 65];
-    if data.len() > 64 {
+    let mut plain = vec![0; width + 1];
+    if data.len() > width || width > 255 {
         return Err(invalid());
     }
     plain[0] = data.len() as u8;
@@ -189,11 +197,19 @@ fn seal(state: &AppState, scope: &[&str], data: &str) -> Result<String, Error> {
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([&nonce[..], &plain].concat()))
 }
 fn open(state: &AppState, scope: &[&str], cursor: &str) -> Result<String, Error> {
+    open_cursor(state, scope, cursor, 64)
+}
+pub(crate) fn open_cursor(
+    state: &AppState,
+    scope: &[&str],
+    cursor: &str,
+    width: usize,
+) -> Result<String, Error> {
     use ring::aead::{Aad, Nonce};
     let mut buf = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(cursor)
         .map_err(|_| denied())?;
-    if buf.len() != 12 + 65 + 16 {
+    if buf.len() != 12 + width + 1 + 16 {
         return Err(denied());
     }
     let (nonce, body) = buf.split_at_mut(12);
@@ -333,7 +349,7 @@ async fn process(
     let q: Query = serde_urlencoded::from_str(uri.query().unwrap_or("")).map_err(|_| invalid())?;
     read_page(state, &tenant, actor, &segments, q).await
 }
-async fn source_capacity(
+pub(crate) async fn source_capacity(
     state: &AppState,
     tenant: &TenantContext,
     bucket: &[u8],

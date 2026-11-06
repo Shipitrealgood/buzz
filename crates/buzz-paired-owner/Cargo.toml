@@ -9,6 +9,7 @@ description = "Native owner workflow for the Windows paired-host client"
 anyhow.workspace = true
 base64.workspace = true
 buzz-core.workspace = true
+buzz-ws-client.workspace = true
 buzz-sdk.workspace = true
 hex.workspace = true
 nostr.workspace = true

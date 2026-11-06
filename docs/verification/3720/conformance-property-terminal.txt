@@ -1,0 +1,12 @@
+
+running 7 tests
+test auth_allow_foreign_claim_bites ... ok
+test auth_deny_any_claim_is_ok ... ok
+test check_trace_is_deterministic_and_total ... ok
+test foreign_row_label_is_rejected ... ok
+test impl_bug_bites_coverage_breach ... ok
+test state_flip_bites_state_mismatch ... ok
+test clean_trace_is_accepted ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

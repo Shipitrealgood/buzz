@@ -1,0 +1,57 @@
+    Checking buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Checking buzz-ws-client v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-ws-client)
+    Checking regex-syntax v0.8.10
+   Compiling buzz-datastore-tracing v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-datastore-tracing)
+error: large size difference between variants
+   --> crates/buzz-core/src/paired_message/body.rs:9:1
+    |
+  9 | /   pub enum Body {
+ 10 | |       InventoryQuery {
+ 11 | |           pair_ack_id: String,
+ 12 | |           nonce: String,
+...   |
+ 23 | | /     Create {
+ 24 | | |         request_id: String,
+ 25 | | |         catalog_id: String,
+ 26 | | |         runtime: String,
+...   | |
+ 30 | | |         channels: Vec<String>,
+ 31 | | |     },
+    | | |_____- the second-largest variant contains at least 192 bytes
+...   |
+ 67 | | /     Credentials {
+ 68 | | |         request_id: String,
+ 69 | | |         intent_id: String,
+ 70 | | |         commit_id: String,
+...   | |
+ 74 | | |         registration: nostr::Event,
+ 75 | | |     },
+    | | |_____- the largest variant contains at least 416 bytes
+...   |
+109 | |       },
+110 | |   }
+    | |___^ the entire enum is at least 416 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+ 74 -         registration: nostr::Event,
+ 74 +         registration: Box<nostr::Event>,
+    |
+
+error: methods called `from_*` usually take no `self`
+   --> crates/buzz-core/src/paired_message/body.rs:133:30
+    |
+133 |     pub(super) fn from_owner(&self) -> bool {
+    |                              ^^^^^
+    |
+    = help: consider choosing a less ambiguous name
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#wrong_self_convention
+    = note: `-D clippy::wrong-self-convention` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::wrong_self_convention)]`
+
+    Checking simple_asn1 v0.6.4
+error: could not compile `buzz-core` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
