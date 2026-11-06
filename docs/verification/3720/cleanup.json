@@ -1,0 +1,9 @@
+{
+  "containers_removed": true,
+  "synthetic_private_keys_removed": true,
+  "owned_test_or_build_processes_remaining": false,
+  "process_receipt": "all tracked test/build sessions terminal; runner process listing before cleanup contained only sleep; task services removed",
+  "anonymous_fixture_volumes_removed": 1,
+  "measured_build_processes_after_cleanup": [],
+  "remaining_fixture_databases_before_service_removal": 0
+}

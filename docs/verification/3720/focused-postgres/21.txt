@@ -1,0 +1,5 @@
+
+running 1 test
+test api::invites::postgres_tests::restriction_tests::postgres_tests::committed_issuer_ban_survives_unban_through_http ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2193 filtered out; finished in 0.06s

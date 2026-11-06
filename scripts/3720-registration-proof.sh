@@ -98,6 +98,7 @@ down)
       docker rm -fv "$name"
     fi
   done
+  rm -f -- "$lane/target/3720-tls/ca.key" "$lane/target/3720-tls/server.key" "$lane/target/3720-tls/server.csr" "$lane/target/3720-tls/ca.srl"
   ;;
 *) echo 'usage: 3720-registration-proof.sh up|tls|run target/debug/deps/TEST [ARGS...]|down' >&2; exit 1;;
 esac

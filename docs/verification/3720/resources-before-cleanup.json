@@ -1,0 +1,69 @@
+{
+  "source": "496c4967d",
+  "containers": [
+    {
+      "name": "buzz-3720-registration-runner",
+      "id": "5a4add99d258ca7e53c6722fa1e7d51f9224369ad182e807992c11adf1783a8a",
+      "image": "sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1",
+      "network_mode": "none",
+      "host_ports": {},
+      "proof_label": "3720",
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/home/bryce/services/buzz-wt-3720-host-registration",
+          "owned_anonymous_volume": null
+        },
+        {
+          "type": "volume",
+          "destination": "/var/lib/postgresql/data",
+          "owned_anonymous_volume": "bd66818314bdb2401a89c107677ea3f1185da6090560ad9c10ae471168f7af96"
+        }
+      ],
+      "processes_before_cleanup": "PID                 COMMAND\n2969423             sleep\n"
+    },
+    {
+      "name": "buzz-3720-registration-postgres",
+      "id": "5f4404a66b77e4640c695a9add1e5d352540dbd1f3bd937b2f79debfd138d07c",
+      "image": "sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1",
+      "network_mode": "container:5a4add99d258ca7e53c6722fa1e7d51f9224369ad182e807992c11adf1783a8a",
+      "host_ports": {},
+      "proof_label": "3720",
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/proof-schema",
+          "owned_anonymous_volume": null
+        }
+      ],
+      "processes_before_cleanup": "PID                 COMMAND\n2969482             postgres\n2969660             postgres\n2969661             postgres\n2969663             postgres\n2969664             postgres\n2969665             postgres\n"
+    },
+    {
+      "name": "buzz-3720-registration-redis",
+      "id": "e20e2ac42227f57e6233bc01c9bec0c8b54939e9e2bfdab338fcf0a88ac9f5e8",
+      "image": "sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537",
+      "network_mode": "container:5a4add99d258ca7e53c6722fa1e7d51f9224369ad182e807992c11adf1783a8a",
+      "host_ports": {},
+      "proof_label": "3720",
+      "mounts": [],
+      "processes_before_cleanup": "PID                 COMMAND\n2969570             redis-server\n"
+    },
+    {
+      "name": "buzz-3720-registration-tls-proxy",
+      "id": "54f732ec7403db77c9adc09ea92d21e1eac777812010f3dd96fae6447c3ae0d2",
+      "image": "sha256:552e7481ca93ffccd046aa658dbbed22caefbc09c66fa7cd247cbb90b8a5c609",
+      "network_mode": "container:5a4add99d258ca7e53c6722fa1e7d51f9224369ad182e807992c11adf1783a8a",
+      "host_ports": {},
+      "proof_label": "3720",
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/proof-tls",
+          "owned_anonymous_volume": null
+        }
+      ],
+      "processes_before_cleanup": "PID                 COMMAND\n2979695             nginx\n2979708             nginx\n"
+    }
+  ],
+  "remaining_fixture_databases": 0
+}

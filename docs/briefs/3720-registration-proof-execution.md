@@ -1,61 +1,91 @@
-# #3720 registration proof execution
+# #3720 isolated registration proof — bounded execution result
 
-Status: implementation in progress; no runtime acceptance.
+**Status: implemented; bounded runtime tests pass; full proof acceptance remains OPEN.** The P1–P12 table below records covered outcomes and unrun subcases. Neither full #3720 completion, independent security acceptance, Windows compatibility nor deployment readiness is claimed.
 
-Lane: `/home/bryce/services/buzz-wt-3720-host-registration`, branch `proof/3720-host-registration-events`. Baseline `723c7e849a65af766a7db8ae8c2b62821f7550b4`; initial worktree clean. Comparison upstream `88697f1c597cda5790d4c702520d0651c48496c0`.
+Worktree `/home/bryce/services/buzz-wt-3720-host-registration`, branch `proof/3720-host-registration-events`. Initial HEAD `723c7e849a65af766a7db8ae8c2b62821f7550b4` and initial worktree were measured clean. Implementation commits: `949063e57`, then bounded correctness repair `496c4967d`. Later commits contain verification/handoff artifacts only. Comparison upstream is `88697f1c597cda5790d4c702520d0651c48496c0`, not today's main.
 
-Contract: [snapshot](../specs/3720-host-registration-event-proof.md), supplied by conductor from buzz-agents on 2026-11-06. Registration, two independent native journals, recovery and revocation only. No deployment, credentials, provisioning or board mutation. Existing v1 remains supported separately.
+Contract: [committed snapshot](../specs/3720-host-registration-event-proof.md), supplied from buzz-agents on2026-11-06. Accepted #3737 responsibility/authority decisions were inputs, not reopened. Requested configuration: **gpt-6.1-sol/high**; actual runtime model/effort is not independently exposed by available metadata.
 
-Requested configuration: gpt-6.1-sol/high. Runtime model and reasoning are not independently exposed in tool metadata.
+## What changed and what is reused
 
-## Ledger
+- A separate fork kind43103/version2, strict signed peer routing, encrypted payloads/pages, closed REQ extension and explicit NIP-11 capability. Feature defaults off and remains unavailable under enforcing NIP-FI. V1 kind43102/parser/HTTP behavior remains separate.
+- Root WS host-scoped NIP-42 uses main's signature/challenge/time/tenant handling and connection lifecycle. Ordinary scopes are cleared and a separate generation ceiling excludes ordinary messages/reads/count/sync, even when the host independently becomes a member. Registration grants no membership, allowlist, agent-owner or profile rows.
+- Existing paired writer/admission/restriction lock, unique-live binding, transcript tables and tombstones remain authoritative. V2 operation IDs use existing request_id only for registration records; no provisioning request rows, new registry store, schema or migration changes.
+- Protected pages/live invalidations use that same DB policy, existing subscription lifecycle/guarded owner sends, Redis topics and cursor cryptography. Generic storage/result/fanout and HTTP bridge handling exclude the private kind. High-water tokens hide the underlying global sequence.
+- A narrow hostd library facade uses the daemon's actual host.sqlite identity, invitation, attempts, transaction and exact outbox code. Native owner v2 uses actual Device journals and the shared WS client. Existing daemon CLI/HTTP provisioning and desktop UI activation remain outside this proof; no old HTTP files were retired.
 
-- Grounding: read scoped dispatch, accepted #3737 decisions, applicable repository/testing/database instructions and portable worker guidance. Clean baseline measured.
-- Tooling: Hermit activation required sandbox escalation for shared tool-cache metadata; pinned rustc/cargo1.98.1 confirmed. Docker29.9.2 available through approved tool escalation. No services started yet.
-- Adaptation accepted by conductor: expose the real hostd durable store through a narrow library seam so tests and v2 callers share production state.
+## Measured verification
 
-## Verification
+| Gate | Actual result | Durable receipt |
+|---|---|---|
+| Final root WS registration matrix | **14 passed,0 failed**,7.41s | [ws-final-restored.txt](../verification/3720/ws-final-restored.txt) |
+| Ordinary relay protocol/subscription/event/read/connection | **188 passed**,16 infrastructure cases ignored | [ordinary-relay-gates.json](../verification/3720/ordinary-relay-gates.json) |
+| Core/auth/native owner/hostd/DB writer/conformance/WS suites | **857 passing executions** across12 nonempty suites;678 DB cases ignored | [unit-gates.json](../verification/3720/unit-gates.json) |
+| Focused existing admission, human invites, paired-v1 and tenant purge | **26 exact cases passed**, each with a fresh DB | [focused-postgres/index.json](../verification/3720/focused-postgres/index.json) |
+| Five complete guard-removal controls | **5 detected**, exact restoration | [controls/index.json](../verification/3720/controls/index.json) |
+| Supplemental changed-line clippy | **PASS:40 baseline diagnostics,0 new/error,0 unexplained** | [clippy-inventory.json](../verification/3720/clippy-inventory.json) |
+| Strict clippy with -D warnings | **BASELINE-BLOCKED**, not green | [strict failure](../verification/3720/clippy-strict-baseline-failed.txt) |
+| Formatting, whitespace and shell parse | Passed | [format](../verification/3720/format-final.txt), [diff](../verification/3720/diff-check-final.txt) |
+| Canonical PostgreSQL discovery | Passed over **685 Rust source files** | [discovery](../verification/3720/postgres-discovery-final.txt) |
+| Repository differential file-size/static gate | Passed;10 self-tests + all configured policies | [size gate](../verification/3720/file-size-static.txt) |
+| Local kind collision at both exact source pins | No matches before allocation | [allocation](../verification/3720/kind-allocation.json) |
 
-P1–P12: not run. Negative controls: not run. Independent review: pending fresh reviewer after committed handoff and stopped processes. Native Windows, full CI and human testing: not run.
+Counts are executions, not a claim of distinct independent tests: hostd's reused store tests compile in both library and daemon targets. The host-runtime test binary had0 tests and is **not** credited as validation. One focused infra-free case initially ran0 tests under --ignored; that receipt is retained and a corrected exact run passed. Unit receipts precede the final v2-only revocation repair; unchanged v1 paths retain that evidence, while final root WS and all-target clippy cover the repaired source.
 
-## Compile and fixture checkpoint
+Commands used pinned Hermit Rust/cargo1.98.1, two build jobs, debug0 and task-local target/TMPDIR. Incremental was initially0, then1 on the roomy task disk for the finite controls. No toolchain substitution. Standard scripts/postgres-test-run.sh was **not run**: cargo-nextest is absent ([receipt](../verification/3720/nextest-availability.txt)); focused cases instead ran one exact compiled test per fresh desired-state database through the confined fixture wrapper.
 
-Measured: `cargo check -p buzz-core --locked --offline` passed. `cargo check -p buzz-relay -p buzz-hostd -p buzz-paired-owner --locked --offline` passed after adding the real durable-store library seam. New-field documentation and library dead-code warnings remain to address before clippy. Root-WS tests are now compiling; no runtime proof claimed yet.
+## P1–P12 acceptance map
 
-The first dependency build exhausted the shared `/tmp` tmpfs. Its failed log is retained at `docs/verification/3720/relay-check-disk-full.txt`. Only this task's build output moved to lane `target/`; subsequent builds use lane `target/tmp`, debug0, incrementalfalse and two jobs. Measured free space after moving: `/tmp`791MiB, lane disk128GiB.
+All named root cases are under `handlers::host_registry::external_infra_registration_tests::external_infra_tests`; each final matrix invocation ran14 cases, excluding the internal child helper. “Partial” means the covered assertions passed while full family acceptance remains open.
 
-Fixture owner: this executor. Task-labelled containers `buzz-3720-registration-runner`, `buzz-3720-registration-postgres`, `buzz-3720-registration-redis`; IDs respectively `5a4add99d258`, `5f4404a66b77`, `e20e2ac42227`. Runner has Docker `--network none`; both services share that namespace and bind only127.0.0.1:5432/6379. No host ports, external egress, inherited URLs or persistent volumes. PostgreSQL storage is disposable tmpfs. Each test process gets a newly created `buzz_3720_fixture_*` database bootstrapped from `schema/schema.sql`; wrapper drops it on exit. Exact task-name/label checks precede mutation/cleanup. Script: `scripts/3720-registration-proof.sh`.
+| Case | Status and concrete evidence | Unrun or limited evidence |
+|---|---|---|
+| P1 valid transcript | Registration journey and TLS reconciliation commit exactly one binding; same/second-node live cases observe committed changes. Signed peer EVENT transcripts retained. | Full raw socket trace of AUTH/OK/REQ/EOSE/pages was not captured; peer mutation transcripts are complete. |
+| P2 second desktop | Two empty independent native journals, two same-label/distinct-key hosts, exact selected consent, fresh nonce for one and stale other host. | Linux native library seam only; Windows runtime unrun. |
+| P3 wrong parties/tenant | **Partial**: wrong owner/control, tenant separation, signed parent/generation/duplicate-tag and borrowed cursor/nonce denial. | Dedicated re-encrypted inner-body mismatch permutations and wrong-host ack packet matrix not separately run. |
+| P4 member policy | **Partial**: direct member/owner/admin, open-relay nonmember denial; real invite mint/claim/expiry/replay/issuer-restriction regressions pass. | Dedicated guest/token and valid OA-only registration credential matrix unrun. |
+| P5 bootstrap/ceiling | **Partial**: preclaim denial, wrong G/challenge/relay/version, duplicate/mixed scope tags, known generic message deny matrix, independently-member ceiling, no membership/allowlist/users side effects. | Scoped Nostr CLOSE ownership has no dedicated assertion; ordinary close/lifecycle regressions pass. |
+| P6 invitation/retry | **Partial**: host unit proof-attempt/expiry/reboot/rollback/outbox tests; actual timely expired ack and retained24h admission boundary. | Dedicated lost/corrupt-local-offer permutations not separately run. Historical retained-claim boundary fixtures are explicitly seeded, followed by real WS admission/mutation. |
+| P7 competing owners | **Partial**: simultaneous signed acks produce one live owner; host local proof consumption and same-label identity separation pass. | Full v2 dead-G reuse/re-enrollment journey not separately run; existing v1 reenrollment/tombstone regression passes over reused store logic. |
+| P8 revocation | **Partial**: FENCED commit, new work denial, exact historical replay cannot reactivate, local DEAD/outbox, removed-owner minimal recovery, banned-host denial, owner tombstone/outbox settlement. | All status/read/ack interleavings and a dedicated disconnected-host v2 reenrollment sequence unrun. |
+| P9 privacy | **Partial**: no private generic-event rows; WS kindless/ID/mixed/count/search, NIP-98 HTTP query/count, unsupported bridge and scoped cursor denial; owner removal live denial. | Dedicated export/feed/push/workflow spy/census run not performed; absence from generic storage is measured, downstream exclusion additionally read in code. |
+| P10 live/pages | **Partial**: actual Redis same/second-node live delivery, committed high-water barrier, distinct post-removal tombstone, stale subscriptions denied;16+1 pagination and mutation resync. | Explicit DB/Redis loss injection during snapshots/delivery and every cursor-error permutation unrun. |
+| P11 restarts | **Partial**: actual child relay killed before/after commit, exact durable host ack retry, host restart/tombstone, operation-ID conflict, second-device recovery. | Timed lost-notification periodic recovery and pruned/expired-cursor reset not separately exercised. Readiness challenges intentionally require a fresh process-local nonce after restart. |
+| P12 bounds/compat | **Partial**: codec page/cursor/depth bounds, recovery under principal/source saturation, direct/TCP/TLS proxy, two DNS tenants, disabled/old/v1 capability rejection and ordinary relay/v1 regressions. | Large concurrent crypto/slot/fanout stress and every size edge unrun; Windows/full UI/platform CI unrun. |
 
-Owned compile process is currently building the relay test binary. Cleanup obligation: stop/reap owned cargo sessions and `scripts/3720-registration-proof.sh down` before handoff. No live systems or real credentials were accessed.
+These gaps remain required acceptance work, not automatic deferrals or independent reviewer PASS. The next reviewer should first distinguish inherited evidence from missing probes, then route only targeted work within this finite contract.
 
-## First runtime receipts
+## Controls, corrections and deviations
 
-Measured root WS journey: **1 passed /0 failed**,0.72s (`ws-journey-first.txt`). Real host.sqlite invitations/outboxes, two native Device journals, two same-label hosts, fresh-vs-stale status, exact ack retry, FENCED→DEAD and no generic event rows.
+Complete control receipts are pinned to949063e57. Scope removes message-dispatch/handler ceilings **and** clearing ordinary AuthContext scopes; the independently-member host probe then fails. Two partial removals survived due independent membership/empty-scope protections; both survivors are retained and never credited as proving scope. Other controls remove owner membership, accepted-ack parent correlation, both unique-live checks (writer quota + fixture index), and live read reauthorization. Every mutation compiled, ran exactly one failing production-entry test, and restored every source/schema byte before the next control.
 
-Expanded first matrix: **5 passed /1 failed**,1.68s (`ws-matrix-first.txt`). Passed scope/bootstrap, wrong parties/tenant/member policy, signed parent/generation/idempotency, journey and unique live-owner race. The second-node live assertion consumed a registry-change after owner removal before establishing an ack high-water barrier; whether that frame was already authorized is not proven by this failed run. Correction adds explicit committed high-water barriers on both nodes and a distinct newly committed host tombstone after removal. No post-removal delivery exception is accepted.
+Repair496c4967d changes only fresh unpair conflict and native pending-generation/tombstone recovery. It does not change those five control mechanisms. Final14-case green includes both regressions; no claim is made that all controls were independently re-gated on the later docs/repair pin. Reviewer must assess this explicit continuity.
 
-## Full WS matrix checkpoint
+Implementation adaptations: encrypted peer payload uses closed nested header/body objects; global numeric high-water became a tenant/principal/view/G-bound opaque HMAC using the existing relay key; v2 expired readiness records use a five-minute retention window under the existing mailbox quota, keeping latest status/parent and immutable consent/revocation evidence. V1 retains its prior retention/parser semantics. Native refresh is bounded1–60s and snapshots retry at most three times. No second permission service or durable registry was added.
 
-Measured: **13 passed /0 failed**,6.62s (`ws-matrix-third.txt`). Added both-node live barriers followed by a distinct post-removal commit; actual child-process kill before/after binding commit; expiry/strict AUTH/minimal removed-owner recovery; actual TLS through ordinary Nginx on two locally mapped DNS tenants; hostd reconciliation; cursor race and saturation controls. These remain executor evidence, not independent acceptance.
+Strict lint failures are in unchanged v1 files; the supplemental gate inventories all diagnostics and fails on every new file/changed-line primary span or error. No global warning allowances ship. Discovery required a canonical inline external_infra wrapper because the checker indexes out-of-line names but omits them in its external-module classification (`scripts/check-postgres-test-discovery.py:348`); failed receipts are retained for conductor-routed tooling follow-up. Root crate Rust files are outside the currently configured desktop/web/mobile size roots; no limit was raised.
 
-Conductor accepted one self-review correction after this run: replace exposed global numeric DB high-water with an opaque tenant/principal/view/generation-bound HMAC from the existing relay key. Numeric sequencing remains internal to the same DB and encrypted cursors. This prevents an authorized reader inferring unrelated tenant traffic from gaps in the shared identity sequence. No second authority/store/schema is added. Affected codec/WS gates will rerun.
+## Reproduction and cleanup
 
-Additional fixture: `buzz-3720-registration-tls-proxy`, ID `54f732ec7403`, ordinary Nginx image digest `sha256:552e7481ca93ffccd046aa658dbbed22caefbc09c66fa7cd247cbb90b8a5c609`. It shares the same no-egress namespace and listens only127.0.0.1:34443, forwarding to test relay127.0.0.1:32000. Certificates/keys are freshly generated synthetic fixtures under ignored `target/3720-tls`; no deployed keys were read. Cleanup script now owns all four containers.
+Activate Hermit, build the scoped crates with the recorded profile, then:
 
-## Committed implementation checkpoint
+```bash
+scripts/3720-registration-proof.sh up
+scripts/3720-registration-proof.sh tls
+scripts/3720-registration-proof.sh run target/debug/deps/<relay-lib-test-artifact> \
+  handlers::host_registry::external_infra_registration_tests \
+  --skip child_root_relay --ignored --nocapture --test-threads=1
+# On committed sources only, with the pinned activated cargo in PATH:
+python3 scripts/3720-registration-controls.py
+scripts/3720-registration-proof.sh down
+```
 
-Measured final incremental baseline: **14 passed /0 failed**,6.95s (`ws-incremental-baseline.txt`). This includes the opaque high-water change, bounded native refresh/mailbox handling, minimal recovery under ordinary saturation, actual signed-host EVENT denial, owner/admin/direct-member policy, NIP-98 HTTP privacy, and24h retained-ack boundary. Compiler remains Hermit Rust1.98.1; only supported incremental compilation changed from0→1 on the task disk to shorten the five finite controls. No protocol/toolchain substitution.
+All services were task-labelled, isolated in one Docker --network none namespace, loopback-only, with no host ports or existing networks/volumes. Actual TLS used an ordinary Nginx proxy and fresh synthetic CA. Tool/package fetches happened outside the confined test services. The first build exhausted shared /tmp; only this task's target moved to the task disk and the failed receipt was preserved.
 
-Measured package/writer/conformance batch:857 actual passing tests in12 nonempty suites (`unit-gates.json`). Host runtime binary has0 tests and is not credited as runtime validation.678 infrastructure-gated DB tests were ignored in that unit run; focused existing paired/admission/deletion cases remain to run separately.
+**Measured cleanup:**0 fixture databases remained before service removal; all4 owned containers and their anonymous volumes removed; synthetic TLS private keys removed; runner had only sleep before removal; no cargo/rustc/cargo-clippy or test subprocess remained. [Resource receipt](../verification/3720/resources-before-cleanup.json), [cleanup](../verification/3720/cleanup.json). Worktree and ignored build cache remain for sequential independent review. No live endpoints, deployment .env/journals/keys, systemd units, provider processes, board state, push or merge were touched.
 
-Strict clippy is baseline-blocked in unchanged v1 code. Complete supplemental inventory first found3 new diagnostics, all corrected (helper placement and two single-pattern test matches). Fresh inventory remains pending. The out-of-line external-infra discovery limitation is preserved in `postgres-discovery-out-of-line-failed.txt`; conductor accepted the canonical inline wrapper and will route the checker defect separately. No checker or v1 cleanup was absorbed.
+## Diff accounting and next gate
 
-Next: exactly the5 specified negative controls, byte restoration and one terminal green runtime suite, supplemental lint/static receipts, measurement and stopped-resource handoff. Independent review remains pending.
+[Exact measured numstat/category/package index](../verification/3720/diff-measurement.json) includes new files and all commits. Rust physical-line delta: **+5,087/−36**, net+5,051: production-only Rust+1,115/−19; mixed production/inline-test files+2,185/−17; standalone tests/fixtures+1,787/−0. Mixed files are not all credited as production. Manifests, lockfile, docs/tooling and large receipt/log volume are separate in that index.
 
-## Finite controls and bounded correctness repairs
-
-All five complete controls were detected by exactly one failing production-entry test each; source/schema bytes restored exactly (`controls/index.json`). Two partial scope removals survived because membership and empty ordinary scopes independently deny the selected host; those survivor receipts are retained and are **not** credited as proof. The complete scope control removes dispatch/handler ceilings plus clearing ordinary NIP-42 scopes, using the independently-member host probe. Conductor approved that exact class-level control. No other mutation classes were added.
-
-Conductor authorized two concrete corrections after restoration: a fresh v2 unpair operation on FENCED now returns a negative correlated OK (exact retained retries remain idempotent), and native owner recovery fetches protected binding/peer evidence for known pending generations absent from the current list. A host-signed DEAD tombstone settles the durable owner outbox; absence alone marks a cached card stale, without inventing revocation. V1 behavior is preserved.
-
-Measured restored final runtime: **14 passed /0 failed**,7.41s (`ws-final-restored.txt`), including exact assertions for both corrections. The five targeted control mechanisms are unchanged by this delta: ordinary scope ceiling, owner membership, status parent matching, pair-ack unique-live protection, and live read authorization. Their receipts remain pinned to949063e57; the final green suite covers the subsequent unpair/native recovery delta. Independent reviewer must assess that continuity, not assume executor security acceptance.
+No paths were retired. Old HTTP routes/polling and provisioning code remain; no removal savings are claimed. Upstream88697 comparison is context only and includes pre-existing fork/catch-up work. Source report and next gate: [review brief](3720-registration-proof-review.md). Fresh independent review is required, with remaining finite acceptance probes/repairs still open. No full CI, native Windows, deployed-schema parity or broader provider/lifecycle acceptance is claimed.

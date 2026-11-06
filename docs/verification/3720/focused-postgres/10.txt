@@ -1,0 +1,5 @@
+
+running 1 test
+test store::relay_invite::postgres_tests::mint_after_quiescing_returns_typed_fence_without_persisting ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 869 filtered out; finished in 0.87s

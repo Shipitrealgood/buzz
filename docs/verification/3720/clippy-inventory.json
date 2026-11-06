@@ -1,16 +1,16 @@
 {
   "base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
-  "head": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "head": "496c4967df525bcb6d1798baa646946a06b2c6cc",
   "scope": "all primary spans; every new Rust file and all changed-line ranges",
   "strict_clippy": "baseline-blocked; this is supplemental evidence only",
   "command": "cargo clippy -p buzz-relay -p buzz-core -p buzz-auth -p buzz-hostd -p buzz-paired-owner -p buzz-db -p buzz-conformance -p buzz-ws-client --all-targets --locked --offline --message-format=json",
-  "diff_sha256": "4bdbbc4e33d7f5500564942f4cfe0f7f469796b0428332e4fef9d2c9f0534514",
+  "diff_sha256": "6d39f0f3724b59e6ba4aa516c420301a0111accbec22ba9f9add0cb1625508ac",
   "changed_file_sha256": {
     "crates/buzz-core/src/host_registry.rs": "e22757773c5aeaa6139183ed24e2ff0cc0e598255858779721ca9314d2ee57bc",
     "crates/buzz-core/src/kind.rs": "f8539eb3e730851afedd8301a1fecfd4021ed66ae2233d3776e580dd39b4f4b5",
     "crates/buzz-core/src/lib.rs": "f90d47472a5ec6a6604f23318786ce789dd7403883a3da66953dd7e7bd38e238",
     "crates/buzz-core/src/paired_host.rs": "048d2ac85635c0b1732d9a1559910f58652de10c963c02ee12c420af77ebed46",
-    "crates/buzz-db/src/store/paired_hosts.rs": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7",
+    "crates/buzz-db/src/store/paired_hosts.rs": "16ba9f5832e03915bdbec27df2c40aad986f7e8e073da03b5997642cc30afc7e",
     "crates/buzz-db/src/store/paired_hosts/phases.rs": "fcd09e16f9c49f1bc116dc778b84f6709026eb05f10fc78e5d69d0e6d2b5bd04",
     "crates/buzz-db/src/store/paired_hosts/registry.rs": "b6ce613f851bbd0dafeb8550ac2f17ae71c8dbbbed103bb28be22fbf74b3aaac",
     "crates/buzz-hostd/src/lib.rs": "af2e2ff0237fc6c11763a2e28138ed7556d9e8400db0bcb981a56a170f77e1bd",
@@ -18,8 +18,8 @@
     "crates/buzz-hostd/src/store.rs": "44cdfd5320d512a78a5b9f657ee11a9605e8e575edad4f65cb32efb8c133176b",
     "crates/buzz-paired-owner/src/device.rs": "7708a935b0980bd4845425d50553724e671da1cc1d787a35dbe305e5a77bae4d",
     "crates/buzz-paired-owner/src/lib.rs": "43732adfaa83a96813cf42906d929d66f3105f7ab8ed5e6f0b27e84686b74c9f",
-    "crates/buzz-paired-owner/src/registry.rs": "b17a30d953722823e1fd635be7598d2e3720c241a05e041fc1efeaeea2117276",
-    "crates/buzz-relay/src/api/bridge.rs": "b1fd40f07187e68ed5283384ceddf209fc12828065c6d2a343b4b582ef4dfb9f",
+    "crates/buzz-paired-owner/src/registry.rs": "46b2923a834300cbc70d39c4023ad148348618d1639f709dde4888f82e44f3d4",
+    "crates/buzz-relay/src/api/bridge.rs": "518e607b9277d01ce26ffdc7b331f314c5d53e76b0db1411141b2c42673032cf",
     "crates/buzz-relay/src/api/paired_hosts.rs": "399504c89d7c62cb6bfc43662b25f757e4ebc3079e28e3d3f6c0653199923707",
     "crates/buzz-relay/src/config.rs": "f8c0808392e508c80496af615f87bf201bc51bc642a2a7a6b6f8c97cac17176d",
     "crates/buzz-relay/src/connection.rs": "94bc61afaff8e7ea4e555589277d44f22841716007fa6ad7dda221905da4a834",
@@ -29,7 +29,7 @@
     "crates/buzz-relay/src/handlers/event.rs": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84",
     "crates/buzz-relay/src/handlers/group_state_postgres_tests.rs": "c764949f52cb484cff6996896c0c1185e305b2faf4f16c3a70adc72063213ab1",
     "crates/buzz-relay/src/handlers/host_registry.rs": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b",
-    "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs": "e4f2b2deebff7752ed1b84289a227850800cb7bf8c1fed5dde59abd75f475205",
+    "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs": "d71eb50b2302cf035b5b049374b271496ba762de7d0b2ae79186b364403c4bad",
     "crates/buzz-relay/src/handlers/mod.rs": "0d5b7988ef02229809298bd4bac2f900b0951a307c7f70db525591058bf83a91",
     "crates/buzz-relay/src/handlers/req.rs": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f",
     "crates/buzz-relay/src/nip11.rs": "7319a3f57e725d347eb9b25361a204d2c770b570a9b284e448e4ca508d1a4679",
@@ -586,26 +586,6 @@
     },
     {
       "level": "warning",
-      "code": "clippy::items_after_test_module",
-      "message": "items after a test module",
-      "primary_spans": [
-        {
-          "path": "crates/buzz-relay/src/api/bridge.rs",
-          "start": 3215,
-          "end": 3215,
-          "changed": false
-        },
-        {
-          "path": "crates/buzz-relay/src/api/bridge.rs",
-          "start": 10067,
-          "end": 10067,
-          "changed": true
-        }
-      ],
-      "classification": "new-code"
-    },
-    {
-      "level": "warning",
       "code": "clippy::too_many_arguments",
       "message": "this function has too many arguments (8/7)",
       "primary_spans": [
@@ -617,37 +597,9 @@
         }
       ],
       "classification": "baseline-or-dependency"
-    },
-    {
-      "level": "warning",
-      "code": "clippy::single_match",
-      "message": "you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`",
-      "primary_spans": [
-        {
-          "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
-          "start": 679,
-          "end": 708,
-          "changed": true
-        }
-      ],
-      "classification": "new-code"
-    },
-    {
-      "level": "warning",
-      "code": "clippy::single_match",
-      "message": "you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`",
-      "primary_spans": [
-        {
-          "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
-          "start": 712,
-          "end": 741,
-          "changed": true
-        }
-      ],
-      "classification": "new-code"
     }
   ],
   "unexplained_output": [],
-  "new_or_error_count": 3,
-  "result": "FAIL"
+  "new_or_error_count": 0,
+  "result": "PASS"
 }

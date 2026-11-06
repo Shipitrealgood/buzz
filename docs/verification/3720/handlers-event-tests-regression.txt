@@ -1,0 +1,47 @@
+
+running 43 tests
+test handlers::event::tests::agent_observer_route_accepts_owner_to_agent_control ... ok
+test handlers::event::tests::agent_observer_route_accepts_agent_to_owner_telemetry ... ok
+test handlers::event::tests::agent_observer_route_rejects_plaintext_content ... ok
+test handlers::event::tests::channel_scoped_content_kinds_require_h_tags ... ok
+test handlers::event::tests::fanout_access::author_only_reminder_delivers_to_author_only ... ok
+test handlers::event::tests::fanout_access::channel_less_event_passes_through ... ok
+test handlers::event::tests::fanout_access::failed_access_lookup_resyncs_the_syncs_it_drops ... ok
+test handlers::event::tests::fanout_access::open_channel_event_passes_through_unfiltered ... ok
+test handlers::event::tests::fanout_access::owner_only_kinds_keep_only_the_owner ... ok
+test handlers::event::tests::fanout_access::private_channel_keeps_member_drops_non_member_and_unknown ... ok
+test handlers::event::tests::fanout_access::threaded_visibility_mismatch_falls_back_to_fresh_lookup ... ok
+test handlers::event::tests::fanout_access::threaded_visibility_open_passes_through ... ok
+test handlers::event::tests::fanout_access::threaded_visibility_private_filters_members_only ... ok
+test handlers::event::tests::fanout_event_frame_matches_legacy_format_byte_for_byte ... ok
+test handlers::event::tests::fanout_frame_cache_reuses_frames_within_one_cycle_only ... ok
+test handlers::event::tests::non_channel_kinds_do_not_require_h_tags ... ok
+test handlers::event::tests::agent_presence_request_names_distinct_agents_with_a_known_status ... ok
+test handlers::event::tests::observer_frame_rate_limiter_is_scoped_by_community ... ok
+test handlers::event::tests::postgres_tests::banned_owners_agent_observer_frame_is_refused ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::banned_sender_ephemeral_event_is_refused ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::ephemeral_fence_uses_cached_serving_state ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::ephemeral_gate_uses_cached_restriction_row ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::ephemeral_gates_fill_caches_on_miss ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::p1b_agent_observer_event_barrier_expiry_blocks_fanout_and_ack ... ignored, requires Postgres: the observer write gate reads restriction state
+test handlers::event::tests::postgres_tests::stored_writes_honor_cached_ban_until_it_ages_out ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::stored_writes_ignore_cached_fence ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::postgres_tests::w2_event_ingest_barrier_expiry_mid_flight_blocks_persistence ... ignored, requires Postgres — runs in postgres-ci nextest lane
+test handlers::event::tests::presence_storage_postgres_tests::accepts_stores_and_fans_out_online_and_offline ... ignored, requires PostgreSQL and Redis
+test handlers::event::tests::presence_storage_postgres_tests::agent_presence_stores_only_owned_agents ... ignored, requires PostgreSQL and Redis
+test handlers::event::tests::presence_storage_postgres_tests::counts_presence_storage_failure_as_error_not_invalid ... ignored, requires PostgreSQL
+test handlers::event::tests::presence_storage_postgres_tests::rejects_offline_when_presence_storage_fails ... ignored, requires PostgreSQL and Redis
+test handlers::event::tests::presence_storage_postgres_tests::rejects_online_when_presence_storage_fails ... ignored, requires PostgreSQL and Redis
+test handlers::event::tests::pubsub_fanout::audit_chain_is_isolated_per_tenant_through_relay_ingest ... ok
+test handlers::event::tests::observer_owner_cache_is_scoped_to_community ... ok
+test handlers::event::tests::pubsub_fanout::audit_records_caller_actor_not_relay_signer_for_relay_signed_event ... ok
+test handlers::event::tests::pubsub_fanout::global_membership_pubsub_event_fans_out_by_p_tag ... ok
+test handlers::event::tests::pubsub_fanout::dispatch_owner_only_kinds_reach_only_the_owner ... ok
+test handlers::event::tests::pubsub_fanout::global_presence_pubsub_event_fans_out_to_local_subscribers ... ok
+test handlers::event::tests::pubsub_fanout::local_echo_presence_pubsub_event_is_not_delivered_twice ... ok
+test handlers::event::tests::pubsub_fanout::local_echo_suppression_is_scoped_to_its_community ... ok
+test handlers::event::tests::pubsub_fanout::pubsub_owner_only_kinds_reach_only_the_owner ... ok
+test handlers::event::tests::redteam::channel_less_event_must_drop_recipient_in_different_community ... ok
+test handlers::event::tests::pubsub_fanout::redis_presence_publish_reaches_second_relay_and_suppresses_origin_echo ... ok
+
+test result: ok. 29 passed; 0 failed; 14 ignored; 0 measured; 2151 filtered out; finished in 0.72s

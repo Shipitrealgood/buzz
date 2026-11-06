@@ -207,5 +207,10 @@
       ]
     }
   ],
-  "terminal_green": "pending final restored suite"
+  "terminal_green": {
+    "source": "496c4967d",
+    "receipt": "docs/verification/3720/ws-final-restored.txt",
+    "actual": "14 passed; 0 failed; 7.41s",
+    "continuity": "after exact949063e57 byte restoration, approved delta only changes fresh-unpair conflict and pending-generation tombstone recovery; five control mechanisms unchanged; independent review must assess continuity"
+  }
 }

@@ -1,0 +1,881 @@
+{
+  "proof_base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "production_source_pin": "496c4967d",
+  "measurement": "complete staged tree, including new files; final commit identifies artifact pin",
+  "command": "git diff --cached --numstat 723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "unit": "physical text lines, not executable SLOC",
+  "totals": {
+    "additions": 12160,
+    "deletions": 36,
+    "net": 12124
+  },
+  "by_category": {
+    "docs/tooling": {
+      "additions": 723,
+      "deletions": 0,
+      "net": 723
+    },
+    "lockfile": {
+      "additions": 5,
+      "deletions": 0,
+      "net": 5
+    },
+    "mixed production/inline tests": {
+      "additions": 2185,
+      "deletions": 17,
+      "net": 2168
+    },
+    "production manifests": {
+      "additions": 6,
+      "deletions": 0,
+      "net": 6
+    },
+    "production-only Rust": {
+      "additions": 1115,
+      "deletions": 19,
+      "net": 1096
+    },
+    "standalone tests/fixtures": {
+      "additions": 1787,
+      "deletions": 0,
+      "net": 1787
+    },
+    "verification receipts/logs": {
+      "additions": 6339,
+      "deletions": 0,
+      "net": 6339
+    }
+  },
+  "by_package": {
+    "Cargo.lock": {
+      "additions": 5,
+      "deletions": 0,
+      "net": 5
+    },
+    "buzz-core": {
+      "additions": 706,
+      "deletions": 1,
+      "net": 705
+    },
+    "buzz-db": {
+      "additions": 376,
+      "deletions": 27,
+      "net": 349
+    },
+    "buzz-hostd": {
+      "additions": 629,
+      "deletions": 1,
+      "net": 628
+    },
+    "buzz-paired-owner": {
+      "additions": 797,
+      "deletions": 3,
+      "net": 794
+    },
+    "buzz-relay": {
+      "additions": 2569,
+      "deletions": 4,
+      "net": 2565
+    },
+    "buzz-ws-client": {
+      "additions": 16,
+      "deletions": 0,
+      "net": 16
+    },
+    "docs": {
+      "additions": 6685,
+      "deletions": 0,
+      "net": 6685
+    },
+    "scripts": {
+      "additions": 377,
+      "deletions": 0,
+      "net": 377
+    }
+  },
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "additions": 5,
+      "deletions": 0,
+      "category": "lockfile"
+    },
+    {
+      "path": "crates/buzz-core/src/host_registry.rs",
+      "additions": 698,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-core/src/kind.rs",
+      "additions": 4,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-core/src/lib.rs",
+      "additions": 3,
+      "deletions": 0,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "crates/buzz-core/src/paired_host.rs",
+      "additions": 1,
+      "deletions": 1,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-db/src/store/paired_hosts.rs",
+      "additions": 60,
+      "deletions": 11,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-db/src/store/paired_hosts/phases.rs",
+      "additions": 26,
+      "deletions": 16,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+      "additions": 290,
+      "deletions": 0,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "crates/buzz-hostd/Cargo.toml",
+      "additions": 1,
+      "deletions": 0,
+      "category": "production manifests"
+    },
+    {
+      "path": "crates/buzz-hostd/src/lib.rs",
+      "additions": 25,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-hostd/src/registration.rs",
+      "additions": 602,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-hostd/src/store.rs",
+      "additions": 1,
+      "deletions": 1,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-paired-owner/Cargo.toml",
+      "additions": 1,
+      "deletions": 0,
+      "category": "production manifests"
+    },
+    {
+      "path": "crates/buzz-paired-owner/src/device.rs",
+      "additions": 3,
+      "deletions": 3,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "crates/buzz-paired-owner/src/lib.rs",
+      "additions": 3,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-paired-owner/src/registry.rs",
+      "additions": 790,
+      "deletions": 0,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "crates/buzz-relay/Cargo.toml",
+      "additions": 4,
+      "deletions": 0,
+      "category": "production manifests"
+    },
+    {
+      "path": "crates/buzz-relay/src/api/bridge.rs",
+      "additions": 22,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/api/paired_hosts.rs",
+      "additions": 20,
+      "deletions": 4,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/config.rs",
+      "additions": 10,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/connection.rs",
+      "additions": 9,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/artifact_sync.rs",
+      "additions": 4,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/auth.rs",
+      "additions": 14,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/count.rs",
+      "additions": 5,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/event.rs",
+      "additions": 21,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/group_state_postgres_tests.rs",
+      "additions": 1,
+      "deletions": 0,
+      "category": "standalone tests/fixtures"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+      "additions": 645,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+      "additions": 1786,
+      "deletions": 0,
+      "category": "standalone tests/fixtures"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/mod.rs",
+      "additions": 3,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/req.rs",
+      "additions": 14,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/nip11.rs",
+      "additions": 10,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-relay/src/state.rs",
+      "additions": 1,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-ws-client/src/connection.rs",
+      "additions": 13,
+      "deletions": 0,
+      "category": "mixed production/inline tests"
+    },
+    {
+      "path": "crates/buzz-ws-client/src/lib.rs",
+      "additions": 3,
+      "deletions": 0,
+      "category": "production-only Rust"
+    },
+    {
+      "path": "docs/briefs/3720-registration-proof-execution.md",
+      "additions": 91,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "docs/briefs/3720-registration-proof-review.md",
+      "additions": 65,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "docs/specs/3720-host-registration-event-proof.md",
+      "additions": 190,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "docs/verification/3720/auth-terminal.txt",
+      "additions": 295,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/auth-unit-first.txt",
+      "additions": 295,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/build-processes-after.txt",
+      "additions": 1,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/cleanup.json",
+      "additions": 9,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/cleanup.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/clippy-inventory-first-failed.json",
+      "additions": 653,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/clippy-inventory.json",
+      "additions": 605,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/clippy-strict-baseline-failed.txt",
+      "additions": 57,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/conformance-property-terminal.txt",
+      "additions": 12,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/conformance-replay-terminal.txt",
+      "additions": 11,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/conformance-terminal.txt",
+      "additions": 14,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/connection-tests-regression.txt",
+      "additions": 36,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/index.json",
+      "additions": 216,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/live-reauthorization.txt",
+      "additions": 20,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/membership.txt",
+      "additions": 17,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/parent-generation.txt",
+      "additions": 17,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/scope-initial-index.json",
+      "additions": 62,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/scope-initial-survived.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/scope-member-partial-index.json",
+      "additions": 62,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/scope-member-partial-survived.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/scope.txt",
+      "additions": 15,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/controls/unique-live-binding.txt",
+      "additions": 17,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/core-terminal.txt",
+      "additions": 305,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/core-unit-first.txt",
+      "additions": 305,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/db-unit-terminal.txt",
+      "additions": 875,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/diff-check-final.txt",
+      "additions": 0,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/diff-measurement.json",
+      "additions": 881,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/file-size-static.txt",
+      "additions": 35,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/01.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/02.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/03.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/04.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/05.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/06.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/07.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/08.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/09.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/10.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/11-corrected.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/11.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/12.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/13.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/14.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/15.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/16.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/17.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/18.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/19.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/20.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/21.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/22.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/23.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/24.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/25.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/26.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/index-first-selector.json",
+      "additions": 210,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/focused-postgres/index.json",
+      "additions": 212,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/format-final.txt",
+      "additions": 0,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/handlers-event-tests-regression.txt",
+      "additions": 47,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/handlers-req-tests-regression.txt",
+      "additions": 78,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/host-activate-terminal.txt",
+      "additions": 8,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/host-runtime-terminal.txt",
+      "additions": 5,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/hostd-daemon-terminal.txt",
+      "additions": 9,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/hostd-library-terminal.txt",
+      "additions": 13,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/hostd-unit-first.txt",
+      "additions": 25,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/kind-allocation.json",
+      "additions": 14,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/nextest-availability.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ordinary-relay-gates.json",
+      "additions": 27,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/owner-terminal.txt",
+      "additions": 18,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/owner-unit-first.txt",
+      "additions": 18,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/postgres-discovery-final.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/postgres-discovery-first-failed.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/postgres-discovery-out-of-line-failed.txt",
+      "additions": 32,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/postgres-discovery.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/protocol-tests-regression.txt",
+      "additions": 16,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/relay-check-disk-full.txt",
+      "additions": 202,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/resources-before-cleanup.json",
+      "additions": 69,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/subscription-tests-regression.txt",
+      "additions": 47,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/unit-gates.json",
+      "additions": 67,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/writer-source-policy-terminal.txt",
+      "additions": 26,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-client-terminal.txt",
+      "additions": 9,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-final-restored.txt",
+      "additions": 45,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-incremental-baseline.txt",
+      "additions": 45,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-journey-first.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-matrix-first.txt",
+      "additions": 20,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-matrix-second.txt",
+      "additions": 40,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/ws-matrix-third.txt",
+      "additions": 44,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "scripts/3720-clippy-diagnostics.py",
+      "additions": 81,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "scripts/3720-diff-measure.py",
+      "additions": 67,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "scripts/3720-registration-controls.py",
+      "additions": 125,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "scripts/3720-registration-proof.sh",
+      "additions": 104,
+      "deletions": 0,
+      "category": "docs/tooling"
+    }
+  ],
+  "retired_paths": [],
+  "upstream_context_only": {
+    "upstream_base": "88697f1c597cda5790d4c702520d0651c48496c0",
+    "preexisting_difference_to_proof_base": {
+      "additions": 16909,
+      "deletions": 226,
+      "net": 16683
+    },
+    "combined_upstream_to_staged": {
+      "additions": 29033,
+      "deletions": 226,
+      "net": 28807
+    },
+    "meaning": "includes pre-existing fork/catch-up work; not attributed to this registration proof"
+  }
+}

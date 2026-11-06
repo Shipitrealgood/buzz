@@ -1,0 +1,27 @@
+[
+  {
+    "filter": "protocol::tests",
+    "exit": 0,
+    "receipt": "docs/verification/3720/protocol-tests-regression.txt"
+  },
+  {
+    "filter": "subscription::tests",
+    "exit": 0,
+    "receipt": "docs/verification/3720/subscription-tests-regression.txt"
+  },
+  {
+    "filter": "handlers::event::tests",
+    "exit": 0,
+    "receipt": "docs/verification/3720/handlers-event-tests-regression.txt"
+  },
+  {
+    "filter": "handlers::req::tests",
+    "exit": 0,
+    "receipt": "docs/verification/3720/handlers-req-tests-regression.txt"
+  },
+  {
+    "filter": "connection::tests",
+    "exit": 0,
+    "receipt": "docs/verification/3720/connection-tests-regression.txt"
+  }
+]

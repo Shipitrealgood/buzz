@@ -1,0 +1,36 @@
+
+running 32 tests
+test connection::tests::aborting_lifecycle_owner_is_drop_safe ... ok
+test connection::tests::auth_lifecycle_reconciles_every_terminal_and_never_leaks_gauge ... ok
+test connection::tests::b2_cancelled_connection_event_frame_not_dispatched ... ok
+test connection::tests::b3_expiry_denial_precedes_close_through_send_loop ... ok
+test connection::tests::b3_root_pairing_denial_precedes_close_through_send_loop ... ok
+test connection::tests::cancellation_during_select_with_fi_denial_routes_through_bounded_path ... ok
+test connection::tests::cancelled_never_ready_sink_cannot_retain_writer_task ... ok
+test connection::tests::cancelled_never_ready_sink_with_queued_fi_denial_exits_within_timeout ... ok
+test connection::tests::deadline_exp_is_earliest_selects_exp ... ok
+test connection::tests::deadline_max_connection_lifetime_is_earliest_selects_partition ... ok
+test connection::tests::deadline_no_lifetime_returns_upstream_only ... ok
+test connection::tests::expiry_notice_queued_on_ctrl_before_cancel ... ok
+test connection::tests::f3_root_outer_wrapper_delivers_denial_on_bootstrap_cancellation ... ok
+test connection::tests::f3_root_pre_built_expired_gate_terminates_connection ... ok
+test connection::tests::auth_flood_after_terminal_only_increments_protocol_noise_metric ... ok
+test connection::tests::pre_handler_refusal_with_a_full_queue_cancels_the_connection ... ok
+test connection::tests::pre_handler_req_refusal_retires_the_old_holder ... ok
+test connection::tests::saturated_handler_rejects_a_count_on_the_closed_channel ... ok
+test connection::tests::saturated_handler_rejects_a_req_on_the_closed_channel ... ok
+test connection::tests::saturated_handler_rejects_an_event_on_the_ok_channel ... ok
+test connection::tests::send_loop_acknowledges_restart_after_flushing_exactly_one_1012 ... ok
+test connection::tests::send_loop_batch_one_preserves_single_frame_flush_behavior ... ok
+test connection::tests::send_loop_batches_queued_data_frames_into_one_flush ... ok
+test connection::tests::send_loop_drains_control_before_batched_data_without_reordering ... ok
+test connection::tests::send_loop_flushes_queued_control_before_close_on_cancel ... ok
+test connection::tests::send_loop_reports_restart_flush_failure ... ok
+test connection::tests::send_loop_sends_bare_close_for_ordinary_cancellation ... ok
+test connection::tests::send_loop_sends_policy_close_when_community_is_archived ... ok
+test connection::tests::send_loop_sends_policy_close_when_community_is_deleted ... ok
+test connection::tests::in_handler_req_refusal_retires_the_old_holder ... ok
+test connection::tests::subscription_limit_refusal_with_a_full_queue_cancels_the_connection ... ok
+test connection::tests::shutdown_terminalizes_auth_stalled_on_database_before_late_success ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 2162 filtered out; finished in 1.21s

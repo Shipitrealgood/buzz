@@ -1,0 +1,210 @@
+[
+  {
+    "package": "db",
+    "test": "store::admission_postgres_tests::moderation_writers_require_application_admission",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/01.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::admission_postgres_tests::relay_member_writers_require_application_admission",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/02.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::deletion::postgres_tests::paired_host_tables_obey_fence_and_purge",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/03.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::paired_hosts::postgres_tests::competing_bindings_and_private_tenant_reads",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/04.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::paired_hosts::postgres_tests::one_member_cannot_fill_another_owners_target_host",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/05.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::paired_hosts::postgres_tests::pairing_killed_ack_transaction_retains_only_offer_and_retry_converges",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/06.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::bounded_claim_exhausts_and_existing_member_retry_does_not_consume",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/07.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::concurrent_claims_serialize_the_final_slot",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/08.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::expiry_and_tenant_scope_return_typed_failures",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/09.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::mint_after_quiescing_returns_typed_fence_without_persisting",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/10.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::mint_validation_rejects_invalid_bounds_before_database_access",
+    "exit": 0,
+    "one_test_passed": false,
+    "receipt": "docs/verification/3720/focused-postgres/11.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::policy_evidence_failure_rolls_back_membership_and_consumption",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/12.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::retention_sweep_deletes_only_invites_older_than_cutoff",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/13.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::retention_sweep_skips_quiescing_tenant_while_active_bystanders_progress",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/14.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "db",
+    "test": "store::relay_invite::postgres_tests::unlimited_invites_count_each_new_member",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/15.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::owner_mints_and_new_pubkey_claims",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/16.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::claim_rejects_expired_code",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/17.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::non_admin_cannot_mint",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/18.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::code_minted_for_one_community_fails_on_another",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/19.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::claim_rejects_replayed_nip98_auth",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/20.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::invites::postgres_tests::restriction_tests::postgres_tests::committed_issuer_ban_survives_unban_through_http",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/21.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::paired_hosts::admission_postgres_tests::insecure_public_origin_hides_descriptor_and_route",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/22.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::paired_hosts::admission_postgres_tests::shared_proxy_abuse_preserves_independent_principal_and_unpair_admission",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/23.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::paired_hosts::phase_postgres_tests::two_intents_fence_parent_correlation_and_resync",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/24.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::paired_hosts::postgres_tests::paired_enrollment_real_router_and_revocation",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/25.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  },
+  {
+    "package": "relay",
+    "test": "api::paired_hosts::postgres_tests::removed_owner_host_reenroll_cannot_replay_old_tombstone_into_new_grant",
+    "exit": 0,
+    "one_test_passed": true,
+    "receipt": "docs/verification/3720/focused-postgres/26.txt",
+    "runner": "per-test fresh desired-state DB in confined namespace; standard nextest unavailable"
+  }
+]
