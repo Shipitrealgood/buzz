@@ -14,7 +14,7 @@ os.chdir(root)
 receipt = root / 'docs/verification/3720/controls'
 receipt.mkdir(parents=True, exist_ok=True)
 base = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-if subprocess.run(['git', 'diff', '--quiet', 'HEAD']).returncode:
+if subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--', 'Cargo.lock', 'crates', 'schema']).returncode:
     raise SystemExit('commit the proof before destructive negative controls')
 
 def replace(files, path, before, after):
@@ -41,6 +41,9 @@ def remove_scope_guards(files):
     replace(files, 'crates/buzz-relay/src/handlers/host_registry.rs',
             'if !registry_req && !registry_event && c.registry.generation().is_none() {',
             'if !registry_req && !registry_event {')
+    replace(files, 'crates/buzz-relay/src/handlers/host_registry.rs',
+            'ctx.scopes.clear();',
+            '/* negative control: retain ordinary NIP-42 scopes */')
 
 def mutate(name):
     files = {}
@@ -63,7 +66,7 @@ def mutate(name):
     return files
 
 cases = [
-    ('scope', 'host_scope_denies_every_other_message_and_bootstrap'),
+    ('scope', 'scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation'),
     ('membership', 'owner_membership_wrong_parties_and_tenants'),
     ('parent-generation', 'parent_generation_and_operation_identity_are_enforced'),
     ('unique-live-binding', 'unique_live_binding_survives_competing_signed_host_acks'),

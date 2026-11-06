@@ -281,6 +281,19 @@ mod external_infra_tests {
         record(&tomb);
         assert!(w1.send_event(tomb).await.unwrap().accepted);
         assert_eq!(f.binding_count(s1.host).await, 0);
+        let current = recovered.recover(&mut b, &owner).await.unwrap();
+        assert_eq!(current, vec![s2.clone()]);
+        assert_eq!(b.view(&f.origin(), &owner, &s1).unwrap().state, "unpaired");
+        assert!(b
+            .pending_unpair(&f.origin(), &owner, &s1)
+            .unwrap()
+            .is_none());
+        assert!(b
+            .next_deliveries(&f.origin(), &owner)
+            .unwrap()
+            .iter()
+            .all(|(scope, _, _)| scope != &s1));
+
         // Generic tables contain neither peer evidence nor relay-generated pages.
         let public: i64 =
             sqlx::query_scalar("SELECT count(*) FROM events WHERE community_id=$1 AND kind=43103")
@@ -947,7 +960,7 @@ mod external_infra_tests {
             now() + 86400,
         )
         .unwrap();
-        net.publish(&owner, unpair).await.unwrap();
+        net.publish(&owner, unpair.clone()).await.unwrap();
         // An ordinary TCP proxy carries the same root endpoint; no custom edge module.
         let proxy =
             crate::test_support::PausingProxy::spawn("127.0.0.1".into(), f.addr.port()).await;
@@ -977,7 +990,9 @@ mod external_infra_tests {
             now() + 86400,
         )
         .unwrap();
-        through_proxy.publish(&owner, restrictive).await.unwrap();
+        assert!(through_proxy.publish(&owner, restrictive).await.is_err());
+        // Exact durable retries retain their separate recovery allowance.
+        through_proxy.publish(&owner, unpair).await.unwrap();
         through_proxy.disconnect().await.unwrap();
         net.disconnect().await.unwrap();
         for ws in sockets {

@@ -1,0 +1,15 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation ... FAILED
+
+failures:
+
+failures:
+    handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2193 filtered out; finished in 0.15s
+
+
+thread 'handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation' (1783) panicked at crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:1436:9:
+assertion failed: !scoped.send_event(profile.clone()).await.unwrap().accepted
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

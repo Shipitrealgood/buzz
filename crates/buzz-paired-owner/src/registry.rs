@@ -352,8 +352,8 @@ impl Device {
         self.queries.remove(&coord);
         Ok(())
     }
-    /// Fence cached v2 cards absent from a completely verified authoritative list.
-    /// Partial/unavailable snapshots never call this method or erase cached evidence.
+    /// Mark absent cached cards stale; absence alone cannot certify revocation.
+    /// A protected binding and host-signed tombstone retire a durable outbox.
     pub fn registry_reconcile_list(
         &mut self,
         selected: &str,
@@ -372,18 +372,28 @@ impl Device {
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
         for raw in rows {
-            let mut g: Grant = serde_json::from_str(&raw)?;
+            let g: Grant = serde_json::from_str(&raw)?;
             if g.ack.is_some()
                 && event(&g.claim)?.kind.as_u16() == 43103
                 && !current.contains(&g.scope)
             {
-                g.fenced = true;
-                save(&tx, &g)?;
                 self.fresh.remove(&coordinate(&g.scope)?);
             }
         }
         tx.commit()?;
         Ok(())
+    }
+    fn pending_registry_scopes(&self, selected: &str, keys: &Keys) -> Result<Vec<Scope>> {
+        let mut q=self.db.prepare("SELECT scope FROM grants WHERE json_extract(scope,'$.community')=? AND json_extract(scope,'$.owner')=? AND json_extract(data,'$.claim.event.kind')=43103 AND json_extract(data,'$.ack') IS NOT NULL AND json_extract(data,'$.tombstone') IS NULL ORDER BY scope LIMIT 513")?;
+        let rows = q.query_map(
+            rusqlite::params![selected, keys.public_key().to_hex()],
+            |r| r.get::<_, String>(0),
+        )?;
+        let scopes = rows
+            .map(|r| Ok(serde_json::from_str(&r?)?))
+            .collect::<Result<Vec<Scope>>>()?;
+        ensure!(scopes.len() <= 512, "registration cache bound exceeded");
+        Ok(scopes)
     }
     /// Verify host-signed terminal evidence without restoring readiness.
     pub fn accept_registry_tombstone(
@@ -678,43 +688,76 @@ impl Registry {
             }
         }
         let snapshot = snapshot.context("registry snapshot unavailable; cached data retained")?;
+        let known = device.pending_registry_scopes(&self.community, keys)?;
+        let listed: std::collections::HashSet<_> =
+            snapshot.iter().map(|b| b.generation.clone()).collect();
         let mut verified = Vec::new();
         for b in snapshot {
-            let claim = self.evidence(keys, &b.generation, &b.claim_id).await?;
-            let ack = self.evidence(keys, &b.generation, &b.ack_id).await?;
-            let binding = self
-                .page(keys, query("binding", Some(&b.generation), None)?)
-                .await?;
-            let current: RegistryBinding = serde_json::from_value(binding.data)?;
-            ensure!(
-                current.claim_id == b.claim_id
-                    && current.ack_id == b.ack_id
-                    && current.host == b.host
-                    && current.owner == b.owner,
-                "binding changed"
-            );
-            // Restore labels from authenticated historical status, without freshness.
-            let status = if let Some(id) = &current.latest_status_id {
-                Some(self.evidence(keys, &b.generation, id).await?)
-            } else {
-                None
-            };
-            let scope = device.restore_registry(
-                &self.community,
-                keys,
-                &current,
-                &claim,
-                &ack,
-                status.as_ref(),
-            )?;
-            if let Some(id) = &current.tombstone_id {
-                let tomb = self.evidence(keys, &b.generation, id).await?;
-                device.accept_registry_tombstone(&self.community, keys, &scope, &tomb)?;
+            let (scope, live) = self.restore_one(device, keys, &b).await?;
+            if live {
+                verified.push(scope);
             }
-            verified.push(scope);
         }
         device.registry_reconcile_list(&self.community, keys, &verified)?;
+        // DEAD grants leave the current list. A cached pending operation still
+        // needs exact protected evidence before it can retire its durable retry.
+        for scope in known
+            .into_iter()
+            .filter(|s| !listed.contains(&s.generation))
+        {
+            let page = self
+                .page(keys, query("binding", Some(&scope.generation), None)?)
+                .await?;
+            let b: RegistryBinding = serde_json::from_value(page.data)?;
+            ensure!(
+                b.generation == scope.generation
+                    && b.owner == scope.owner.to_hex()
+                    && b.host == scope.host.to_hex(),
+                "binding changed"
+            );
+            self.restore_one(device, keys, &b).await?;
+        }
         Ok(verified)
+    }
+    async fn restore_one(
+        &mut self,
+        device: &mut Device,
+        keys: &Keys,
+        b: &RegistryBinding,
+    ) -> Result<(Scope, bool)> {
+        let binding = self
+            .page(keys, query("binding", Some(&b.generation), None)?)
+            .await?;
+        let current: RegistryBinding = serde_json::from_value(binding.data)?;
+        ensure!(
+            current.claim_id == b.claim_id
+                && current.ack_id == b.ack_id
+                && current.host == b.host
+                && current.owner == b.owner,
+            "binding changed"
+        );
+        let claim = self
+            .evidence(keys, &b.generation, &current.claim_id)
+            .await?;
+        let ack = self.evidence(keys, &b.generation, &current.ack_id).await?;
+        let status = if let Some(id) = &current.latest_status_id {
+            Some(self.evidence(keys, &b.generation, id).await?)
+        } else {
+            None
+        };
+        let scope = device.restore_registry(
+            &self.community,
+            keys,
+            &current,
+            &claim,
+            &ack,
+            status.as_ref(),
+        )?;
+        if let Some(id) = &current.tombstone_id {
+            let tomb = self.evidence(keys, &b.generation, id).await?;
+            device.accept_registry_tombstone(&self.community, keys, &scope, &tomb)?;
+        }
+        Ok((scope, current.state != "dead"))
     }
     /// Fetch one exact retained event; knowing its ID never supplies authorization.
     pub async fn evidence(&mut self, keys: &Keys, g: &str, id: &str) -> Result<Event> {

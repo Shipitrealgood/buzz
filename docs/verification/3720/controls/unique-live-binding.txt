@@ -1,0 +1,17 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks ... FAILED
+
+failures:
+
+failures:
+    handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2193 filtered out; finished in 0.18s
+
+
+thread 'handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks' (1807) panicked at crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:650:9:
+assertion `left == right` failed
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

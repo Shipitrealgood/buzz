@@ -1,0 +1,6 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2193 filtered out; finished in 0.14s
+

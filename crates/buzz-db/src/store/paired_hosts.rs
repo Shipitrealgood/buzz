@@ -265,6 +265,12 @@ impl Db {
                         && p.expiry - p.created <= 86400,
                 )?;
                 let state = b.get::<String, _>("state");
+                // V2 accepts only a fresh transition or an exact stored retry.
+                // A different intent on an already-fenced grant is a conflict,
+                // not an OK for an event absent from the durable transcript.
+                if v2 && p.op == "unpair" {
+                    require(state == "active")?;
+                }
                 if p.op == "unpaired" {
                     require(state != "dead")?;
                     let seq = insert(&mut tx, p, None).await?;

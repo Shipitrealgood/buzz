@@ -1,0 +1,62 @@
+{
+  "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+  "controls": [
+    {
+      "name": "scope",
+      "test": "host_scope_denies_every_other_message_and_bootstrap",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-relay/src/handlers/event.rs": {
+          "before": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84",
+          "mutated": "2342c9eb7f1c03c3f232c030398486a89673c09286d331172ce5abe245965eac",
+          "restored": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84"
+        },
+        "crates/buzz-relay/src/handlers/req.rs": {
+          "before": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f",
+          "mutated": "ca6ba695cde7b7358aa7e228ad196c7aa1f913871de5018b8e471a83cd6227cf",
+          "restored": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f"
+        },
+        "crates/buzz-relay/src/handlers/count.rs": {
+          "before": "949974ac094ef03d37f686d2313d118c07b5d14c372978c8e39293e06bdc2108",
+          "mutated": "f6ce30833a8449bf0db185bc114ad22444801b45c6876d43e51f3361491d23a5",
+          "restored": "949974ac094ef03d37f686d2313d118c07b5d14c372978c8e39293e06bdc2108"
+        },
+        "crates/buzz-relay/src/handlers/artifact_sync.rs": {
+          "before": "4af1bacbd8bc1bfd44dae307fec012d0cf4120c953884810fed9a0603b9089b2",
+          "mutated": "06fd9e93711d5644c7a2ad66faea774c779af283ea682473f5c7bfa4ad0f119f",
+          "restored": "4af1bacbd8bc1bfd44dae307fec012d0cf4120c953884810fed9a0603b9089b2"
+        },
+        "crates/buzz-relay/src/handlers/host_registry.rs": {
+          "before": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b",
+          "mutated": "8080434ebd142784c1804958055fcb3f77236ea03a7d87ec1f69b6c9d4163db3",
+          "restored": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b"
+        }
+      },
+      "result": "INVALID or survived",
+      "build_exit": 0,
+      "test_exit": 0,
+      "seconds": 76.51,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::host_scope_denies_every_other_message_and_bootstrap",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    }
+  ],
+  "terminal_green": "pending final restored suite"
+}

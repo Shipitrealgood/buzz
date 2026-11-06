@@ -1,0 +1,211 @@
+{
+  "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+  "controls": [
+    {
+      "name": "scope",
+      "test": "scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-relay/src/handlers/event.rs": {
+          "before": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84",
+          "mutated": "2342c9eb7f1c03c3f232c030398486a89673c09286d331172ce5abe245965eac",
+          "restored": "c2b411d1611875deb0028723ea84df7cf6af69b0826e4c3d24e641a73d86cd84"
+        },
+        "crates/buzz-relay/src/handlers/req.rs": {
+          "before": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f",
+          "mutated": "ca6ba695cde7b7358aa7e228ad196c7aa1f913871de5018b8e471a83cd6227cf",
+          "restored": "aa56383780a057d62f45d6ff51a36fddbfdb56e5ce8c99c1c43ff728e73e9b1f"
+        },
+        "crates/buzz-relay/src/handlers/count.rs": {
+          "before": "949974ac094ef03d37f686d2313d118c07b5d14c372978c8e39293e06bdc2108",
+          "mutated": "f6ce30833a8449bf0db185bc114ad22444801b45c6876d43e51f3361491d23a5",
+          "restored": "949974ac094ef03d37f686d2313d118c07b5d14c372978c8e39293e06bdc2108"
+        },
+        "crates/buzz-relay/src/handlers/artifact_sync.rs": {
+          "before": "4af1bacbd8bc1bfd44dae307fec012d0cf4120c953884810fed9a0603b9089b2",
+          "mutated": "06fd9e93711d5644c7a2ad66faea774c779af283ea682473f5c7bfa4ad0f119f",
+          "restored": "4af1bacbd8bc1bfd44dae307fec012d0cf4120c953884810fed9a0603b9089b2"
+        },
+        "crates/buzz-relay/src/handlers/host_registry.rs": {
+          "before": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b",
+          "mutated": "07bfdb016aed061e785f6ed5c178434b31f6ebb2c99b89e3fbef67de34eda901",
+          "restored": "c8908da39657c13df962cfe1257554b8c9192d93b7c91015aa0a1a0b61c42f3b"
+        }
+      },
+      "result": "guard detected",
+      "build_exit": 0,
+      "test_exit": 101,
+      "seconds": 71.59,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    },
+    {
+      "name": "membership",
+      "test": "owner_membership_wrong_parties_and_tenants",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-db/src/store/paired_hosts.rs": {
+          "before": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7",
+          "mutated": "a545fcfc99451c1a93640eef8befcc324fdcd7cfbeb2fc6a37029a17bbee9427",
+          "restored": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7"
+        }
+      },
+      "result": "guard detected",
+      "build_exit": 0,
+      "test_exit": 101,
+      "seconds": 88.1,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::owner_membership_wrong_parties_and_tenants",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    },
+    {
+      "name": "parent-generation",
+      "test": "parent_generation_and_operation_identity_are_enforced",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-db/src/store/paired_hosts.rs": {
+          "before": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7",
+          "mutated": "595b33b20e1d5bc9da88edfd5b17ee59b1cc40e19a37fb7567fa00060782c13f",
+          "restored": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7"
+        }
+      },
+      "result": "guard detected",
+      "build_exit": 0,
+      "test_exit": 101,
+      "seconds": 75.2,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::parent_generation_and_operation_identity_are_enforced",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    },
+    {
+      "name": "unique-live-binding",
+      "test": "unique_live_binding_survives_competing_signed_host_acks",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-db/src/store/paired_hosts.rs": {
+          "before": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7",
+          "mutated": "afb4f4f37bd756486dff635fae86816eff700b88de9d005c92b9b97210c9e39f",
+          "restored": "1aada668ea97b8bba60146867fa1ef6581565a460e611cee71b7773fca9983c7"
+        },
+        "schema/tables/public/paired_host_bindings.sql": {
+          "before": "0e9303ee28ea069f32d9966b45eb1ebd965041953fd7909f3e4ef5a42c982fb7",
+          "mutated": "0da951ab194e5e753b733c8e331689e6286588ea521ea22c393d0f66dc4e90ba",
+          "restored": "0e9303ee28ea069f32d9966b45eb1ebd965041953fd7909f3e4ef5a42c982fb7"
+        }
+      },
+      "result": "guard detected",
+      "build_exit": 0,
+      "test_exit": 101,
+      "seconds": 64.03,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    },
+    {
+      "name": "live-reauthorization",
+      "test": "live_delivery_reauthorizes_on_second_relay_node",
+      "source": "949063e573ae4291a692c0c01f3ddba7efaf0625",
+      "files": {
+        "crates/buzz-db/src/store/paired_hosts/registry.rs": {
+          "before": "b6ce613f851bbd0dafeb8550ac2f17ae71c8dbbbed103bb28be22fbf74b3aaac",
+          "mutated": "e589045d19bbb5d975db7646cd050f719c07d54e66fbc99d60dc902ab0bdce7f",
+          "restored": "b6ce613f851bbd0dafeb8550ac2f17ae71c8dbbbed103bb28be22fbf74b3aaac"
+        }
+      },
+      "result": "guard detected",
+      "build_exit": 0,
+      "test_exit": 101,
+      "seconds": 68.14,
+      "command": [
+        "scripts/3720-registration-proof.sh",
+        "run",
+        "target/debug/deps/buzz_relay-b1fcb351a1cd6039",
+        "handlers::host_registry::external_infra_registration_tests::external_infra_tests::live_delivery_reauthorizes_on_second_relay_node",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "build_command": [
+        "cargo",
+        "test",
+        "-p",
+        "buzz-relay",
+        "--lib",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ]
+    }
+  ],
+  "terminal_green": "pending final restored suite"
+}
