@@ -1,0 +1,18 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_reconcile_must_refresh_clock_before_first_consumption ... CLOCK_PROBE fresh_clock_after_expiry=true reconcile_ok=true local_state=active live_bindings=1
+
+thread 'handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_reconcile_must_refresh_clock_before_first_consumption' (120) panicked at crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:1816:9:
+assertion `left == right` failed: expired first consumption created a live relay binding using the pre-fetch clock
+  left: 1
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_reconcile_must_refresh_clock_before_first_consumption
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2194 filtered out; finished in 0.22s
+

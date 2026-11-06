@@ -1,0 +1,109 @@
+{
+  "reviewed_base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "reviewed_head": "f54cf2d8d6b1d3ca1bc52f591f655d867309ce69",
+  "requested_configuration": {
+    "model": "gpt-6-astra",
+    "effort": "high"
+  },
+  "runtime_identity": {
+    "model": "unknown",
+    "effort": "unknown"
+  },
+  "toolchain": "Hermit Rust/cargo1.98.1,2 build jobs,debug0,incremental1,task-local build TMPDIR,fixture runtime TMPDIR=/tmp",
+  "runs": [
+    {
+      "receipt": "ws-matrix.txt",
+      "actual": [
+        "ok. 14 passed; 0 failed; 0 ignored; 0 measured; 2180 filtered out; finished in 7.33s"
+      ],
+      "sha256": "ae0d6b366b013938de0a85a40ef1ac5175e91706683cd0fdc9e71cf68c876784"
+    },
+    {
+      "receipt": "core-registry.txt",
+      "actual": [
+        "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 298 filtered out; finished in 0.01s"
+      ],
+      "sha256": "0c9ba824c517e665c2df494c1e89e610282626f90da5b0c8d9a55f72cba038f2"
+    },
+    {
+      "receipt": "hostd-registration.txt",
+      "actual": [
+        "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.11s"
+      ],
+      "sha256": "e095e8691b0efa1d76188f70a353155cf6f9dccffa27e1213bfd80bcedc5aa5d"
+    },
+    {
+      "receipt": "owner-library.txt",
+      "actual": [
+        "ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.14s"
+      ],
+      "sha256": "c6b8cb8528ac3a623ee612ce96145a2a538a6ac45b630ec455b1766129712561"
+    },
+    {
+      "receipt": "replacement-probe.txt",
+      "actual": [
+        "FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2194 filtered out; finished in 1.05s"
+      ],
+      "sha256": "0252909ecc348f90e21772b7d43482a36dbc0f1180899137cf247fc4986dad6f"
+    },
+    {
+      "receipt": "ws-terminal-restored.txt",
+      "actual": [
+        "ok. 14 passed; 0 failed; 0 ignored; 0 measured; 2180 filtered out; finished in 7.41s"
+      ],
+      "sha256": "b4494b9d509e381c941aa47383cecb0e469f9aace32e56e92e5eff8aa8c83a36"
+    },
+    {
+      "receipt": "clock-probe.txt",
+      "actual": [
+        "FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2194 filtered out; finished in 0.22s"
+      ],
+      "sha256": "b5e4893896288fd90951cb96818d748736c52cd48513b53c9123f846ab646044"
+    }
+  ],
+  "pruning_probe": {
+    "receipt": "pruning-probe.txt",
+    "outcome": "production baseline success; actual pruning; repeat fresh-cursor failure reproduced"
+  },
+  "temporary_probes": "Two conductor-authorized test-only insertions, restored exactly. Production source was not mutated. These are defect reproductions, not external guard-removal controls.",
+  "required_acceptance": "OPEN: H-1,H-2,M-1,M-2 and report G0-G5",
+  "terminal_restored_run": {
+    "receipt": "ws-final-restored.txt",
+    "actual": "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 2180 filtered out; finished in 7.20s",
+    "product_and_test_source_diff": ""
+  },
+  "cleanup": {
+    "fixture_containers_before": [
+      {
+        "name": "buzz-3720-registration-runner",
+        "network_mode": "none",
+        "port_bindings": {},
+        "running": true
+      },
+      {
+        "name": "buzz-3720-registration-postgres",
+        "network_mode": "container:bbe827da61ecd587e8301e12e9ecff9c6dc24caf80ecad002d67feccc6bfb70d",
+        "port_bindings": {},
+        "running": true
+      },
+      {
+        "name": "buzz-3720-registration-redis",
+        "network_mode": "container:bbe827da61ecd587e8301e12e9ecff9c6dc24caf80ecad002d67feccc6bfb70d",
+        "port_bindings": {},
+        "running": true
+      },
+      {
+        "name": "buzz-3720-registration-tls-proxy",
+        "network_mode": "container:bbe827da61ecd587e8301e12e9ecff9c6dc24caf80ecad002d67feccc6bfb70d",
+        "port_bindings": {},
+        "running": true
+      }
+    ],
+    "fixture_databases_before_cleanup": [],
+    "runner_processes_before_cleanup": "PID COMMAND\n      1 sleep\n    163 ps",
+    "all_four_task_containers_removed": true,
+    "remaining_task_containers": [],
+    "synthetic_tls_private_keys_remaining": [],
+    "worktree_and_ignored_cache": "retained for sequential repair/re-gate"
+  }
+}

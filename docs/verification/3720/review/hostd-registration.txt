@@ -1,0 +1,10 @@
+    Finished `test` profile [unoptimized] target(s) in 0.52s
+     Running unittests src/lib.rs (target/debug/deps/buzz_hostd-0b4254e99e269a9e)
+
+running 3 tests
+test registration::tests::exact_retry_and_revocation_outbox_survive_restart ... ok
+test registration::tests::wrong_proof_attempts_are_distinct_and_bounded ... ok
+test registration::tests::expired_rebooted_or_rollback_offer_never_first_consumes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.11s
+

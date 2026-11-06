@@ -1,0 +1,8 @@
+{
+  "source": "f54cf2d8d6b1d3ca1bc52f591f655d867309ce69",
+  "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+  "original": "d71eb50b2302cf035b5b049374b271496ba762de7d0b2ae79186b364403c4bad",
+  "temporary": "0ad16bf9e441c9bca39547b4012c2c1c71bcea6ab88e942e979d772ec1025f0f",
+  "restored": "d71eb50b2302cf035b5b049374b271496ba762de7d0b2ae79186b364403c4bad",
+  "result": "1 failing assertion: expired local clock source ignored, local active and relay live binding1"
+}

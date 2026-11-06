@@ -1,0 +1,163 @@
+{
+  "base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "head": "f54cf2d8d6b1d3ca1bc52f591f655d867309ce69",
+  "source_mutation": false,
+  "controls_reconstructed": [
+    {
+      "name": "scope",
+      "paths": [
+        {
+          "path": "crates/buzz-relay/src/handlers/event.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        },
+        {
+          "path": "crates/buzz-relay/src/handlers/req.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        },
+        {
+          "path": "crates/buzz-relay/src/handlers/count.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        },
+        {
+          "path": "crates/buzz-relay/src/handlers/artifact_sync.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        },
+        {
+          "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        }
+      ],
+      "assertion_failure": [
+        "assertion failed: !scoped.send_event(profile.clone()).await.unwrap().accepted"
+      ]
+    },
+    {
+      "name": "membership",
+      "paths": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": false
+        }
+      ],
+      "assertion_failure": [
+        "assertion failed: !guest.send_event(claim).await.unwrap().accepted"
+      ]
+    },
+    {
+      "name": "parent-generation",
+      "paths": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": false
+        }
+      ],
+      "assertion_failure": [
+        "assertion failed: net.publish(&o, wrong).await.is_err()"
+      ]
+    },
+    {
+      "name": "unique-live-binding",
+      "paths": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": false
+        },
+        {
+          "path": "schema/tables/public/paired_host_bindings.sql",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        }
+      ],
+      "assertion_failure": [
+        "assertion `left == right` failed"
+      ]
+    },
+    {
+      "name": "live-reauthorization",
+      "paths": [
+        {
+          "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+          "original_and_restored_match": true,
+          "exact_mutation_reconstructed": true,
+          "unchanged_at_review_pin": true
+        }
+      ],
+      "assertion_failure": [
+        "stale subscription leaked after removal: Event { subscription_id: \"live\", event: Event { id: EventId(71fccee9a8e9c1112043274c0dd777fdc8e1c48a9f08299c313000cee0a75548), pubkey: PublicKey(611812c1cb67d0ec98f596a9d7c37b709bea51e38a76d01753c498022626c9e4), created_at: Timestamp(1794005405), kind: Custom(43103), tags: [Tag([\"v\", \"2\"]), Tag([\"community\", \"https://registry-41a1956e9f484149a5506a01f26dbbc2.test\"]), Tag([\"p\", \"5c21639a09652a5eef41a98fc656ac4a2b66e1e17e5b052664e46eddf993666e\"]), Tag([\"op\", \"registry-change\"]), Tag([\"q\", \"7c646385a3b37adca7fecf3663b7e071ae231d04d865aaf2a55dda99e10578e5\"]), Tag([\"view\", \"live\"])], content: \"Aq7i33FCyzYbLTyZftifVVVIdW5xSkX1P2Zm6pbUfpiszjVTheZtwdvf6EvfuB2DRg0oAjv+wgrZ7j53ybcur1ScY1qqU4OIFT7TxjrNu1pxS+dNQoYOteGRIpVU8a7o4HxfOVjEOGY98oV12gz1/RODiHO/idfR3kQe5qApgxZ1jftNcFH+TnEfxUOcnh+pOdb836p8FLtBrn6YAt7KSFlT6XaCu2roeoIqDJXXmbEIe42AUCt1qcM2JfRyGws9N9ToBwcgxmM0jhTQTlreQJKBzLcS0atfhlIbiOYXBQBTi36WEj6JNHOuIHAEletB5I3neXE5Tjk/zOpVLQlktlvCgQvdiXU5QTHZ9oYy/Gqw/mAa56GEguwG3g9WvonvELaSGmau1brhlkTu3PsaK4vnCzqed2Qe2Fe8iI+F5hzPMVA7tWSo08evd3U//mHfuT/HpMa2Wg6ffKip1WkCkXVDkAsfCfmhYnPppo5KJhnvq22beai5T9jHXBZyuNauwPE+MJHaC8Qzi+d11hq/K7VeTNWd+37MVKoHpoG1hs/xjCN2iBDQPa51iQhQ9jkREN19ReLRle49sajAiHj93q/fBCUDj8vvVof7yPS8+qM7EZ+p5TlnTcuEP6QOF7oU5JvbV8h1g5h+bhszoeVadGWcFI/fzboae1AxSsld+jry+Gcqs8XurcIKylebF5KFhSjX+bmOKs1Vzw6E+Taqw5ZkPoKhZg2ZhMS1N+Xu+q60JHpfx1Xd4DMpHY/tfruGFnoL\", sig: Signature(cbd8c289dd134efad5e16d37db5ceeb4faa4ca6e0c4983bb338308e300113d0869a17d0d9e6ed2d7a118dac114a6d7d72f63d5f52820b56059252737e36e0d05) } }"
+      ]
+    }
+  ],
+  "control_continuity": "Only paired_hosts.rs differs among mutated files: late fresh-unpair state check; membership, parent and occupancy anchors unchanged. Complete control assertion receipts inspected; scope kill precedes independent-member insertion. Two partial scope survivors get no kill credit.",
+  "exact_numstat_matches_every_reported_file": true,
+  "totals": {
+    "additions": 12160,
+    "deletions": 36,
+    "net": 12124
+  },
+  "categories": {
+    "docs/tooling": {
+      "additions": 723,
+      "deletions": 0,
+      "net": 723
+    },
+    "lockfile": {
+      "additions": 5,
+      "deletions": 0,
+      "net": 5
+    },
+    "mixed production/inline tests": {
+      "additions": 2185,
+      "deletions": 17,
+      "net": 2168
+    },
+    "production manifests": {
+      "additions": 6,
+      "deletions": 0,
+      "net": 6
+    },
+    "production-only Rust": {
+      "additions": 1115,
+      "deletions": 19,
+      "net": 1096
+    },
+    "standalone tests/fixtures": {
+      "additions": 1787,
+      "deletions": 0,
+      "net": 1787
+    },
+    "verification receipts/logs": {
+      "additions": 6339,
+      "deletions": 0,
+      "net": 6339
+    }
+  },
+  "rust_totals": {
+    "added": 5087,
+    "deleted": 36
+  },
+  "clippy": {
+    "source_manifest_matches": true,
+    "diagnostics": 40,
+    "all_primary_spans_in_byte_identical_baseline_files": true,
+    "new_or_error": 0,
+    "strict": "baseline-blocked, not green"
+  },
+  "negative_receipts": "Executor controls read/reconstructed, not rerun; reviewer pruning and subscription race separately measured."
+}

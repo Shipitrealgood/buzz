@@ -1,0 +1,8 @@
+{
+  "source": "f54cf2d8d6b1d3ca1bc52f591f655d867309ce69",
+  "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+  "original": "d71eb50b2302cf035b5b049374b271496ba762de7d0b2ae79186b364403c4bad",
+  "temporary": "4ebd1c9f933340d9317f4fdddd4ef67907e5262a436bd25bc1ae84a8a11d97df",
+  "restored": "d71eb50b2302cf035b5b049374b271496ba762de7d0b2ae79186b364403c4bad",
+  "result": "1 failing assertion: older failed read removes new owner2"
+}

@@ -1,0 +1,4 @@
+
+thread 'main' (54) panicked at /home/bryce/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.9.0/src/pool/inner.rs:533:5:
+this functionality requires a Tokio context
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

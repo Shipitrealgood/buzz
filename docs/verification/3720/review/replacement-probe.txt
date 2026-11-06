@@ -1,0 +1,19 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_failed_old_request_must_not_retire_replacement ... REPLACEMENT_BARRIER old_owner=1 new_owner=2
+REPLACEMENT_FRAME ["CLOSED","same-id","resync_required: host registry unavailable"]
+
+thread 'handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_failed_old_request_must_not_retire_replacement' (72) panicked at crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:1839:9:
+assertion `left == right` failed: older failed read retired the newer live owner; frames=[Array [String("CLOSED"), String("same-id"), String("resync_required: host registry unavailable")]]
+  left: None
+ right: Some(2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    handlers::host_registry::external_infra_registration_tests::external_infra_tests::review_failed_old_request_must_not_retire_replacement
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2194 filtered out; finished in 1.05s
+

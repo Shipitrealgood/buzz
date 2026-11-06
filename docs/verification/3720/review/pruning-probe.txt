@@ -1,0 +1,4 @@
+BASELINE fresh messages: PASS, 2 rows
+Production pruning advanced retention_floor=3
+DEFECT CONFIRMED: null/fresh messages cursor returns PairedCursorPruned
+Native reset shape repeats the permanent failure; no permitted starting cursor exists
