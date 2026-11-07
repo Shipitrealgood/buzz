@@ -43,10 +43,27 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           key: paired-host-systemd
-      - name: Build the relay, host services, agent and native owner driver
+      - name: Build registration-only rehearsal binaries
         run: |
-          cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bin buzz-hostd --bin buzz-host-activate --bin buzz-host-runtime -p buzz-cli --bin buzz -p buzz-acp --bin buzz-acp --features tokio-tungstenite/rustls-tls-native-roots
-          for bin in buzz-hostd buzz-host-activate buzz-host-runtime buzz-acp buzz buzz-relay; do test -x "target/debug/$bin" || { echo "Missing rehearsal binary: $bin"; exit 1; }; done
-          cargo build --locked -p buzz-paired-owner --example staging
-      - name: Pair, provision a system service, message it and unpair
-        run: /usr/bin/python3 scripts/paired-hosts/hosted-systemd-smoke.py
+          . ./bin/activate-hermit
+          cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bin buzz-hostd
+          cargo build --locked -p buzz-paired-owner --example registration -p buzz-hostd --example registration_isolation_probe
+      - name: Register, recover, restart, revoke and measure actual service isolation
+        run: |
+          set -o pipefail
+          /usr/bin/python3 scripts/paired-hosts/registration-systemd-smoke.py | tee registration-rehearsal.txt
+      - name: Pin compatible rehearsal artifacts
+        run: |
+          mkdir registration-artifacts
+          cp target/debug/buzz-hostd target/debug/buzz-relay target/debug/examples/registration registration-artifacts/
+          cp crates/buzz-hostd/deploy/buzz-host-registration.service registration-artifacts/
+          printf 'source=%s\nprofile=debug-rehearsal; not a deployment release\n' "$GITHUB_SHA" > registration-artifacts/source.txt
+          (cd registration-artifacts && sha256sum buzz-hostd buzz-relay registration buzz-host-registration.service source.txt > SHA256SUMS)
+          tar -czf registration-linux-rehearsal.tar.gz registration-artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: registration-linux-rehearsal
+          path: |
+            registration-linux-rehearsal.tar.gz
+            registration-rehearsal.txt
+          retention-days: 7

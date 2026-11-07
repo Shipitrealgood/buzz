@@ -1,0 +1,50 @@
+[Unit]
+Description=Buzz host registration controller (no agent execution)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=30min
+StartLimitBurst=3
+
+[Service]
+User=buzz-host-registration
+Group=buzz-host-registration
+EnvironmentFile=/etc/buzz-host-registration/controller.conf
+ExecStart=/usr/local/libexec/buzz-hostd --state-dir /state registration run --community ${BUZZ_REGISTRY_COMMUNITY} --relay-key ${BUZZ_REGISTRY_RELAY_KEY} --ca-cert /etc/buzz-host-registration/relay-ca.pem
+RootDirectory=/var/lib/buzz-host-registration-root
+StateDirectory=buzz-host-registration
+StateDirectoryMode=0700
+BindPaths=/var/lib/buzz-host-registration:/state
+BindReadOnlyPaths=/etc/buzz-host-registration/relay-ca.pem /usr/local/libexec/buzz-hostd /usr/lib -/lib -/lib64 -/etc/ssl/certs -/etc/resolv.conf -/etc/hosts -/etc/nsswitch.conf -/etc/gai.conf
+MountAPIVFS=yes
+WorkingDirectory=/state
+UMask=0077
+Restart=on-failure
+RestartSec=30s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+NoExecPaths=/
+ExecPaths=/usr/local/libexec/buzz-hostd /usr/lib /lib /lib64
+ReadWritePaths=/state
+# The shipped rehearsal unit permits loopback relay traffic only. An actual
+# remote installation requires its separately reviewed relay-address drop-in.
+IPAddressDeny=any
+IPAddressAllow=localhost
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

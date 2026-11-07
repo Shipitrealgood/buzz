@@ -31,6 +31,25 @@ impl Host {
     pub fn public_key(&self) -> Result<PublicKey> {
         Ok(self.store.keys()?.public_key())
     }
+    /// Public local registration states. This never returns control-key material.
+    pub fn registrations(&self) -> Result<Vec<(String, String, String)>> {
+        let mut q = self
+            .store
+            .0
+            .prepare("SELECT c,g,state FROM grants ORDER BY rowid")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+    /// Bounded work for one operator-selected relay. Expired offers are spent
+    /// locally; dead generations stay eligible only while their outbox is pending.
+    pub fn work(&mut self, community: &str, clock: &Clock) -> Result<Vec<String>> {
+        self.store.0.execute("UPDATE grants SET state='spent',digest=NULL WHERE state='offered' AND (expires<=? OR boot<>? OR deadline<=?)", params![clock.wall, clock.boot, clock.millis])?;
+        let mut q = self.store.0.prepare("SELECT g FROM grants WHERE c=? AND (state IN ('offered','active') OR (state='dead' AND EXISTS(SELECT 1 FROM sent WHERE sent.g=grants.g AND pending=1 AND json_extract(packet,'$.event.kind')=43103))) ORDER BY rowid LIMIT 33")?;
+        let rows = q.query_map([community], |r| r.get::<_, String>(0))?;
+        let work = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        ensure!(work.len() <= 32, "registration work bound exceeded");
+        Ok(work)
+    }
     /// Issue the existing ten-minute single-use invitation, explicitly version2.
     pub fn offer(&mut self, community: String, clock: &Clock) -> Result<Zeroizing<String>> {
         let old = self.store.offer(community, clock)?;
@@ -344,6 +363,19 @@ impl Host {
             }
         }
         for e in self.pending()? {
+            // AUTH is generation-scoped; another generation keeps its own retry.
+            let (_, header) = wire::verify(
+                &serde_json::to_vec(&e)?,
+                e.tags
+                    .iter()
+                    .find(|t| t.as_slice()[0] == "community")
+                    .and_then(|t| t.content())
+                    .ok_or_else(|| anyhow::anyhow!("missing community"))?,
+                e.pubkey,
+            )?;
+            if header.generation != g {
+                continue;
+            }
             let id = e.id.to_hex();
             let ok = ws.send_event(e).await?;
             ensure!(ok.accepted, "registry denied");
@@ -399,6 +431,19 @@ impl Host {
             ensure!(complete, "registration mailbox page bound exceeded");
         }
         for e in self.pending()? {
+            // AUTH is generation-scoped; another generation keeps its own retry.
+            let (_, header) = wire::verify(
+                &serde_json::to_vec(&e)?,
+                e.tags
+                    .iter()
+                    .find(|t| t.as_slice()[0] == "community")
+                    .and_then(|t| t.content())
+                    .ok_or_else(|| anyhow::anyhow!("missing community"))?,
+                e.pubkey,
+            )?;
+            if header.generation != g {
+                continue;
+            }
             let id = e.id.to_hex();
             let ok = ws.send_event(e).await?;
             ensure!(ok.accepted, "registry denied");

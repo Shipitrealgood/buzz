@@ -1,5 +1,6 @@
 mod clock;
 mod onboard;
+mod registration_cli;
 mod request;
 mod store;
 mod transport;
@@ -28,6 +29,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// V2 registration only, using a dedicated controller identity/state.
+    Registration {
+        #[command(subcommand)]
+        command: registration_cli::Command,
+    },
     /// Create a new local host identity; refuse an existing database.
     Init,
     /// Generate one new private console-only invitation.
@@ -58,8 +64,13 @@ async fn main() -> Result<()> {
         !rustix::process::geteuid().is_root(),
         "use a dedicated unprivileged host account"
     );
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    if let Command::Registration { command } = cli.command {
+        return registration_cli::execute(&cli.state_dir, command).await;
+    }
     let mut store = Store::load(&cli.state_dir, matches!(cli.command, Command::Init))?;
     match cli.command {
+        Command::Registration { .. } => anyhow::bail!("registration command already dispatched"),
         Command::Init => println!("{}", store.keys()?.public_key().to_hex()),
         Command::Offer { community } => {
             ensure!(

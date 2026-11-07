@@ -13,6 +13,8 @@ mod external_infra_tests {
     use std::{net::SocketAddr, os::unix::fs::PermissionsExt, time::Duration};
     use tokio::task::JoinHandle;
 
+    include!("registration_executable_tests.rs");
+
     struct Fixture {
         state: Arc<AppState>,
         host: String,
