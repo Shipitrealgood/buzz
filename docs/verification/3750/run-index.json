@@ -1,0 +1,134 @@
+{
+  "status": "implementation ready for independent review; full #3750 acceptance OPEN",
+  "workspace": "/home/bryce/services/buzz-wt-3720-host-registration",
+  "branch": "proof/3720-host-registration-events",
+  "base": "621c777b886dad8aed7eeee4b428d57c153829e5",
+  "product_revision": "0026180c1ee00ca3f3eb583d30ca14302a415072",
+  "code_commits": [
+    "8404ea2c3070622eeffc7341a24ccb4b89f08d4a",
+    "0026180c1ee00ca3f3eb583d30ca14302a415072"
+  ],
+  "requested_configuration": "gpt-6-astra/high",
+  "actual_runtime_identity": "not independently exposed",
+  "toolchain": "repository Hermit; Cargo build jobs=2; CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=1",
+  "runs": [
+    {
+      "command": "cargo test -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --lib",
+      "exit": 0,
+      "results": {
+        "hostd": 8,
+        "owner": 14,
+        "ws": 5
+      },
+      "failed": 0,
+      "receipt": "libraries.txt"
+    },
+    {
+      "command": "cargo test -p buzz-relay --lib --no-run",
+      "exit": 0,
+      "result": "final relay test executable compiled"
+    },
+    {
+      "command": "scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd handlers::host_registry::external_infra_registration_tests::external_infra_tests --ignored --nocapture --test-threads=1 --skip child_root_relay",
+      "exit": 0,
+      "passed": 25,
+      "failed": 0,
+      "seconds": 19.04,
+      "receipt": "registration.txt",
+      "coverage": "existing 24 registration/security cases plus actual hostd binary lifecycle, controller lock, guarded recovery and offline revoke ordering"
+    },
+    {
+      "command": "target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd connection::tests handlers::req::tests --test-threads=2",
+      "exit": 0,
+      "passed": 104,
+      "failed": 0,
+      "existing_ignored": 2,
+      "seconds": 1.98,
+      "receipt": "ordinary.txt"
+    },
+    {
+      "cwd": "desktop",
+      "command": "node --import ./test-jsdom-setup.mjs --import ./test-loader.mjs --experimental-strip-types --test-force-exit --test src/features/agents/ui/PairedHostsSection.jsdom-test.mjs",
+      "exit": 0,
+      "passed": 2,
+      "failed": 0,
+      "receipt": "ui.txt"
+    },
+    {
+      "cwd": "desktop",
+      "command": "pnpm exec tsc --noEmit",
+      "exit": 0,
+      "result": "no diagnostics"
+    },
+    {
+      "command": "cargo build --locked -p buzz-relay --bin buzz-relay -p buzz-hostd --bin buzz-hostd --example registration_isolation_probe -p buzz-paired-owner --example registration",
+      "exit": 0,
+      "receipt": "artifact-build.txt",
+      "source": "0026180c1ee00ca3f3eb583d30ca14302a415072",
+      "artifacts": "source-audit.json hashes; local debug rehearsal binaries, not Windows installer or release packages"
+    },
+    {
+      "command": "cargo fmt --all -- --check; cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check; rustfmt --edition 2021 --check crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs",
+      "exit": 0,
+      "result": "no formatting diffs"
+    },
+    {
+      "command": "CHECK_FILE_SIZES_BASE=621c777b886dad8aed7eeee4b428d57c153829e5 just file-size-check",
+      "exit": 0,
+      "receipt": "size.txt"
+    },
+    {
+      "command": "pnpm exec biome check --write src/features/agents/ui/PairedHostsSection.tsx src/features/agents/ui/PairedHostsSection.jsdom-test.mjs",
+      "cwd": "desktop",
+      "exit": 0,
+      "result": "two scoped files formatted; subsequent UI/typecheck passed"
+    },
+    {
+      "command": "python3 -m py_compile scripts/paired-hosts/registration-systemd-smoke.py; bash -n crates/buzz-hostd/deploy/stage-registration-on-actions.sh; yaml.safe_load(.github/workflows/paired-hosts-staging.yml)",
+      "exit": 0,
+      "result": "syntax/parse passed; fork/ref guard asserted"
+    },
+    {
+      "command": "cargo clippy -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --all-targets -- -D warnings",
+      "exit": 101,
+      "result": "blocked by two diagnostics in unchanged buzz-core paired_message/body.rs",
+      "receipt": "clippy-dependencies.txt"
+    },
+    {
+      "command": "cargo clippy -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --all-targets --no-deps -- -D warnings",
+      "exit": 101,
+      "result": "blocked by seven diagnostics in unchanged legacy host request/onboard/transport; no complete strict-lint pass",
+      "receipt": "clippy-selected.txt"
+    },
+    {
+      "command": "systemd-analyze verify crates/buzz-hostd/deploy/buzz-host-registration.service",
+      "exit": 1,
+      "result": "stopped at deliberately uninstalled /usr/local/libexec/buzz-hostd; no actual local systemd service was run",
+      "receipt": "unit-static.txt"
+    }
+  ],
+  "not_run": [
+    "actual hosted systemd registration unit/isolation probe (conductor must run existing staging workflow after review)",
+    "native Windows owner/paired_hosts/discovery tests and ACL probe (existing canary workflow)",
+    "Windows canary installer/build checksum",
+    "native Windows UI -> isolated TLS relay/Linux hostd journey",
+    "human app confirmation",
+    "full just ci/full workspace strict lint; historical 40-diagnostic baseline not re-enumerated",
+    "production migration compatibility and live rollout (#3751), agent/provider creation/login/lifecycle/adoption"
+  ],
+  "historical_attempts": [
+    "Initial Hermit invocation hit read-only cache; authorized tool-cache escalation used thereafter.",
+    "First UI launch lacked jsdom; frozen-lockfile dependency install succeeded.",
+    "First UI execution passed behavior but an overly broad call-list assertion included unrelated import-time media URL discovery. Explicit OS/IPC boundary mocks were added; both journeys then passed.",
+    "Self-review corrected recovery-before-retry for host-local revoke; final executable regression and full 25-case suite passed."
+  ],
+  "continuity": "Accepted #3720 evidence reused; final registration suite reruns its 24 cases. No protocol/relay SQL changes. Emitted strict-lint primary files are byte-identical to baseline; hashes in source-audit.json. No new mutation campaign.",
+  "cleanup": "cleanup.json",
+  "source_and_artifacts": "source-audit.json",
+  "physical_line_counts": "line-counts.json",
+  "operator_steps": [
+    "windows-journey.md",
+    "wsl-fixture-handoff.md"
+  ],
+  "next_gate": "independent Astra/high review of code range, then conductor-owned existing staging/canary workflows and native human journey"
+}

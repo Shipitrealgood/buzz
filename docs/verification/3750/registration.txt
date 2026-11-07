@@ -1,0 +1,69 @@
+Sanitized: synthetic wire payloads omitted; test names and terminal results retained.
+running 25 tests
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::disabled_capability_and_private_generic_reads_fail_closed ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::executable_registration_restart_recovery_revoke_and_native_scope_fence ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::external_infra_process_tests::process_crash_before_and_after_commit_retries_exact_ack ... PROCESS_CRASH phase=before committed_before_kill=false exact_ack=43e97dd466264cc08d47f5582a6c57bdd779f94b77e5671fc023058e81dd4961 live_bindings=1
+PROCESS_CRASH phase=after committed_before_kill=true exact_ack=46f7ebd939282993c595f856771efc9e7b2830e2fad9c083b684af2069579c55 live_bindings=1
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::host_scope_denies_every_other_message_and_bootstrap ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::live_delivery_reauthorizes_on_second_relay_node ...
+LIVE_BARRIER both_nodes_high_water=16
+LIVE_POST_REMOVAL new_event_id=9b29309d219976b06eab843f14aecb70c9ccdfca979906f905bc7b0d64591477
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::owner_membership_wrong_parties_and_tenants ...
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::pagination_cursor_races_and_saturation_are_bounded ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::parent_generation_and_operation_identity_are_enforced ...
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::registration_journey_two_journals_and_revocation ...
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::removed_owner_gets_minimal_recovery_and_banned_host_gets_none ...
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::retained_timely_ack_has_exact_twenty_four_hour_recovery_boundary ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_database_failure_retains_cache_and_lost_notice_recovers_on_timer ...
+ROUND1_DEPENDENCY snapshot_failed_closed=true cache_retained=true db_recovered=true postcommit_notice_dropped=true periodic_resync_label_recovered=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_held_work_slots_and_encrypted_boundaries_are_bounded ... ROUND1_EVENT_EDGE serialized_bytes=16384 bound=16384 accepted=true
+ROUND1_EVENT_EDGE serialized_bytes=16388 bound=16384 accepted=false
+ROUND1_BOUNDS ordinary_slots_held=3 global_queue_held=true reserved_recovery=true encrypted_page_exact_limit=true oversize_and_malformed_denied=true valid_followup=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_legitimate_signer_contradictions_have_no_consumer_effect ... ROUND1_CONTRADICTION field=v outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=community outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=owner outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=host outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=generation outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=op outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=operation_id outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=parent outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=expires_at outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=body-type outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONSUMER wrong_host_parent_ack_nonce_recipient_tenant_rejected=true valid_followup=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_offline_tombstone_restart_retry_and_fresh_generation ...
+ROUND1_OFFLINE dead_persisted_before_send=true exact_restart_retry=true fresh_generation=true old_ack_cannot_resurrect=true altered_legitimate_ack_denied=true live_owners=1
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_old_errors_and_timeouts_preserve_new_subscription_owner ... ROUND1_LIFECYCLE old_timeout=false replacement_retained=true no_late_frames=true topics=0
+ROUND1_LIFECYCLE old_timeout=true replacement_retained=true no_late_frames=true topics=0
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_pruning_resets_fresh_mailbox_and_rejects_stale_expired_cursors ...
+ROUND1_PRUNING actual_floor=98 fresh_reconcile_nonce=true consent_retained=true stale_and_expired_closed=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_reconcile_refreshes_clock_and_keeps_timely_saved_ack_retry ... ROUND1_CLOCK case=expired correct=true
+ROUND1_CLOCK case=rollback correct=true
+ROUND1_CLOCK case=reboot correct=true
+ROUND1_CLOCK case=saved-retry correct=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_setup_serializes_close_replacement_and_connection_cleanup ... ROUND1_SETUP action=close map_index_topic_clean=true
+ROUND1_SETUP action=replace map_index_topic_clean=true
+ROUND1_SETUP action=cancel map_index_topic_clean=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_valid_oa_and_channel_guest_cannot_gain_registration ... ROUND1_CREDENTIALS valid_oa_ordinary=true oa_registration=false direct_member_owner=true channel_guest_read=true guest_registration=false no_guest_token_root_route=true enforcing_fi_upgrade_refused=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_wire_exchange_is_complete_and_correlated ...
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::timely_ack_retries_after_expiry_with_no_candidate_read_rights ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::tls_proxy_two_dns_tenants_preserve_origin_and_private_registration ... TLS_DNS two_tenants=true host_registration_and_reconcile=true ports=32000,34443 global_queue_held=true reserved_binding_via_proxy=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks ... ok
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 2180 filtered out; finished in 19.04s

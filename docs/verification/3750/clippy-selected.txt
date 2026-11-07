@@ -1,0 +1,79 @@
+    Checking buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Checking buzz-ws-client v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-ws-client)
+    Checking buzz-sdk v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-sdk)
+    Checking buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Checking buzz-paired-owner v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-paired-owner)
+error: this function has too many arguments (9/7)
+   --> crates/buzz-hostd/src/request.rs:207:1
+    |
+207 | / pub fn handle(
+208 | |     tx: &Transaction<'_>,
+209 | |     keys: &Keys,
+210 | |     scope: &Scope,
+...   |
+216 | |     clock: &Clock,
+217 | | ) -> Result<()> {
+    | |_______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#too_many_arguments
+    = note: `-D clippy::too-many-arguments` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_arguments)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:181:41
+    |
+181 |         super::unit::quiesce(store, &q, &scope).await?;
+    |                                         ^^^^^^ help: change this to: `scope`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+    = note: `-D clippy::needless-borrow` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:188:19
+    |
+188 |     q.finish(&tx, &keys, &scope, "failed", &code, &Clock::read()?)?;
+    |                   ^^^^^ help: change this to: `keys`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:188:26
+    |
+188 |     q.finish(&tx, &keys, &scope, "failed", &code, &Clock::read()?)?;
+    |                          ^^^^^^ help: change this to: `scope`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+error: this function has too many arguments (8/7)
+   --> crates/buzz-hostd/src/transport.rs:201:1
+    |
+201 | / async fn grant(
+202 | |     store: &mut Store,
+203 | |     net: &Http,
+204 | |     cat: &Catalog,
+...   |
+209 | |     cursor: Option<String>,
+210 | | ) -> Result<()> {
+    | |_______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#too_many_arguments
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/transport.rs:255:33
+    |
+255 |             let _ = store.claim(&g, &packet, &Clock::read()?);
+    |                                 ^^ help: change this to: `g`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/transport.rs:280:45
+    |
+280 |             if let Err(err) = store.receive(&g, &packet, cat, revision, &Clock::read()?) {
+    |                                             ^^ help: change this to: `g`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+error: could not compile `buzz-hostd` (lib) due to 7 previous errors
+warning: build failed, waiting for other jobs to finish...

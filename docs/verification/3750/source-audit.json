@@ -1,0 +1,303 @@
+{
+  "base": "621c777b886dad8aed7eeee4b428d57c153829e5",
+  "product_revision": "0026180c1ee00ca3f3eb583d30ca14302a415072",
+  "physical_line_changes_code_commits": {
+    "product": {
+      "added": 561,
+      "deleted": 275
+    },
+    "test_and_verification": {
+      "added": 1007,
+      "deleted": 6
+    },
+    "documentation": {
+      "added": 11,
+      "deleted": 17
+    }
+  },
+  "counting": "Physical added/deleted lines, including comments/blank lines; Cargo and service config are product, inline cfg(test) hunks and fixture/workflow code are tests/verification. Documentation receipt commit is separate. Not production SLOC.",
+  "paths": [
+    {
+      "path": ".github/workflows/paired-hosts-staging.yml",
+      "sha256": "217ad233f0b6e2e08e3f09f9e780d84d997bd3df7920c39078f66b8108a4b8ff",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 23,
+          "deleted": 6
+        }
+      }
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "b63aaea59c7687b53f37031807e9a12c5cfe78a15f8c9b2abb81c68c54fd5cd1",
+      "physical_line_changes": {
+        "product": {
+          "added": 2,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/Cargo.toml",
+      "sha256": "0a576bd9ae5021113a333bfec61163b1a19e087741008f4f2585c597fa31a762",
+      "physical_line_changes": {
+        "product": {
+          "added": 1,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/deploy/buzz-host-registration.service",
+      "sha256": "562581603b4c12851a7069d7fb2d6ba084dd28c151e88713774106032a708de7",
+      "physical_line_changes": {
+        "product": {
+          "added": 50,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/deploy/stage-registration-on-actions.sh",
+      "sha256": "3eacfced6d6f6ed4e40c98ff4c3e8340609309a8e10891c2e581e095947824d2",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 49,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/examples/registration_isolation_probe.rs",
+      "sha256": "b8864737878f8d87b0ef110462840390f1d60053cd99bb678b31f1bc6640909b",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 35,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/src/main.rs",
+      "sha256": "f0549e92d917fde8a5e1d31df6d5a841a6d7e605219defa6d9c5277e230fbae3",
+      "physical_line_changes": {
+        "product": {
+          "added": 11,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/src/registration.rs",
+      "sha256": "00c8b20398dd5e31318c523c603df6fe8a6d0614d7ab1d4b9a17eaa0d6149feb",
+      "physical_line_changes": {
+        "product": {
+          "added": 45,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-hostd/src/registration_cli.rs",
+      "sha256": "096559df873ebc6beaebaf592c502615e5d98a7a93d7e8abfe4161985ff5bf83",
+      "physical_line_changes": {
+        "product": {
+          "added": 170,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-paired-owner/Cargo.toml",
+      "sha256": "7c5c57ca53296a04797bef6f739287772677b0e85518c526e4692728f2181512",
+      "physical_line_changes": {
+        "product": {
+          "added": 1,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-paired-owner/examples/registration.rs",
+      "sha256": "6f784ac7624ba689c4f8098a121a0c01e37daa75e8820d08a9099a9a35765fa9",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 148,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-paired-owner/src/registry.rs",
+      "sha256": "d96f1c945988d1c4ab4feb5844134cb04fc2bfc86df065c313596e14ee5cfcec",
+      "physical_line_changes": {
+        "product": {
+          "added": 108,
+          "deleted": 12
+        },
+        "test_and_verification": {
+          "added": 41,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+      "sha256": "3a0837f4ede9225703293a71a05c6a91d91ff3e6c99a5092de7ecfb818459436",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 2,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs",
+      "sha256": "0bda51d79b133e0c27a9c517a1aaa0d6fc31eccdb44e1c3eac03c8c86ee9f126",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 228,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-ws-client/Cargo.toml",
+      "sha256": "82bdc2b2297a4be8e3fc81e46b0af297289f61bec4c1acb1151905595556326a",
+      "physical_line_changes": {
+        "product": {
+          "added": 5,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "crates/buzz-ws-client/src/connection.rs",
+      "sha256": "4fd0a6022f331d2f41be49d0725cb3f62c1ed50c256d7d38fc12e292a64656c9",
+      "physical_line_changes": {
+        "product": {
+          "added": 13,
+          "deleted": 2
+        },
+        "test_and_verification": {
+          "added": 40,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "desktop/src-tauri/src/commands/paired_hosts.rs",
+      "sha256": "316ca92e99371ba51cd7060287f5a792991d763f0ac361f46a2d5da09205fcdb",
+      "physical_line_changes": {
+        "product": {
+          "added": 38,
+          "deleted": 62
+        }
+      }
+    },
+    {
+      "path": "desktop/src-tauri/src/commands/paired_hosts/create.rs",
+      "sha256": "231d0930fc39ae6edce780a515417978d907818e526e92679a0a1dccc54ba96d",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 23,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "desktop/src/features/agents/AGENTS.md",
+      "sha256": "ef9f2469ddfb5e9ec523269c1082db01842a5dde2904ebce1afc1ab9d552e93c",
+      "physical_line_changes": {
+        "documentation": {
+          "added": 11,
+          "deleted": 17
+        }
+      }
+    },
+    {
+      "path": "desktop/src/features/agents/ui/PairedHostsSection.jsdom-test.mjs",
+      "sha256": "7828a86454877adae7ae59f2b92fbf19b35933ad325191c6bb8f91ec0e16a053",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 202,
+          "deleted": 0
+        }
+      }
+    },
+    {
+      "path": "desktop/src/features/agents/ui/PairedHostsSection.tsx",
+      "sha256": "c407d1a449ad973732b4270bed78bde3d701c81f199efd0b1bde8360a14a43a0",
+      "physical_line_changes": {
+        "product": {
+          "added": 117,
+          "deleted": 199
+        }
+      }
+    },
+    {
+      "path": "scripts/paired-hosts/registration-systemd-smoke.py",
+      "sha256": "fd7cff0f1b536334d172bb70bce2a443fa3bf72e7c0dc56c8cf63f9518fa3a89",
+      "physical_line_changes": {
+        "test_and_verification": {
+          "added": 216,
+          "deleted": 0
+        }
+      }
+    }
+  ],
+  "emitted_lint_source_continuity": [
+    {
+      "path": "crates/buzz-core/src/paired_message/body.rs",
+      "byte_identical_to_base": true,
+      "sha256": "9fe92d97732b7186f4a60e7f2666d6b1506bcef47ead95137aeb37da63949507"
+    },
+    {
+      "path": "crates/buzz-hostd/src/request.rs",
+      "byte_identical_to_base": true,
+      "sha256": "0e7ab3cf04fd03488df423a5e2efafcdc9999b06255470ea14dfc6706dcd94bc"
+    },
+    {
+      "path": "crates/buzz-hostd/src/onboard.rs",
+      "byte_identical_to_base": true,
+      "sha256": "a1ef64c92e6f55f9f2edc846c25f2dbb07fc7b077e574d02cf96069987dd91a6"
+    },
+    {
+      "path": "crates/buzz-hostd/src/transport.rs",
+      "byte_identical_to_base": true,
+      "sha256": "8862c378735978aaebdb1210b630a54340c20e8e4fb52bbc0a06a77575b2ba9c"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "target/debug/buzz-hostd",
+      "bytes": 33802824,
+      "sha256": "81c383e053752de0eaebde46b782d0479406d1e3193394165256ee0bfd8cabf5",
+      "profile": "debug rehearsal/test, not deployment release"
+    },
+    {
+      "path": "target/debug/buzz-relay",
+      "bytes": 200740160,
+      "sha256": "c83432415b96475d849f29ce0409586b758e43a824b7517c1d4ff6be2fc8f61b",
+      "profile": "debug rehearsal/test, not deployment release"
+    },
+    {
+      "path": "target/debug/examples/registration",
+      "bytes": 28288568,
+      "sha256": "78998576e3c005d03010d1e6dea3e961a131f6765f27bf44a110d742b2def47f",
+      "profile": "debug rehearsal/test, not deployment release"
+    },
+    {
+      "path": "target/debug/examples/registration_isolation_probe",
+      "bytes": 768704,
+      "sha256": "a321f15408da6b0e4cd433df16eb916fa591000d6d4b741c86e383c142f03558",
+      "profile": "debug rehearsal/test, not deployment release"
+    },
+    {
+      "path": "target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd",
+      "bytes": 287285440,
+      "sha256": "63c1d034e14268ec0ce036f50ea0b5bdb59bf34620f44a07801d72a19661b0f4",
+      "profile": "debug rehearsal/test, not deployment release"
+    }
+  ]
+}

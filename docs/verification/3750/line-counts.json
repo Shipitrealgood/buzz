@@ -1,0 +1,114 @@
+{
+  "base": "621c777b886dad8aed7eeee4b428d57c153829e5",
+  "product_revision": "0026180c1ee00ca3f3eb583d30ca14302a415072",
+  "scope": "complete candidate including this documentation receipt commit; physical lines, not SLOC",
+  "totals": {
+    "product": {
+      "added": 561,
+      "deleted": 275
+    },
+    "test_and_verification": {
+      "added": 1007,
+      "deleted": 6
+    },
+    "documentation": {
+      "added": 1465,
+      "deleted": 17
+    }
+  },
+  "all_added": 3033,
+  "all_deleted": 298,
+  "documentation_paths": [
+    {
+      "path": "desktop/src/features/agents/AGENTS.md",
+      "added": 11,
+      "deleted": 17
+    },
+    {
+      "path": "docs/briefs/3750-registration-integration-execution.md",
+      "added": 149,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/artifact-build.txt",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/cleanup.json",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/clippy-dependencies.txt",
+      "added": 108,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/clippy-selected.txt",
+      "added": 79,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/execution-ledger.md",
+      "added": 21,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/libraries.txt",
+      "added": 46,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/line-counts.json",
+      "added": 114,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/ordinary.txt",
+      "added": 110,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/registration.txt",
+      "added": 69,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/run-index.json",
+      "added": 134,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/size.txt",
+      "added": 35,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/source-audit.json",
+      "added": 303,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/ui.txt",
+      "added": 10,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/unit-static.txt",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/windows-journey.md",
+      "added": 160,
+      "deleted": 0
+    },
+    {
+      "path": "docs/verification/3750/wsl-fixture-handoff.md",
+      "added": 106,
+      "deleted": 0
+    }
+  ],
+  "product_test_per_path": "source-audit.json"
+}

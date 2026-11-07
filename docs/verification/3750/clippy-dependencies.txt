@@ -1,0 +1,108 @@
+    Checking zeroize v1.9.0
+    Checking smallvec v1.15.1
+    Checking serde_core v1.0.228
+    Checking rustls-pki-types v1.14.1
+    Checking once_cell v1.21.4
+    Checking tokio v1.52.3
+    Checking serde v1.0.228
+    Checking subtle v2.6.1
+    Checking aws-lc-rs v1.18.1
+    Checking icu_normalizer v2.2.0
+    Checking idna_adapter v1.2.2
+    Checking rustls-webpki v0.103.16
+    Checking slab v0.4.12
+    Checking rustls v0.23.46
+    Checking futures-util v0.3.34
+    Checking idna v1.1.0
+    Checking form_urlencoded v1.2.2
+    Checking url v2.5.8
+    Checking memchr v2.8.0
+    Checking tracing-core v0.1.36
+    Checking log v0.4.29
+    Checking serde_json v1.0.150
+    Checking tracing v0.1.44
+    Checking digest v0.10.7
+    Checking bitcoin_hashes v0.14.1
+    Checking secp256k1 v0.29.1
+    Checking crypto-common v0.2.2
+    Checking tokio-rustls v0.26.4
+    Checking nostr v0.44.7
+    Checking digest v0.11.3
+    Checking sha1 v0.10.6
+    Checking webpki-roots v1.0.10
+    Checking futures-channel v0.3.34
+    Checking tungstenite v0.29.0
+    Checking hyper v1.9.0
+    Checking webpki-roots v0.26.11
+    Checking num-traits v0.2.19
+    Checking ipnet v2.12.0
+    Checking chrono v0.4.45
+    Checking hyper-util v0.1.20
+    Checking rustls-native-certs v0.8.3
+    Checking tower v0.5.3
+    Checking tokio-tungstenite v0.29.0
+    Checking hmac v0.13.0
+    Checking sha2 v0.11.0
+    Checking uuid v1.23.1
+    Checking tower-http v0.6.11
+    Checking hyper-rustls v0.27.9
+    Checking buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Checking rustls-platform-verifier v0.7.0
+    Checking tokio-util v0.7.18
+    Checking rusqlite v0.40.2
+    Checking reqwest v0.13.4
+    Checking buzz-ws-client v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-ws-client)
+    Checking tempfile v3.27.0
+error: large size difference between variants
+   --> crates/buzz-core/src/paired_message/body.rs:9:1
+    |
+  9 | /   pub enum Body {
+ 10 | |       InventoryQuery {
+ 11 | |           pair_ack_id: String,
+ 12 | |           nonce: String,
+...   |
+ 23 | | /     Create {
+ 24 | | |         request_id: String,
+ 25 | | |         catalog_id: String,
+ 26 | | |         runtime: String,
+...   | |
+ 30 | | |         channels: Vec<String>,
+ 31 | | |     },
+    | | |_____- the second-largest variant contains at least 192 bytes
+...   |
+ 67 | | /     Credentials {
+ 68 | | |         request_id: String,
+ 69 | | |         intent_id: String,
+ 70 | | |         commit_id: String,
+...   | |
+ 74 | | |         registration: nostr::Event,
+ 75 | | |     },
+    | | |_____- the largest variant contains at least 416 bytes
+...   |
+109 | |       },
+110 | |   }
+    | |___^ the entire enum is at least 416 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+ 74 -         registration: nostr::Event,
+ 74 +         registration: Box<nostr::Event>,
+    |
+
+error: methods called `from_*` usually take no `self`
+   --> crates/buzz-core/src/paired_message/body.rs:133:30
+    |
+133 |     pub(super) fn from_owner(&self) -> bool {
+    |                              ^^^^^
+    |
+    = help: consider choosing a less ambiguous name
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#wrong_self_convention
+    = note: `-D clippy::wrong-self-convention` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::wrong_self_convention)]`
+
+    Checking clap v4.6.6
+error: could not compile `buzz-core` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...

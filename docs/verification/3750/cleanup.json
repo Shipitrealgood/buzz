@@ -1,0 +1,8 @@
+{
+  "fixture_databases_before_teardown": 0,
+  "remaining_task_containers": [],
+  "remaining_source_or_fixture_processes": [],
+  "synthetic_tls_private_keys_present": [],
+  "teardown": "scripts/3720-registration-proof.sh down completed exit 0; its docker rm -fv removed anonymous fixture volumes",
+  "retained": "worktree, ignored dependency/build cache, public fixture CA and nonsecret build artifacts"
+}
