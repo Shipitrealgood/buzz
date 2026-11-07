@@ -1,5 +1,7 @@
 # #3750 — Windows/hostd registration integration, independent review
 
+**Continuation notice:** the initial no-source-rework recommendation below is superseded by [the existing-smoke-suite addendum](3750-registration-integration-smoke-addendum.md). M-1 requires a narrow test repair before acceptance. The initial measurements remain valid; no production defect was established.
+
 2026-11-07. **Source review passes with no supported source defects: C=0 / H=0 / M=0 / L=0. Full #3750 acceptance remains open; this is not a merge-safe or platform-complete verdict.** The actual service gate, Windows gates/artifacts/native journey and human confirmation have not run in this review. The footer uses `rework`/`partial` for these incomplete required obligations; it does not request an implementation repair.
 
 Reviewed range: `621c777b886dad8aed7eeee4b428d57c153829e5..d67ecff347bf81392adad6345e05c43634b4d9d1`, including product commits `8404ea2c3070622eeffc7341a24ccb4b89f08d4a` and `0026180c1ee00ca3f3eb583d30ca14302a415072`, in `/home/bryce/services/buzz-wt-3720-host-registration`. The worktree was clean when ownership transferred. Requested configuration: **gpt-6-astra/high**. The reviewer has no independent runtime model/reasoning attestation; runtime identity is **unknown**. First review, repair rounds **0**.
