@@ -1,28 +1,43 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { Host } from "../../src/features/agents/ui/PairedHostsSection";
 import { installMockBridge } from "../helpers/bridge";
+
+type HostCall = { command: string; args?: Record<string, unknown> };
+type Fixture = {
+  supported: boolean;
+  available: boolean;
+  listError: boolean;
+  hosts: Host[];
+  calls: HostCall[];
+};
+declare global {
+  interface Window {
+    __PAIRED_HOSTS_FIXTURE__: Fixture;
+  }
+}
 
 async function open(
   page: Page,
-  supported: boolean,
-  platform = "Win32",
-  ownerOnly = false,
+  options: {
+    platform?: string;
+    supported?: boolean;
+    available?: boolean;
+    listError?: boolean;
+    empty?: boolean;
+  } = {},
 ) {
-  await installMockBridge(
-    page,
-    { ownerOnlyAccessBuild: ownerOnly },
-    { relayWsUrl: "wss://community.example" },
-  );
   await page.addInitScript(
     (platform) =>
       Object.defineProperty(navigator, "platform", {
         value: platform,
         configurable: true,
       }),
-    platform,
+    options.platform ?? "Win32",
   );
+  await installMockBridge(page, {}, { relayWsUrl: "wss://community.example" });
   await page.goto("/");
   await page.getByTestId("open-agents-view").waitFor();
-  await page.evaluate((supported) => {
+  await page.evaluate((options) => {
     const api = (
       window as unknown as {
         __TAURI_INTERNALS__: {
@@ -34,281 +49,260 @@ async function open(
       }
     ).__TAURI_INTERNALS__;
     const previous = api.invoke.bind(api);
-    const hosts = [
-      ["31", "11"],
-      ["32", "22"],
-    ].map(([g, h]) => ({
+    const host = (g: string, h: string, label = "Workshop"): Host => ({
       scope: {
         community: "https://community.example",
         generation: g.repeat(32),
         host: h.repeat(32),
         owner: "deadbeef".repeat(8),
       },
-      requests: [] as {
-        request_id: string;
-        name: string;
-        runtime: string;
-        agent: string | null;
-        state: string;
-        steps: string[];
-        issue: string | null;
-        evidence_incomplete: boolean;
-      }[],
-      catalog_revision: "ab".repeat(32),
       state: "paired",
-      fresh: false,
+      label,
+      // Even cached legacy capability fields must not become registration UI.
+      requests: [],
+      runtimes: ["fixture/hidden-runtime"],
+      catalog_revision: "ab".repeat(32),
+      capacity: 4,
+      fresh: true,
       inventory_id: g.repeat(32),
-      fresh_for_ms: 0,
-      label: "Workshop",
-      runtimes: ["test/echo"],
-    }));
+      fresh_for_ms: 60_000,
+    });
+    const fixture: Fixture = {
+      supported: options.supported ?? true,
+      available: options.available ?? true,
+      listError: options.listError ?? false,
+      hosts: options.empty ? [] : [host("31", "11"), host("32", "22")],
+      calls: [],
+    };
+    window.__PAIRED_HOSTS_FIXTURE__ = fixture;
     api.invoke = async (command, args) => {
+      if (!command.startsWith("paired_host_")) return previous(command, args);
+      fixture.calls.push({ command, args: structuredClone(args) });
+      if (
+        args?.expectedRelay !== "wss://community.example" ||
+        args?.expectedOwner !== "deadbeef".repeat(8)
+      )
+        throw new Error("wrong active registration session");
       if (command === "paired_host_list") {
-        if (document.body.dataset.supersede) {
-          hosts[1].inventory_id = "cc".repeat(32);
-          hosts[1].label = "New catalog";
-        }
-        document.body.dataset.pairedListRead = "yes";
-        return { supported, available: true, hosts: structuredClone(hosts) };
+        if (fixture.listError) throw new Error("Fixture connection failed");
+        return {
+          supported: fixture.supported,
+          available: fixture.available,
+          hosts: structuredClone(fixture.hosts),
+        };
       }
       if (command === "paired_host_pair") {
-        if (args?.invitation !== "private-console-test-input")
+        if (args.invitation === "expired-fixture-input")
+          throw new Error("Invitation expired");
+        if (args.invitation !== "private-console-test-input")
           throw new Error("wrong invitation");
-        hosts.push({
-          ...hosts[0],
-          label: "Third host",
+        const pending = {
+          ...host("33", "44", "Added host"),
           state: "pair-pending",
-          scope: {
-            ...hosts[0].scope,
-            generation: "33".repeat(32),
-            host: "44".repeat(32),
-          },
-        });
-        return hosts[2];
-      }
-      if (command === "paired_host_unpair") {
-        const host = hosts.find(
-          (h) =>
-            h.scope.host === args?.host &&
-            h.scope.generation === args?.generation &&
-            h.scope.owner === args?.expectedOwner,
-        );
-        if (!host) throw new Error("wrong host");
-        host.state = "unpair-pending";
-        return host;
-      }
-      if (command === "paired_host_create") {
-        const h = hosts.find(
-          (h) =>
-            h.scope.host === args?.host &&
-            h.scope.generation === args?.generation &&
-            h.scope.owner === args?.expectedOwner,
-        );
-        if (!h || h.inventory_id !== args?.catalogId)
-          throw new Error("wrong create target");
-        const draft = args.draft as {
-          name: string;
-          runtime: string;
-          policy: { respond_to: string; channel_add_policy: string };
-          channels: string[];
         };
-        if (
-          draft.name !== "Build helper" ||
-          draft.runtime !== "test/echo" ||
-          draft.policy.respond_to !== "owner-only" ||
-          draft.policy.channel_add_policy !== "owner_only" ||
-          draft.channels.length !== 1
-        )
-          throw new Error("wrong create inputs");
-        const tap = String(args.tap);
-        if (!/^[0-9a-f]{64}$/.test(tap)) throw new Error("invalid tap");
-        if (!h.requests.length) {
-          h.requests.push({
-            request_id: tap,
-            name: draft.name,
-            runtime: draft.runtime,
-            agent: null,
-            state: "pending",
-            steps: [],
-            issue: null,
-            evidence_incomplete: false,
-          });
-          throw new Error("Lost IPC response after durable save.");
-        }
-        if (h.requests[0].request_id !== tap)
-          throw new Error("duplicate create after lost response");
-        return h.requests[0];
+        fixture.hosts.push(pending);
+        return structuredClone(pending);
       }
-      if (command === "paired_host_resume") {
-        const r = hosts
-          .find((h) => h.scope.host === args?.host)
-          ?.requests.find((r) => r.request_id === args?.requestId);
-        if (!r) throw new Error("wrong resume target");
-        document.body.dataset.resumed = r.request_id;
-        r.evidence_incomplete = document.body.dataset.pruned === "yes";
-        if (document.body.dataset.finish) {
-          r.state = "ready";
-          r.agent = "cd".repeat(32);
-          r.steps = ["verified"];
-        }
-        return r;
-      }
-      if (command === "paired_host_history_ids")
-        return [["33".repeat(32)], null];
-      if (command === "paired_host_history")
-        return {
-          name: "Other device agent",
-          host_state: "ready",
-          agent: "ef".repeat(32),
-        };
-      if (command === "paired_host_refresh") {
-        const host = hosts.find(
+      if (
+        command === "paired_host_refresh" ||
+        command === "paired_host_unpair"
+      ) {
+        const selected = fixture.hosts.find(
           (h) =>
-            h.scope.host === args?.host &&
-            h.scope.generation === args?.generation,
+            h.scope.host === args.host &&
+            h.scope.generation === args.generation,
         );
-        if (!host) throw new Error("wrong host");
-        return {
-          ...host,
-          fresh: true,
-          fresh_for_ms: document.body.dataset.shortInventory ? 500 : 60_000,
-        };
+        if (!selected) throw new Error("wrong host coordinate");
+        if (command === "paired_host_unpair") selected.state = "unpair-pending";
+        return structuredClone(selected);
       }
-      return previous(command, args);
+      // No successful provisioning/history mock remains to mask accidental IPC.
+      throw new Error(`unexpected registration IPC: ${command}`);
     };
-  }, supported);
+  }, options);
   await page.getByTestId("open-agents-view").click();
   await expect(page.getByTestId("agents-page-content")).toBeVisible();
 }
-test("Windows pairs another host and routes identical labels by enrolled identity", async ({
-  page,
-}) => {
-  await open(page, true);
-  const panel = page.getByRole("region", { name: "My hosts" });
-  const hosts = panel.getByRole("listitem");
-  await expect(hosts).toHaveCount(2);
-  await hosts.nth(1).getByRole("button", { name: "Check host" }).click();
-  await expect(hosts.nth(1)).toContainText("Host confirmed");
-  await expect(hosts.first()).toContainText("inventory cached");
-  await panel.getByRole("button", { name: "Pair host" }).click();
-  const input = panel.getByLabel("Private host invitation");
-  await expect(input).toHaveAttribute("type", "password");
-  await input.fill("private-console-test-input");
-  await input.press("Enter");
-  await expect(hosts).toHaveCount(3);
-  await expect(hosts.last()).toContainText("Awaiting host acknowledgement");
-  await hosts
-    .nth(1)
-    .getByRole("button", { name: "Unpair", exact: true })
-    .click();
-  await hosts.nth(1).getByRole("button", { name: "Confirm unpair" }).click();
-  await expect(hosts.nth(1)).toContainText("Unpair pending at host");
-  await expect(hosts.first()).toContainText("inventory cached");
-});
-test("old relay hides Windows host management", async ({ page }) => {
-  await open(page, false);
-  await expect(page.locator("body")).toHaveAttribute(
-    "data-paired-list-read",
-    "yes",
-  );
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+
+async function calls(page: Page, command?: string) {
+  return page.evaluate(
+    (command) =>
+      window.__PAIRED_HOSTS_FIXTURE__.calls.filter(
+        (call) => command === undefined || call.command === command,
       ),
+    command,
   );
-  await expect(page.getByRole("region", { name: "My hosts" })).toHaveCount(0);
-});
-test("other platforms keep the stock Agents surface", async ({ page }) => {
-  await open(page, true, "Linux x86_64");
-  await expect(page.getByRole("region", { name: "My hosts" })).toHaveCount(0);
-});
+}
 
-test("host confirmation expires on native lifetime and clears on a newer inventory event", async ({
+async function registrationOnly(page: Page, panel: Locator) {
+  await expect(
+    panel.getByRole("button", {
+      name: /^(Add agent|Create|Resume request|Request history|Check host)$/,
+    }),
+  ).toHaveCount(0);
+  await expect(panel.getByLabel("Host for new agent")).toHaveCount(0);
+  await expect(
+    panel.getByRole("form", { name: "Create an agent on this host" }),
+  ).toHaveCount(0);
+  await expect(panel).not.toContainText("fixture/hidden-runtime");
+  await expect(panel).not.toContainText("Installed runtimes:");
+  await expect(panel).not.toContainText("Host confirmed");
+  await expect(
+    panel.getByText(/^(online|host online|available)$/i),
+  ).toHaveCount(0);
+  await expect(panel).not.toContainText("inventory cached");
+  expect(
+    (await calls(page))
+      .map((call) => call.command)
+      .filter(
+        (command) =>
+          ![
+            "paired_host_list",
+            "paired_host_pair",
+            "paired_host_refresh",
+            "paired_host_unpair",
+          ].includes(command),
+      ),
+  ).toEqual([]);
+}
+
+test("Windows routes registration refresh and revoke by identity despite identical labels", async ({
   page,
 }) => {
-  await open(page, true);
-  const rows = page
-    .getByRole("region", { name: "My hosts" })
-    .getByRole("listitem");
-  const second = rows.nth(1);
-  await page.evaluate(() => {
-    document.body.dataset.shortInventory = "yes";
-  });
-  await second.getByRole("button", { name: "Check host" }).click();
-  await expect(second).toContainText("Host confirmed");
-  await expect(second).toContainText("inventory cached", { timeout: 2500 });
-  await page.evaluate(() => {
-    delete document.body.dataset.shortInventory;
-  });
-  await second.getByRole("button", { name: "Check host" }).click();
-  await expect(second).toContainText("Host confirmed");
-  await page.evaluate(() => {
-    document.body.dataset.supersede = "yes";
-  });
-  await rows.first().getByRole("button", { name: "Check host" }).click();
-  await expect(second).toContainText("New catalog");
-  await expect(second).toContainText("inventory cached");
-});
-
-test("Create on selected host preserves one tap through lost IPC, resumes status and verifies separate history", async ({
-  page,
-}) => {
-  await open(page, true, "Win32", true);
+  await open(page);
   const panel = page.getByRole("region", { name: "My hosts" });
   const rows = panel.getByRole("listitem");
-  await panel
-    .getByLabel("Host for new agent")
-    .selectOption("32".repeat(32) + "22".repeat(32));
-  await panel.getByRole("button", { name: "Add agent", exact: true }).click();
-  const form = rows
-    .nth(1)
-    .getByRole("form", { name: "Create an agent on this host" });
-  await form.getByLabel("Agent name").fill("Build helper");
-  await form.getByRole("checkbox", { name: "general", exact: true }).check();
-  await form.getByRole("button", { name: "Create", exact: true }).dblclick();
-  await expect(form.getByRole("alert")).toContainText("Lost IPC response");
-  await expect(
-    rows.nth(1).getByRole("group", { name: "Build helper provisioning" }),
-  ).toContainText("Pending");
-  await expect(rows.first()).not.toContainText("Build helper");
-  await form.getByRole("button", { name: "Retry same request" }).click();
-  await expect(form).toHaveCount(0);
-  await expect(page.locator("body")).toHaveAttribute(
-    "data-resumed",
-    /^[0-9a-f]{64}$/,
-  );
-  const progress = rows
-    .nth(1)
-    .getByRole("group", { name: "Build helper provisioning" });
-  await page.evaluate(() => {
-    document.body.dataset.pruned = "yes";
-  });
-  await progress.getByRole("button", { name: "Resume request" }).click();
-  await expect(progress).toContainText("Evidence incomplete");
-  await expect(progress).toContainText("Pending");
-  await page.evaluate(() => {
-    delete document.body.dataset.pruned;
-  });
-  await progress.getByRole("button", { name: "Resume request" }).click();
-  await expect(progress).not.toContainText("Evidence incomplete");
-  await expect(progress).toContainText("Pending");
-  await page.evaluate(() => {
-    document.body.dataset.finish = "yes";
-  });
-  await rows.nth(1).getByRole("button", { name: "Resume request" }).click();
-  await expect(
-    rows.nth(1).getByRole("group", { name: "Build helper provisioning" }),
-  ).toContainText("Ready");
-  await rows.first().getByRole("button", { name: "Request history" }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("Workshop");
+  await expect(rows.nth(1)).toContainText("Workshop");
+  const selected = {
+    expectedRelay: "wss://community.example",
+    expectedOwner: "deadbeef".repeat(8),
+    host: "22".repeat(32),
+    generation: "32".repeat(32),
+  };
   await rows
-    .first()
-    .getByRole("button", { name: /Inspect request/ })
+    .nth(1)
+    .getByRole("button", { name: "Refresh registration" })
     .click();
-  await expect(rows.first()).toContainText(
-    "Other device agent · host reported Ready",
+  await expect
+    .poll(() => calls(page, "paired_host_refresh"))
+    .toEqual([{ command: "paired_host_refresh", args: selected }]);
+  await expect(rows.nth(1)).toContainText("Registered");
+  await rows
+    .nth(1)
+    .getByRole("button", { name: "Revoke registration" })
+    .click();
+  await rows
+    .nth(1)
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  expect(await calls(page, "paired_host_unpair")).toEqual([]);
+  await rows
+    .nth(1)
+    .getByRole("button", { name: "Revoke registration" })
+    .click();
+  await rows.nth(1).getByRole("button", { name: "Confirm revoke" }).click();
+  await expect(rows.nth(1)).toContainText("Revocation pending");
+  expect(await calls(page, "paired_host_unpair")).toEqual([
+    { command: "paired_host_unpair", args: selected },
+  ]);
+  await expect(rows.first()).toContainText("Registered");
+  await page.evaluate(() => {
+    window.__PAIRED_HOSTS_FIXTURE__.hosts[1].state = "unpaired";
+  });
+  await expect(rows.nth(1)).toContainText("Revoked", { timeout: 10_000 });
+  await expect(rows.first()).toContainText("Registered");
+  await expect(
+    rows.nth(1).getByRole("button", { name: "Revoke registration" }),
+  ).toHaveCount(0);
+  await registrationOnly(page, panel);
+});
+
+test("empty supported Windows directory offers Add Host, cancel, expired retry and registration", async ({
+  page,
+}) => {
+  await open(page, { empty: true });
+  const panel = page.getByRole("region", { name: "My hosts" });
+  const rows = panel.getByRole("listitem");
+  await expect(panel).toContainText("No registered hosts");
+  await panel.getByRole("button", { name: "Add Host", exact: true }).click();
+  const input = panel.getByLabel("Private host invitation");
+  await expect(input).toHaveAttribute("type", "password");
+  await input.fill("cancelled-fixture-input");
+  await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(await calls(page, "paired_host_pair")).toEqual([]);
+  await panel.getByRole("button", { name: "Add Host", exact: true }).click();
+  await expect(input).toHaveValue("");
+  await input.fill("expired-fixture-input");
+  await input.press("Enter");
+  await expect(panel.getByRole("alert")).toHaveText("Invitation expired");
+  await expect(input).toHaveValue("");
+  await expect(rows).toHaveCount(0);
+  await input.fill("private-console-test-input");
+  await panel.getByRole("button", { name: "Submit invitation" }).click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Registration pending");
+  await expect(input).toHaveCount(0);
+  expect(
+    (await calls(page, "paired_host_pair")).map(
+      (call) => call.args?.invitation,
+    ),
+  ).toEqual(["expired-fixture-input", "private-console-test-input"]);
+  await page.evaluate(() => {
+    window.__PAIRED_HOSTS_FIXTURE__.hosts[0].state = "paired";
+  });
+  await expect(rows.first()).toContainText("Registered", { timeout: 10_000 });
+  await registrationOnly(page, panel);
+});
+
+test("unsupported Windows community explains registration support without offering Add Host", async ({
+  page,
+}) => {
+  await open(page, { supported: false, empty: true });
+  const panel = page.getByRole("region", { name: "My hosts" });
+  await expect(panel).toContainText(
+    "Host registration is not supported by this community.",
   );
   await expect(
-    rows.first().getByRole("button", { name: "Resume request" }),
+    panel.getByRole("button", { name: "Add Host", exact: true }),
   ).toHaveCount(0);
+  await registrationOnly(page, panel);
+});
+
+for (const listError of [false, true]) {
+  test(`Windows ${listError ? "failed" : "unavailable"} directory retains Retry without authorizing Add Host`, async ({
+    page,
+  }) => {
+    await open(page, { available: false, listError, empty: true });
+    const panel = page.getByRole("region", { name: "My hosts" });
+    await expect(panel).toContainText("Community unavailable.");
+    await expect(
+      panel.getByRole("button", { name: "Add Host", exact: true }),
+    ).toHaveCount(0);
+    await expect(panel).not.toContainText("No registered hosts");
+    if (listError)
+      await expect(panel.getByRole("alert")).toHaveText(
+        "Fixture connection failed",
+      );
+    await page.evaluate(() => {
+      window.__PAIRED_HOSTS_FIXTURE__.available = true;
+      window.__PAIRED_HOSTS_FIXTURE__.listError = false;
+    });
+    await panel.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(panel).toContainText("No registered hosts");
+    await expect(
+      panel.getByRole("button", { name: "Add Host", exact: true }),
+    ).toBeVisible();
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+    await registrationOnly(page, panel);
+  });
+}
+
+test("other platforms keep the stock Agents surface without registration IPC", async ({
+  page,
+}) => {
+  await open(page, { platform: "Linux x86_64" });
+  await expect(page.getByRole("region", { name: "My hosts" })).toHaveCount(0);
+  expect(await calls(page)).toEqual([]);
 });
