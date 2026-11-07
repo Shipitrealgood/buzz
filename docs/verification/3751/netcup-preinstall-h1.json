@@ -1,0 +1,314 @@
+{
+  "finding": "H-1",
+  "status": "repair verified; independent re-gate pending",
+  "base": "d2e41477d40917b518ea85070f6c2912114974fb",
+  "archive_name": "netcup-registration-f316fb46-h1-419b315bb4cd.tar.gz",
+  "archive_sha256": "419b315bb4cdbd7320bba92437a9995e2227568cf1438c770d4a70b3e9906982",
+  "manifest_sha256": "795bde032271f7d923a08eda2f659f30544e9f625db4cea68d18b030b3696659",
+  "changed_package_files": [
+    "OPERATOR.md",
+    "MANIFEST.sha256"
+  ],
+  "unchanged_file_sha256": {
+    "hosts": "e76ccac22b87b5e8cd41268f096da2efb024eb3f028db7d55811804b5c3e42ff",
+    "SOURCE.json": "1ff69d5801691c2a0d2d0c4a3b8ff640a9e322d08dea41441f491e47e409b839",
+    "buzz-hostd": "06ef06b83181db97338851b01a08627d7fd23c437bda7b6aac602cdb9124230a",
+    "buzz-host-registration.service": "9cb7a6d7b9df3e18b39d46916d1d7b32140e0567e123305dfe8685a5e8a03bce",
+    "nsswitch.conf": "bfc6be87fadc435bad993523e78249bc43ed4c84f1ca6cb05b832d43087dc25b",
+    "controller.conf": "df305f3dfe9d594cdbd2962c9910d5d126db881bed2458999b967d9d5706c14d"
+  },
+  "checks": {
+    "status": "PASS",
+    "total": 45,
+    "original_fail_open_reproductions": 3,
+    "repaired_clean_proceeds": 1,
+    "repaired_collision_error_refusals": 41,
+    "actual_lookup_timeouts": 4,
+    "temporary_cleanup_complete": true
+  },
+  "original_preflight_sha256": "a7033939eded2b6cfaac73899af99e1602cb5036b227419ecd81580ffc4f81f9",
+  "repaired_preflight_sha256": "9ae94acc21f55d5d54293bb02db89f665150e42c97091f631085d63cf0e5a0c7",
+  "cases": [
+    {
+      "case": "original-existing-file-fails-open",
+      "exit": 0,
+      "mutation_marker_reached": true,
+      "elapsed_seconds": 0.01
+    },
+    {
+      "case": "original-existing-account-fails-open",
+      "exit": 0,
+      "mutation_marker_reached": true,
+      "elapsed_seconds": 0.01
+    },
+    {
+      "case": "original-existing-process-fails-open",
+      "exit": 0,
+      "mutation_marker_reached": true,
+      "elapsed_seconds": 0.009
+    },
+    {
+      "case": "repaired-clean",
+      "exit": 0,
+      "mutation_marker_reached": true,
+      "elapsed_seconds": 0.033
+    },
+    {
+      "case": "repaired-file-path-0",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.022
+    },
+    {
+      "case": "repaired-file-path-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.028
+    },
+    {
+      "case": "repaired-file-path-2",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.024
+    },
+    {
+      "case": "repaired-file-path-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-file-path-4",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-file-path-5",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.019
+    },
+    {
+      "case": "repaired-directory-path-0",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.018
+    },
+    {
+      "case": "repaired-directory-path-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.018
+    },
+    {
+      "case": "repaired-directory-path-2",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.018
+    },
+    {
+      "case": "repaired-directory-path-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.019
+    },
+    {
+      "case": "repaired-directory-path-4",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.021
+    },
+    {
+      "case": "repaired-directory-path-5",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.018
+    },
+    {
+      "case": "repaired-dangling-path-0",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.021
+    },
+    {
+      "case": "repaired-dangling-path-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-dangling-path-2",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.021
+    },
+    {
+      "case": "repaired-dangling-path-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-dangling-path-4",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.018
+    },
+    {
+      "case": "repaired-dangling-path-5",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-path-lookup-error",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-passwd-match",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.023
+    },
+    {
+      "case": "repaired-passwd-error-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.023
+    },
+    {
+      "case": "repaired-passwd-error-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.022
+    },
+    {
+      "case": "repaired-passwd-error-126",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.021
+    },
+    {
+      "case": "repaired-passwd-error-127",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.02
+    },
+    {
+      "case": "repaired-passwd-timeout",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 5.02
+    },
+    {
+      "case": "repaired-group-match",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.026
+    },
+    {
+      "case": "repaired-group-error-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.028
+    },
+    {
+      "case": "repaired-group-error-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.023
+    },
+    {
+      "case": "repaired-group-error-126",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.023
+    },
+    {
+      "case": "repaired-group-error-127",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.021
+    },
+    {
+      "case": "repaired-group-timeout",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 5.022
+    },
+    {
+      "case": "repaired-process-match",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.029
+    },
+    {
+      "case": "repaired-process-error-2",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.026
+    },
+    {
+      "case": "repaired-process-error-3",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.027
+    },
+    {
+      "case": "repaired-process-error-126",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.024
+    },
+    {
+      "case": "repaired-process-error-127",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.025
+    },
+    {
+      "case": "repaired-process-timeout",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 5.025
+    },
+    {
+      "case": "repaired-path-probe-1",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.009
+    },
+    {
+      "case": "repaired-path-probe-127",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.008
+    },
+    {
+      "case": "repaired-path-probe-timeout",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 5.008
+    },
+    {
+      "case": "repaired-package-hash-mismatch",
+      "exit": 1,
+      "mutation_marker_reached": false,
+      "elapsed_seconds": 0.006
+    }
+  ],
+  "syntax": "bash -n PASS",
+  "temporary_cleanup_complete": true,
+  "install_block_executed": false,
+  "retained_evidence": "all other original obligations accepted by preinstall first pass; no binary/unit/config delta",
+  "not_run": [
+    "installation",
+    "production identity/invitation/pairing",
+    "native Windows journey",
+    "actual reboot",
+    "unchanged service/build gates and unrelated CI"
+  ]
+}
