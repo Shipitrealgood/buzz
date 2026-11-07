@@ -15,3 +15,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 tracing = { workspace = true }
+
+# Windows communities may use an explicitly installed local/enterprise CA.
+# Keep normal TLS name/chain verification while honoring the OS trust store.
+[target.'cfg(windows)'.dependencies]
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }

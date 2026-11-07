@@ -318,10 +318,33 @@ mod tests {
         let state = crate::app_state::build_app_state();
         *state.relay_url_override.lock().unwrap() = Some("wss://paired.example".into());
         let owner = state.signing_keys().unwrap().public_key().to_hex();
+        assert!(Session::capture(&state, "wss://wrong.example", &owner)
+            .await
+            .is_err());
+        assert!(Session::capture(
+            &state,
+            "wss://paired.example",
+            &Keys::generate().public_key().to_hex()
+        )
+        .await
+        .is_err());
         let session = Session::capture(&state, "wss://paired.example", &owner)
             .await
             .unwrap();
         assert!(session.keys().is_ok());
+        state.reset_failed.store(true, Ordering::Release);
+        assert!(session.keys().is_err());
+        state.reset_failed.store(false, Ordering::Release);
+        let guard = state.workspace_apply_lock.lock().await;
+        assert!(session.keys().is_err());
+        drop(guard);
+        *state.relay_url_override.lock().unwrap() = Some("wss://other.example".into());
+        assert!(session.keys().is_err());
+        *state.relay_url_override.lock().unwrap() = Some("wss://paired.example".into());
+        let original = state.signing_keys().unwrap();
+        *state.keys.lock().unwrap() = Keys::generate();
+        assert!(session.keys().is_err());
+        *state.keys.lock().unwrap() = original;
         state.keyring_locked.store(true, Ordering::Release);
         assert!(session.keys().is_err());
         state.keyring_locked.store(false, Ordering::Release);

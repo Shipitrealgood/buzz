@@ -8,9 +8,6 @@ import { canonicalNpub, truncateNpub } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
-import { PairedAgentCreate } from "./PairedAgentCreate";
-import { PairedHostRequests, terminalHostRequest } from "./PairedHostRequests";
-
 export type HostRequest = {
   request_id: string;
   name: string;
@@ -53,18 +50,26 @@ function PairForm({
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return (
     <div className="space-y-2">
       <Button
         size="sm"
         variant="outline"
         aria-expanded={open}
+        disabled={busy}
         onClick={() => {
           setOpen(!open);
           setError("");
         }}
       >
-        Pair host
+        Add Host
       </Button>
       {open && (
         <form
@@ -81,12 +86,14 @@ function PairForm({
                 ...session,
                 invitation,
               });
-              setOpen(false);
+              if (mounted.current) setOpen(false);
             } catch (cause) {
-              setError(message(cause));
+              if (mounted.current) setError(message(cause));
             } finally {
-              setBusy(false);
-              reload();
+              if (mounted.current) {
+                setBusy(false);
+                reload();
+              }
             }
           }}
         >
@@ -110,7 +117,20 @@ function PairForm({
             minutes.
           </p>
           <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Pairing…" : "Submit invitation"}
+            {busy ? "Registering…" : "Submit invitation"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              if (input.current) input.current.value = "";
+              setOpen(false);
+              setError("");
+            }}
+          >
+            Cancel
           </Button>
         </form>
       )}
@@ -125,148 +145,96 @@ function PairForm({
 
 function HostRow({
   item,
-  creating,
-  close,
   session,
   reload,
 }: {
   item: Host;
-  creating: boolean;
-  close: () => void;
   session: Session;
   reload: () => void;
 }) {
-  const [busy, setBusy] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState("");
-  const [confirmed, setConfirmed] = React.useState<Host | null>(null);
-  const confirmedUntil = React.useRef(0);
-  const activeAction = React.useRef(0);
-  const checked = React.useRef(false);
   const [confirmUnpair, setConfirmUnpair] = React.useState(false);
+  const mounted = React.useRef(true);
   React.useEffect(() => {
-    if (!confirmed) return;
-    const timer = window.setTimeout(
-      () => setConfirmed(null),
-      Math.max(0, confirmedUntil.current - performance.now()),
-    );
-    return () => window.clearTimeout(timer);
-  }, [confirmed]);
-  const current =
-    item.state === "paired" &&
-    confirmed &&
-    item.inventory_id === confirmed.inventory_id &&
-    performance.now() < confirmedUntil.current
-      ? confirmed
-      : item;
-  const { generation, host } = item.scope;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const statuses: Record<string, string> = {
-    "pair-pending": "Awaiting host acknowledgement",
-    "pair-expired": "Invitation expired",
-    "unpair-pending": "Unpair pending at host",
-    unpaired: "Unpaired",
-    paired: current.fresh ? "Host confirmed" : "Paired · inventory cached",
+    "pair-pending": "Registration pending · awaiting host acknowledgement",
+    "pair-expired": "Invitation expired · add the host with a new invitation",
+    "unpair-pending": "Revocation pending · awaiting host acknowledgement",
+    unpaired: "Revoked",
+    paired: "Registered",
   };
-  const act = React.useCallback(
-    async (command: "paired_host_refresh" | "paired_host_unpair") => {
-      setBusy(command);
-      setNotice("");
-      setConfirmUnpair(false);
-      setConfirmed(null);
-      const action = ++activeAction.current;
-      const started = performance.now();
-      try {
-        const result = await invokeTauri<Host>(command, {
-          ...session,
-          host,
-          generation,
-        });
-        if (activeAction.current !== action) return;
-        if (result.fresh && result.inventory_id && result.fresh_for_ms > 0) {
-          confirmedUntil.current = started + result.fresh_for_ms;
-          setConfirmed(result);
-        }
-      } catch (cause) {
-        if (activeAction.current === action) setNotice(message(cause));
-      } finally {
-        if (activeAction.current === action) {
-          setBusy("");
-          reload();
-        }
+  async function act(command: "paired_host_refresh" | "paired_host_unpair") {
+    setBusy(true);
+    setNotice("");
+    setConfirmUnpair(false);
+    try {
+      await invokeTauri<Host>(command, {
+        ...session,
+        host: item.scope.host,
+        generation: item.scope.generation,
+      });
+    } catch (cause) {
+      if (mounted.current) setNotice(message(cause));
+    } finally {
+      if (mounted.current) {
+        setBusy(false);
+        reload();
       }
-    },
-    [session, host, generation, reload],
-  );
-  React.useEffect(() => {
-    if (item.state === "paired" && !item.label && !checked.current) {
-      checked.current = true;
-      void act("paired_host_refresh");
     }
-  }, [item.state, item.label, act]);
-  const checkedForCreate = React.useRef(false);
-  React.useEffect(() => {
-    if (!creating) {
-      checkedForCreate.current = false;
-      return;
-    }
-    if (!checkedForCreate.current) {
-      checkedForCreate.current = true;
-      if (!current.fresh && !busy) void act("paired_host_refresh");
-    }
-  }, [creating, current.fresh, busy, act]);
-  const [reviewed, setReviewed] = React.useState(false);
-  React.useEffect(() => {
-    if (!creating) setReviewed(false);
-    else if (current.fresh) setReviewed(true);
-  }, [creating, current.fresh]);
+  }
   return (
     <li className="space-y-2 rounded-md border p-3">
-      <div className="font-medium">{current.label ?? "Enrolled host"}</div>
+      <div className="font-medium">{item.label ?? "Linux host"}</div>
       <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">
-          Host key · {truncateNpub(host)}
+          Host key · {truncateNpub(item.scope.host)}
         </summary>
-        <code className="break-all">{canonicalNpub(host) ?? host}</code>
+        <code className="break-all">
+          {canonicalNpub(item.scope.host) ?? item.scope.host}
+        </code>
       </details>
-      <p className="text-sm">{statuses[current.state] ?? "Status unknown"}</p>
-      {current.runtimes.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Installed runtimes: {current.runtimes.join(", ")}
-          {current.capacity ? ` · Capacity: ${current.capacity}` : ""}
-        </p>
-      )}
+      <p className="text-sm">
+        {statuses[item.state] ?? "Registration status unknown"}
+      </p>
       {item.state === "paired" && (
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"
-            disabled={Boolean(busy)}
+            disabled={busy}
             onClick={() => void act("paired_host_refresh")}
           >
-            {busy === "paired_host_refresh" ? "Checking host…" : "Check host"}
+            Refresh registration
           </Button>
           <Button
             size="sm"
             variant="outline"
-            disabled={busy === "paired_host_unpair"}
+            disabled={busy}
             onClick={() => setConfirmUnpair(true)}
           >
-            Unpair
+            Revoke registration
           </Button>
         </div>
       )}
       {confirmUnpair && (
         <div className="space-y-2">
           <p className="text-sm">
-            Unpair this host for this community? Agents already created keep
-            running.
+            Revoke this host’s registration for this community?
           </p>
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="destructive"
+              disabled={busy}
               onClick={() => void act("paired_host_unpair")}
             >
-              Confirm unpair
+              Confirm revoke
             </Button>
             <Button
               size="sm"
@@ -278,24 +246,6 @@ function HostRow({
           </div>
         </div>
       )}
-      {creating &&
-        item.state === "paired" &&
-        (current.fresh || reviewed ? (
-          <PairedAgentCreate
-            current={current}
-            session={session}
-            reload={reload}
-            close={close}
-          />
-        ) : (
-          <div>
-            <p>Confirming installed runtimes…</p>
-            <Button size="sm" variant="outline" onClick={close}>
-              Cancel create
-            </Button>
-          </div>
-        ))}
-      <PairedHostRequests item={item} session={session} reload={reload} />
       {notice && (
         <p role="alert" className="text-sm text-destructive">
           {notice}
@@ -305,9 +255,7 @@ function HostRow({
   );
 }
 
-export function MyHosts({ session }: { session: Session }) {
-  const [selection, setSelection] = React.useState("");
-  const [creating, setCreating] = React.useState("");
+function HostDirectory({ session }: { session: Session }) {
   const directory = useQuery({
     queryKey: ["paired-hosts", session.expectedRelay, session.expectedOwner],
     queryFn: () => invokeTauri<Directory>("paired_host_list", session),
@@ -316,102 +264,63 @@ export function MyHosts({ session }: { session: Session }) {
     staleTime: 15_000,
     refetchInterval: ({ state }) =>
       state.data?.hosts.some(
-        (h) =>
-          h.state === "pair-pending" ||
-          h.state === "unpair-pending" ||
-          h.requests?.some(
-            (r) =>
-              !terminalHostRequest(r.state) &&
-              r.state !== "expired-awaiting-host",
-          ),
+        (host) =>
+          host.state === "pair-pending" || host.state === "unpair-pending",
       )
         ? 5000
-        : false,
+        : 60_000,
   });
-  if (
-    directory.isPending ||
-    (directory.data?.available && !directory.data.supported)
-  )
-    return null;
   const reload = () => {
     void directory.refetch();
   };
+  const supported =
+    directory.data?.supported && directory.data.available && !directory.error;
   return (
     <section aria-label="My hosts" className="space-y-3">
       <h2 className="text-sm font-semibold tracking-tight text-foreground">
         My hosts
       </h2>
+      {directory.isPending && (
+        <p className="text-sm">Checking host registration support…</p>
+      )}
+      {directory.data?.available && !directory.data.supported && (
+        <p className="text-sm">
+          Host registration is not supported by this community.
+        </p>
+      )}
       {directory.error && (
         <p role="alert" className="text-sm">
           {message(directory.error)}
         </p>
       )}
-      {!directory.data?.available && (
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            Community unavailable. Saved host information may be out of date.
-          </p>
-          <Button size="sm" variant="outline" onClick={reload}>
-            Retry
-          </Button>
-        </div>
-      )}
-      {directory.data?.supported && directory.data.available && (
-        <PairForm session={session} reload={reload} />
-      )}
-      {directory.data?.available && !directory.data.hosts.length && (
-        <p className="text-sm text-muted-foreground">
-          Pair a Linux host to see its installed runtimes.
-        </p>
-      )}
-      {directory.data?.supported &&
-        directory.data.available &&
-        directory.data.hosts.some((h) => h.state === "paired") && (
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm" htmlFor="paired-create-host">
-              Host for new agent
-            </label>
-            <select
-              id="paired-create-host"
-              value={selection}
-              onChange={(e) => {
-                setSelection(e.target.value);
-                setCreating("");
-              }}
-            >
-              <option value="">Select a host</option>
-              {directory.data.hosts
-                .filter((h) => h.state === "paired")
-                .map((h) => (
-                  <option
-                    key={h.scope.generation + h.scope.host}
-                    value={h.scope.generation + h.scope.host}
-                  >
-                    {h.label ?? "Host"} · {truncateNpub(h.scope.host)}
-                  </option>
-                ))}
-            </select>
-            <Button
-              size="sm"
-              disabled={
-                !directory.data.hosts.some(
-                  (h) =>
-                    h.state === "paired" &&
-                    h.scope.generation + h.scope.host === selection,
-                )
-              }
-              onClick={() => setCreating(selection)}
-            >
-              Add agent
+      {!directory.isPending &&
+        (!directory.data?.available || directory.error) && (
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              Community unavailable. Saved registration information may be out
+              of date.
+            </p>
+            <Button size="sm" variant="outline" onClick={reload}>
+              Retry
             </Button>
           </div>
         )}
+      {supported && <PairForm session={session} reload={reload} />}
+      {supported && !directory.data?.hosts.length && (
+        <p className="text-sm text-muted-foreground">
+          No registered hosts. Add a Linux host using its private invitation.
+        </p>
+      )}
+      {Boolean(directory.data?.hosts.length) && (
+        <p className="text-xs text-muted-foreground">
+          Registration records ownership. Connectivity and agent deployment are
+          not available here.
+        </p>
+      )}
       <ul className="grid gap-2">
         {directory.data?.hosts.map((item) => (
           <HostRow
             key={item.scope.generation + item.scope.host}
-            creating={creating === item.scope.generation + item.scope.host}
-            close={() => setCreating("")}
             item={item}
             session={session}
             reload={reload}
@@ -419,6 +328,15 @@ export function MyHosts({ session }: { session: Session }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+export function MyHosts({ session }: { session: Session }) {
+  return (
+    <HostDirectory
+      key={session.expectedRelay + session.expectedOwner}
+      session={session}
+    />
   );
 }
 

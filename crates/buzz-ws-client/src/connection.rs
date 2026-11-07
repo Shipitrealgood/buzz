@@ -144,11 +144,22 @@ impl NostrWsConnection {
         keys: &Keys,
         auth_tag: Option<&Tag>,
     ) -> Result<(), WsClientError> {
+        self.authenticate_with_signer(|challenge, relay| {
+            build_auth_event(challenge, relay, keys, auth_tag)
+        })
+        .await
+    }
+
+    /// Request the signature only after the network challenge arrives. Native
+    /// callers can revalidate their current identity/workspace at this boundary.
+    pub async fn authenticate_with_signer<F>(&mut self, sign: F) -> Result<(), WsClientError>
+    where
+        F: FnOnce(&str, &str) -> Result<Event, WsClientError>,
+    {
         let challenge = self
             .wait_for_auth_challenge(Duration::from_secs(AUTH_CHALLENGE_TIMEOUT_SECS))
             .await?;
-
-        let auth_event = build_auth_event(&challenge, &self.relay_url, keys, auth_tag)?;
+        let auth_event = sign(&challenge, &self.relay_url)?;
         let event_id = auth_event.id.to_hex();
 
         self.send_raw(&json!(["AUTH", auth_event])).await?;
@@ -382,6 +393,46 @@ mod tests {
     #[test]
     fn publish_ok_timeout_meets_floor() {
         const { assert!(PUBLISH_OK_TIMEOUT_SECS >= 30) };
+    }
+
+    #[tokio::test]
+    async fn changed_session_after_challenge_cannot_send_auth() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let active = Arc::new(AtomicBool::new(true));
+        let server_active = active.clone();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            server_active.store(false, Ordering::Release);
+            socket
+                .send(Message::Text(
+                    json!(["AUTH", "delayed-challenge"]).to_string().into(),
+                ))
+                .await
+                .unwrap();
+            // A refused signer must produce no AUTH frame.
+            match tokio::time::timeout(Duration::from_millis(100), socket.next()).await {
+                Err(_) | Ok(None) | Ok(Some(Err(_))) => (),
+                other => panic!("unexpected frame after session changed: {other:?}"),
+            }
+        });
+        let mut connection = NostrWsConnection::connect(&url).await.unwrap();
+        let keys = Keys::generate();
+        let result = connection
+            .authenticate_with_signer(|challenge, relay| {
+                if !active.load(Ordering::Acquire) {
+                    return Err(WsClientError::AuthFailed("session changed".into()));
+                }
+                build_auth_event(challenge, relay, &keys, None)
+            })
+            .await;
+        assert!(matches!(result, Err(WsClientError::AuthFailed(_))));
+        server.await.unwrap();
     }
 
     // The handshake callback's `Result<Response, ErrorResponse>` is fixed by tungstenite.

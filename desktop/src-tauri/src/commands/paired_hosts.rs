@@ -2,7 +2,10 @@
 //! native workspace. They never supply a network destination or signing key.
 use crate::{app_state::AppState, relay};
 use anyhow::{anyhow, ensure, Result};
-use buzz_paired_owner::{Device, Endpoint, HostView, Scope};
+use buzz_paired_owner::{
+    registry::{Registry, Unsupported},
+    Device, Endpoint, HostView, Scope,
+};
 use nostr::{Keys, PublicKey};
 use serde::Serialize;
 use std::{path::PathBuf, sync::atomic::Ordering};
@@ -79,6 +82,10 @@ impl<'a> Session<'a> {
             .try_lock()
             .map_err(|_| anyhow!("community switch in progress"))?;
         ensure!(
+            !self.state.reset_failed.load(Ordering::Acquire),
+            "identity reset incomplete"
+        );
+        ensure!(
             self.state
                 .workspace_apply_generation
                 .load(Ordering::Acquire)
@@ -121,7 +128,7 @@ pub struct HostDirectory {
 impl Session<'_> {
     async fn directory(&self, app: &AppHandle) -> Result<HostDirectory> {
         let mut device = device(app)?;
-        let local = device.hosts(&self.origin, &self.keys()?)?;
+        let local = device.registry_hosts(&self.origin, &self.keys()?)?;
         if !self.origin.starts_with("https://") {
             return Ok(HostDirectory {
                 supported: false,
@@ -129,55 +136,25 @@ impl Session<'_> {
                 hosts: vec![],
             });
         }
-        let endpoint = self.endpoint()?;
-        let cached = || HostDirectory {
-            supported: !local.is_empty(),
-            available: false,
-            hosts: local.clone(),
-        };
-        match endpoint.supported().await {
-            Ok(false) => {
+        let mut registry = match Registry::connect_guarded(&self.origin, &|| self.keys()).await {
+            Ok(registry) => registry,
+            Err(error) => {
                 self.keys()?;
                 return Ok(HostDirectory {
-                    supported: false,
-                    available: true,
-                    hosts: vec![],
+                    supported: !error.is::<Unsupported>(),
+                    available: error.is::<Unsupported>(),
+                    hosts: local,
                 });
             }
-            Err(_) => {
-                self.keys()?;
-                return Ok(cached());
-            }
-            Ok(true) => (),
-        }
-        let bindings = match endpoint.hosts(&|| self.keys()).await {
-            Ok(bindings) => bindings,
-            Err(_) => {
-                self.keys()?;
-                return Ok(cached());
-            }
         };
-        for binding in bindings {
-            device.restore(&self.origin, &self.keys()?, &binding)?;
-        }
-        let hosts = device.hosts(&self.origin, &self.keys()?)?;
-        let mut available = true;
-        // Retry exact saved ciphertext after an exit or interrupted HTTP response.
-        for (scope, packet, enrollment) in device.next_deliveries(&self.origin, &self.keys()?)? {
-            let result = if enrollment {
-                endpoint.claim(&self.keys()?, &scope, &packet).await
-            } else {
-                endpoint.post(&self.keys()?, &scope, &packet).await
-            };
-            if result.is_err() {
-                available = false;
-            }
-        }
+        let result = registry
+            .synchronize_guarded(&mut device, &|| self.keys())
+            .await;
         self.keys()?;
         Ok(HostDirectory {
             supported: true,
-            available,
-            hosts,
+            available: result.is_ok(),
+            hosts: device.registry_hosts(&self.origin, &self.keys()?)?,
         })
     }
 }
@@ -210,14 +187,11 @@ pub async fn paired_host_pair(
     let invitation = Zeroizing::new(invitation);
     async {
         let session = Session::capture(&state, &expected_relay, &expected_owner).await?;
-        let endpoint = session.endpoint()?;
-        ensure!(
-            endpoint.supported().await?,
-            "community does not support paired hosts"
-        );
+        let mut registry = Registry::connect_guarded(&session.origin, &|| session.keys()).await?;
         let mut device = device(&app)?;
-        let (scope, claim) = device.pair(&session.origin, &session.keys()?, &invitation)?;
-        endpoint.claim(&session.keys()?, &scope, &claim).await?;
+        let (scope, claim) =
+            device.pair_registry(&session.origin, &session.keys()?, &invitation)?;
+        registry.publish(&session.keys()?, claim).await?;
         device.view(&session.origin, &session.keys()?, &scope)
     }
     .await
@@ -236,12 +210,13 @@ pub async fn paired_host_refresh(
     async {
         let session = Session::capture(&state, &expected_relay, &expected_owner).await?;
         let scope = session.scope(&host, &generation)?;
-        let live = create::live_device(&session, &app, &scope)?;
-        let mut device = live.lock().await;
-        session
-            .endpoint()?
-            .refresh(&mut device, &|| session.keys(), &scope)
-            .await
+        let mut registry = Registry::connect_guarded(&session.origin, &|| session.keys()).await?;
+        let mut device = device(&app)?;
+        registry
+            .recover_guarded(&mut device, &|| session.keys())
+            .await?;
+        // A registration refresh does not certify connectivity or installed runtimes.
+        device.view(&session.origin, &session.keys()?, &scope)
     }
     .await
     .map_err(|e| e.to_string())
@@ -260,12 +235,13 @@ pub async fn paired_host_unpair(
         let session = Session::capture(&state, &expected_relay, &expected_owner).await?;
         let scope = session.scope(&host, &generation)?;
         let mut device = device(&app)?;
-        let p = device.unpair(&session.origin, &session.keys()?, &scope)?;
-        let endpoint = session.endpoint()?;
-        if endpoint.post(&session.keys()?, &scope, &p).await.is_ok() {
-            if let Ok(binding) = endpoint.binding(&session.keys()?, &scope).await {
-                device.restore(&session.origin, &session.keys()?, &binding)?;
-            }
+        let event = device.unpair_registry(&session.origin, &session.keys()?, &scope)?;
+        // Restrictive intent is already durable. A failed connection keeps the
+        // visible pending state; listing retries these exact signed bytes.
+        if let Ok(mut registry) =
+            Registry::connect_guarded(&session.origin, &|| session.keys()).await
+        {
+            registry.publish(&session.keys()?, event).await.ok();
         }
         device.view(&session.origin, &session.keys()?, &scope)
     }

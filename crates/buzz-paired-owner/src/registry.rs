@@ -73,6 +73,16 @@ fn new_grant(scope: Scope, claim: Packet) -> Grant {
     }
 }
 impl Device {
+    /// Registration-only cards; legacy provisioning journals are not v2 hosts.
+    pub fn registry_hosts(&self, selected: &str, keys: &Keys) -> Result<Vec<HostView>> {
+        let mut q = self.db.prepare("SELECT scope FROM grants WHERE json_extract(scope,'$.community')=? AND json_extract(scope,'$.owner')=? AND json_extract(data,'$.claim.event.kind')=43103 ORDER BY rowid")?;
+        let rows = q.query_map(
+            rusqlite::params![selected, keys.public_key().to_hex()],
+            |r| r.get::<_, String>(0),
+        )?;
+        rows.map(|r| self.view(selected, keys, &serde_json::from_str(&r?)?))
+            .collect()
+    }
     /// Persist an exact v2 claim in the existing outbox before publishing it.
     pub fn pair_registry(
         &mut self,
@@ -452,6 +462,17 @@ impl Device {
         Ok(e)
     }
 }
+/// Selected relay explicitly omits registration support; transport failures are
+/// a different state and must not be presented as unsupported or an empty list.
+#[derive(Debug)]
+pub struct Unsupported;
+impl std::fmt::Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("host registration unsupported")
+    }
+}
+impl std::error::Error for Unsupported {}
+
 /// Native WS transport pinned to the selected community, relay key and signer.
 pub struct Registry {
     ws: NostrWsConnection,
@@ -464,13 +485,41 @@ pub struct Registry {
 impl Registry {
     /// Discover explicit v2 support over selected-tenant HTTPS, then authenticate.
     pub async fn connect(selected: &str, keys: &Keys) -> Result<Self> {
-        let endpoint = Endpoint::new(selected, keys.public_key())?;
+        Self::connect_guarded(selected, &|| Ok(keys.clone())).await
+    }
+    /// Discover and authenticate with the native scope checked after every wait,
+    /// including the AUTH challenge, before using its signing authority.
+    pub async fn connect_guarded<F>(selected: &str, signer: &F) -> Result<Self>
+    where
+        F: Fn() -> Result<Keys>,
+    {
+        let owner = signer()?.public_key();
+        let endpoint = Endpoint::new(selected, owner)?;
         let metadata = endpoint.metadata().await?;
+        ensure!(signer()?.public_key() == owner, "active signer changed");
+        if metadata["host_registry"].is_null() {
+            return Err(Unsupported.into());
+        }
         let relay = Self::capability(&metadata)?;
-        let mut ws =
-            NostrWsConnection::connect(&selected.replacen("https://", "wss://", 1)).await?;
-        ws.authenticate(keys, None).await?;
-        Self::from_authenticated(selected, keys.public_key(), relay, ws)
+        let mut ws = tokio::time::timeout(
+            Duration::from_secs(10),
+            NostrWsConnection::connect(&selected.replacen("https://", "wss://", 1)),
+        )
+        .await??;
+        ws.authenticate_with_signer(|challenge, url| {
+            let keys = signer().map_err(|_| {
+                buzz_ws_client::WsClientError::AuthFailed("active session changed".into())
+            })?;
+            if keys.public_key() != owner {
+                return Err(buzz_ws_client::WsClientError::AuthFailed(
+                    "active signer changed".into(),
+                ));
+            }
+            buzz_ws_client::build_auth_event(challenge, url, &keys, None)
+        })
+        .await?;
+        ensure!(signer()?.public_key() == owner, "active signer changed");
+        Self::from_authenticated(selected, owner, relay, ws)
     }
     /// Validate a selected-tenant NIP-11 response. No v1/HTTP fallback.
     pub fn capability(metadata: &Value) -> Result<PublicKey> {
@@ -650,24 +699,64 @@ impl Registry {
             }
         }
     }
+    /// Reconcile authoritative evidence before retrying exact durable deliveries.
+    /// Host-local revocation can retire an owner intent that the relay never saw;
+    /// retrying that rejected intent first would strand its terminal evidence.
+    pub async fn synchronize_guarded<F>(&mut self, device: &mut Device, signer: &F) -> Result<()>
+    where
+        F: Fn() -> Result<Keys>,
+    {
+        self.recover_guarded(device, signer).await?;
+        for (_, packet, _) in device.next_deliveries(&self.community, &signer()?)? {
+            let event = event(&packet)?;
+            if event.kind.as_u16() == 43103 {
+                self.publish(&signer()?, event).await?;
+                ensure!(
+                    signer()?.public_key() == self.owner,
+                    "active signer changed"
+                );
+            }
+        }
+        Ok(())
+    }
     /// Recover complete authoritative lists with at most three snapshot retries.
     /// Cached cards survive an unavailable/partial snapshot. Freshness requires a
     /// separately answered status nonce for each host.
     pub async fn recover(&mut self, device: &mut Device, keys: &Keys) -> Result<Vec<Scope>> {
-        self.subscribe(keys).await?;
+        self.recover_guarded(device, &|| Ok(keys.clone())).await
+    }
+    /// Recover with a native session fence before every durable journal effect.
+    pub async fn recover_guarded<F>(
+        &mut self,
+        device: &mut Device,
+        signer: &F,
+    ) -> Result<Vec<Scope>>
+    where
+        F: Fn() -> Result<Keys>,
+    {
+        let keys = signer()?;
+        let owner = self.owner;
+        let guard = || -> Result<()> {
+            ensure!(signer()?.public_key() == owner, "active signer changed");
+            Ok(())
+        };
+        self.subscribe(&keys).await?;
+        guard()?;
+
         let mut snapshot = None;
         for _ in 0..3 {
             let mut q = query("hosts", None, None)?;
             let mut summaries = Vec::new();
             let mut failed = false;
             for _ in 0..32 {
-                let page = match self.page(keys, q.clone()).await {
+                let page = match self.page(&keys, q.clone()).await {
                     Ok(p) => p,
                     Err(_) => {
                         failed = true;
                         break;
                     }
                 };
+                guard()?;
                 let rows = page.data["hosts"].as_array().context("missing host list")?;
                 summaries.extend(
                     rows.iter()
@@ -688,17 +777,18 @@ impl Registry {
             }
         }
         let snapshot = snapshot.context("registry snapshot unavailable; cached data retained")?;
-        let known = device.pending_registry_scopes(&self.community, keys)?;
+        let known = device.pending_registry_scopes(&self.community, &keys)?;
         let listed: std::collections::HashSet<_> =
             snapshot.iter().map(|b| b.generation.clone()).collect();
         let mut verified = Vec::new();
         for b in snapshot {
-            let (scope, live) = self.restore_one(device, keys, &b).await?;
+            let (scope, live) = self.restore_one(device, &keys, &b, &guard).await?;
             if live {
                 verified.push(scope);
             }
         }
-        device.registry_reconcile_list(&self.community, keys, &verified)?;
+        guard()?;
+        device.registry_reconcile_list(&self.community, &keys, &verified)?;
         // DEAD grants leave the current list. A cached pending operation still
         // needs exact protected evidence before it can retire its durable retry.
         for scope in known
@@ -706,8 +796,9 @@ impl Registry {
             .filter(|s| !listed.contains(&s.generation))
         {
             let page = self
-                .page(keys, query("binding", Some(&scope.generation), None)?)
+                .page(&keys, query("binding", Some(&scope.generation), None)?)
                 .await?;
+            guard()?;
             let b: RegistryBinding = serde_json::from_value(page.data)?;
             ensure!(
                 b.generation == scope.generation
@@ -715,7 +806,7 @@ impl Registry {
                     && b.host == scope.host.to_hex(),
                 "binding changed"
             );
-            self.restore_one(device, keys, &b).await?;
+            self.restore_one(device, &keys, &b, &guard).await?;
         }
         Ok(verified)
     }
@@ -724,10 +815,12 @@ impl Registry {
         device: &mut Device,
         keys: &Keys,
         b: &RegistryBinding,
+        guard: &impl Fn() -> Result<()>,
     ) -> Result<(Scope, bool)> {
         let binding = self
             .page(keys, query("binding", Some(&b.generation), None)?)
             .await?;
+        guard()?;
         let current: RegistryBinding = serde_json::from_value(binding.data)?;
         ensure!(
             current.claim_id == b.claim_id
@@ -745,6 +838,7 @@ impl Registry {
         } else {
             None
         };
+        guard()?;
         let scope = device.restore_registry(
             &self.community,
             keys,
@@ -755,6 +849,7 @@ impl Registry {
         )?;
         if let Some(id) = &current.tombstone_id {
             let tomb = self.evidence(keys, &b.generation, id).await?;
+            guard()?;
             device.accept_registry_tombstone(&self.community, keys, &scope, &tomb)?;
         }
         Ok((scope, current.state != "dead"))
@@ -787,4 +882,46 @@ pub fn query(view: &str, g: Option<&str>, event_id: Option<&str>) -> Result<Quer
     };
     q.validate()?;
     Ok(q)
+}
+
+#[cfg(test)]
+mod registration_adapter_tests {
+    use super::*;
+    #[test]
+    fn invitation_validation_and_exact_retry_keep_registration_separate() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut device = Device::at(&dir.path().join("owner.sqlite")).unwrap();
+        let owner = Keys::generate();
+        let host = Keys::generate();
+        let origin = "https://fixture.test";
+        let mut invitation = json!({"v":2,"community":origin,"host":host.public_key().to_hex(),"generation":"aa".repeat(32),"proof":"bb".repeat(32),"expires_at":now().unwrap()+600});
+        for (field, value) in [
+            ("v", json!(1)),
+            ("community", json!("https://other.test")),
+            ("expires_at", json!(now().unwrap() - 1)),
+            ("proof", json!("invalid")),
+        ] {
+            let old = invitation[field].clone();
+            invitation[field] = value;
+            assert!(device
+                .pair_registry(origin, &owner, &invitation.to_string())
+                .is_err());
+            assert!(device.registry_hosts(origin, &owner).unwrap().is_empty());
+            invitation[field] = old;
+        }
+        let (scope, first) = device
+            .pair_registry(origin, &owner, &invitation.to_string())
+            .unwrap();
+        let (_, retry) = device
+            .pair_registry(origin, &owner, &invitation.to_string())
+            .unwrap();
+        assert_eq!(first.id, retry.id);
+        assert_eq!(
+            device.registry_hosts(origin, &owner).unwrap()[0].state,
+            "pair-pending"
+        );
+        let other = Keys::generate();
+        assert!(device.registry_hosts(origin, &other).unwrap().is_empty());
+        assert!(device.view(origin, &other, &scope).is_err());
+    }
 }

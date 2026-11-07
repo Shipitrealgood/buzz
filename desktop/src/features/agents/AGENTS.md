@@ -350,23 +350,17 @@ with a TypeScript lookup table or an id comparison in a component.
 
 ## Windows paired hosts
 
-“My hosts” reads the private paired-host endpoint for the active Windows
-community and signer. Persist the device journal under the Windows local app
-data directory. All pairing proofs, freshness decisions, create signatures and
-revocation receipts go through the native owner workflow. The renderer passes
-the exact host key and generation selected by the user. Cached inventory
-identifies installed runtimes; a fresh verified inventory authorizes a tap.
-A pending remote unpair remains visible until the host signs its tombstone.
-The existing “On host” directory cards show conversational agents and confer
-no provisioning authority.
-
-An Add agent tap freezes the selected inventory event, host generation, runtime,
-name, response policy and channel IDs. Retry that tap with its original ID and
-payload. Per-device SQLite is the authority for automated signer responses.
-The compiled owner-only policy gates Create and resume at the native boundary.
-Treat signed host history as observational on a second device. Authoritative
-local Ready includes verification of agent ownership, policy, registration
-and each requested membership.
+“My hosts” uses the private v2 registration registry for the active Windows
+community and native signer. Persist the device journal under the protected
+Windows local app data directory. Scope checks fence network waits and journal
+recovery; the renderer never supplies a signing key or transport destination.
+Add Host is available on a supported, available community even with an empty
+list. Unsupported, unavailable, pending, registered and revoked are distinct.
+Registration records ownership; it does not certify online status, installed
+runtimes, or deployment capability. This panel exposes no legacy provisioning
+form or agent-history actions. A pending revocation remains visible until the
+host signs its tombstone. The ordinary agent configuration, remote cloud marker,
+and provider-backed creation behavior remain independent of registration.
 
 ## Channel-only runtime controls
 
