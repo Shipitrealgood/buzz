@@ -1,0 +1,13 @@
+Command (desktop/, Hermit active): pnpm exec tsc --noEmit -p ../target/3750-smoke-repair/typecheck.json
+Exit: 2, both baseline ccf89c9 and repaired spec. Diagnostics byte-identical (cmp exit 0).
+Temporary config extends ../../desktop/tsconfig.json and includes ../../desktop/src plus ../../desktop/tests/e2e/paired-hosts.spec.ts, references: [].
+Baseline used git show ccf89c9cabcac8370f94cc9c373e44a06bc95a3c:desktop/tests/e2e/paired-hosts.spec.ts as adjacent paired-hosts.baseline-3750.tmp.ts and changed only that include. Temporary spec removed.
+Normal app tsconfig excludes tests; its tsc passed in build:e2e. No diagnostic points to the changed spec.
+
+tests/helpers/bridge.ts(680,3): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+tests/helpers/bridge.ts(971,9): error TS2322: Type 'MockBridgeOptions | undefined' is not assignable to type '{ windowLabel?: string | undefined; ttsSettings?: { version: number; agentTextToSpeech: boolean; voicePreferences: string[]; } | undefined; pocketVoiceImportResult?: "cancel" | "invalid" | "success" | undefined; ... 168 more ...; backendProviderProbeDelayMs?: number | undefined; } | undefined'.
+  Type 'MockBridgeOptions' is not assignable to type '{ windowLabel?: string | undefined; ttsSettings?: { version: number; agentTextToSpeech: boolean; voicePreferences: string[]; } | undefined; pocketVoiceImportResult?: "cancel" | "invalid" | "success" | undefined; ... 168 more ...; backendProviderProbeDelayMs?: number | undefined; }'.
+    Types of property 'acpRuntimesCatalog' are incompatible.
+      Type 'Record<string, unknown>[] | undefined' is not assignable to type 'RawAcpRuntimeCatalogEntry[] | undefined'.
+        Type 'Record<string, unknown>[]' is not assignable to type 'RawAcpRuntimeCatalogEntry[]'.
+          Type 'Record<string, unknown>' is missing the following properties from type 'RawAcpRuntimeCatalogEntry': id, label, avatar_url, availability, and 11 more.

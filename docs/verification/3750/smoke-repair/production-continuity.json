@@ -1,0 +1,12 @@
+{
+  "ci_source": "6caf7c250f526b8eb4f9630107b632525e7573ef",
+  "repair_commit": "d97823a753b4f14a1634ba2a136ab9e274babd86",
+  "excluded": [
+    "docs/**",
+    "desktop/tests/e2e/paired-hosts.spec.ts"
+  ],
+  "tracked_entries_compared": 6580,
+  "canonicalization": "git ls-tree -r order; included full mode/type/object/path lines, joined by LF with final LF",
+  "sha256": "7f242eee903fba0f88f53dd3366fc30c7d9196e98a44d6f7b8882a5ae5b3ade4",
+  "result": "byte-identical tracked object inventory, including production, workflows and dependency/build configuration"
+}

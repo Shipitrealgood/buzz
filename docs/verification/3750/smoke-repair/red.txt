@@ -1,0 +1,41 @@
+Command (desktop/, Hermit active): CI=1 pnpm exec playwright test tests/e2e/paired-hosts.spec.ts --project=smoke --grep 'Windows pairs another host' --retries=0 --timeout=12000 --reporter=list
+
+Running 1 test using 1 worker
+
+(node:3370124) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:3370124) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [smoke] › tests/e2e/paired-hosts.spec.ts:183:1 › Windows pairs another host and routes identical labels by enrolled identity (12.6s)
+
+
+  1) [smoke] › tests/e2e/paired-hosts.spec.ts:183:1 › Windows pairs another host and routes identical labels by enrolled identity
+
+    Test timeout of 12000ms exceeded.
+
+    Error: locator.click: Test timeout of 12000ms exceeded.
+    Call log:
+      - waiting for getByRole('region', { name: 'My hosts' }).getByRole('listitem').nth(1).getByRole('button', { name: 'Check host' })
+
+
+      188 |   const hosts = panel.getByRole("listitem");
+      189 |   await expect(hosts).toHaveCount(2);
+    > 190 |   await hosts.nth(1).getByRole("button", { name: "Check host" }).click();
+          |                                                                  ^
+      191 |   await expect(hosts.nth(1)).toContainText("Host confirmed");
+      192 |   await expect(hosts.first()).toContainText("inventory cached");
+      193 |   await panel.getByRole("button", { name: "Pair host" }).click();
+        at /home/bryce/services/buzz-wt-3720-host-registration/desktop/tests/e2e/paired-hosts.spec.ts:190:66
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/paired-hosts-Windows-pairs-0d93b-labels-by-enrolled-identity-smoke/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/paired-hosts-Windows-pairs-0d93b-labels-by-enrolled-identity-smoke/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/paired-hosts-Windows-pairs-0d93b-labels-by-enrolled-identity-smoke/error-context.md
+
+  1 failed
+    [smoke] › tests/e2e/paired-hosts.spec.ts:183:1 › Windows pairs another host and routes identical labels by enrolled identity

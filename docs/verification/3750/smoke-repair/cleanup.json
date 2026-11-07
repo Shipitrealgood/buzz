@@ -1,0 +1,7 @@
+{
+  "worktree": "/home/bryce/services/buzz-wt-3720-host-registration",
+  "matching_processes": [],
+  "port_4173_listeners": [],
+  "temporary_baseline_spec_absent": true,
+  "scope": "read-only process cwd/executable and TCP listener inspection; no live services changed"
+}
