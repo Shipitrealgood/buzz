@@ -3,6 +3,8 @@
 **Package superseded by the [H-1 repair handoff](3751-netcup-registration-h1-repair.md).**
 Original package pins below are historical; use the replacement only after re-gate.
 
+Installation after re-gate is recorded in the [live handoff](3751-netcup-registration-live.md).
+
 Requested 2026-11-07 by the conductor; next reader: fresh independent codex-chuck.
 Requested executor configuration: gpt-6-astra/high. Runtime identity is not independently observable.
 
