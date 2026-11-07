@@ -1,0 +1,54 @@
+{
+  "review_source": "201aabf99e6b64974e37986e48015317ddfdf974",
+  "repair_product": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
+  "review_round": 1,
+  "requested_configuration": "gpt-6-astra/high",
+  "runtime_identity": "unknown",
+  "build": {
+    "command": "CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=1 TMPDIR=\"$PWD/target/3720-tmp\" cargo test -p buzz-relay --lib --no-run",
+    "receipt": "build.txt",
+    "exit": 0
+  },
+  "runs": [
+    {
+      "receipt": "ws.txt",
+      "command": "scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-b1fcb351a1cd6039 handlers::host_registry::external_infra_registration_tests::external_infra_tests --ignored --nocapture --test-threads=1 --skip child_root_relay",
+      "exit": 0,
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "seconds": 18.35
+    },
+    {
+      "receipt": "ordinary.txt",
+      "command": "target/debug/deps/buzz_relay-b1fcb351a1cd6039 connection::tests handlers::req::tests --test-threads=2",
+      "exit": 0,
+      "passed": 104,
+      "failed": 0,
+      "ignored": 2,
+      "seconds": 2.09
+    }
+  ],
+  "inherited": [
+    "hostd library 8/8 at repair pin",
+    "prior core/owner/package/schema/conformance evidence where source unchanged",
+    "five original mutation kills; exact removed guards reconstructed and compared without rerunning mutations",
+    "strict lint remains baseline-blocked; supplemental source and baseline spans independently checked"
+  ],
+  "not_run": [
+    "full CI/integration",
+    "nextest wrapper unavailable",
+    "native Windows/desktop UI",
+    "deployed schema/migration parity",
+    "provider/lifecycle/live rollout",
+    "human testing"
+  ],
+  "cleanup": "cleanup.json",
+  "source_changes": "none; review report/receipts only",
+  "changed_product_file_sha256": {
+    "crates/buzz-db/src/store/paired_hosts/registry.rs": "4f4eb468a27592b4b2d5b8369fede9fc0b2cb31e5710ce20e66f2358fa00ff5c",
+    "crates/buzz-hostd/src/registration.rs": "f8f11b7c23f083215ef70259e2bf00d699b2a1747a44c864806ce8209aa1f466",
+    "crates/buzz-relay/src/handlers/host_registry.rs": "0c94128ba17d8fe26b18336d6dd3c55ad6210a7cb048bdc21cb45599749cf263",
+    "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs": "b94e1175765fd2d3212c9cb64d9bd1a5b2f8bcc0bdbc85401f6dd41008a070b5"
+  }
+}

@@ -1,0 +1,1213 @@
+{
+  "source": "201aabf99e6b64974e37986e48015317ddfdf974",
+  "product_repair": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
+  "original_base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
+  "round1_base": "b7576dc4ae1400d9688ddcc8b36b44d350703b96",
+  "original_delta": {
+    "added": 17004,
+    "deleted": 36,
+    "rust_added": 6644,
+    "rust_deleted": 36,
+    "files": [
+      {
+        "path": "Cargo.lock",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-core/src/host_registry.rs",
+        "added": 698,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-core/src/kind.rs",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-core/src/lib.rs",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-core/src/paired_host.rs",
+        "added": 1,
+        "deleted": 1
+      },
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts.rs",
+        "added": 60,
+        "deleted": 11
+      },
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts/phases.rs",
+        "added": 26,
+        "deleted": 16
+      },
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+        "added": 292,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-hostd/Cargo.toml",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-hostd/src/lib.rs",
+        "added": 25,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-hostd/src/registration.rs",
+        "added": 603,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-hostd/src/store.rs",
+        "added": 1,
+        "deleted": 1
+      },
+      {
+        "path": "crates/buzz-paired-owner/Cargo.toml",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-paired-owner/src/device.rs",
+        "added": 3,
+        "deleted": 3
+      },
+      {
+        "path": "crates/buzz-paired-owner/src/lib.rs",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-paired-owner/src/registry.rs",
+        "added": 790,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/Cargo.toml",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/api/bridge.rs",
+        "added": 22,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/api/paired_hosts.rs",
+        "added": 20,
+        "deleted": 4
+      },
+      {
+        "path": "crates/buzz-relay/src/config.rs",
+        "added": 10,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/connection.rs",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/artifact_sync.rs",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/auth.rs",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/count.rs",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/event.rs",
+        "added": 21,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/group_state_postgres_tests.rs",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+        "added": 705,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+        "added": 3149,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/mod.rs",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/req.rs",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/nip11.rs",
+        "added": 10,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-relay/src/state.rs",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-ws-client/src/connection.rs",
+        "added": 13,
+        "deleted": 0
+      },
+      {
+        "path": "crates/buzz-ws-client/src/lib.rs",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/audits/post-audit/3720-registration-proof.md",
+        "added": 116,
+        "deleted": 0
+      },
+      {
+        "path": "docs/briefs/3720-registration-proof-execution.md",
+        "added": 48,
+        "deleted": 0
+      },
+      {
+        "path": "docs/briefs/3720-registration-proof-review.md",
+        "added": 65,
+        "deleted": 0
+      },
+      {
+        "path": "docs/briefs/3720-registration-repair-round1.md",
+        "added": 52,
+        "deleted": 0
+      },
+      {
+        "path": "docs/specs/3720-host-registration-event-proof.md",
+        "added": 190,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/auth-terminal.txt",
+        "added": 295,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/auth-unit-first.txt",
+        "added": 295,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/build-processes-after.txt",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/cleanup.json",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/cleanup.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/clippy-inventory-first-failed.json",
+        "added": 653,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/clippy-inventory.json",
+        "added": 605,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/clippy-strict-baseline-failed.txt",
+        "added": 57,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/conformance-property-terminal.txt",
+        "added": 12,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/conformance-replay-terminal.txt",
+        "added": 11,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/conformance-terminal.txt",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/connection-tests-regression.txt",
+        "added": 36,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/index.json",
+        "added": 216,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/live-reauthorization.txt",
+        "added": 20,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/membership.txt",
+        "added": 17,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/parent-generation.txt",
+        "added": 17,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/scope-initial-index.json",
+        "added": 62,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/scope-initial-survived.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/scope-member-partial-index.json",
+        "added": 62,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/scope-member-partial-survived.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/scope.txt",
+        "added": 15,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/controls/unique-live-binding.txt",
+        "added": 17,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/core-terminal.txt",
+        "added": 305,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/core-unit-first.txt",
+        "added": 305,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/db-unit-terminal.txt",
+        "added": 875,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/diff-check-final.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/diff-measurement.json",
+        "added": 1535,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/file-size-static.txt",
+        "added": 35,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/01.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/02.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/03.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/04.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/05.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/06.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/07.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/08.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/09.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/10.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/11-corrected.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/11.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/12.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/13.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/14.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/15.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/16.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/17.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/18.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/19.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/20.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/21.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/22.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/23.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/24.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/25.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/26.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/index-first-selector.json",
+        "added": 210,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/focused-postgres/index.json",
+        "added": 212,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/format-final.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/handlers-event-tests-regression.txt",
+        "added": 47,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/handlers-req-tests-regression.txt",
+        "added": 78,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/host-activate-terminal.txt",
+        "added": 8,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/host-runtime-terminal.txt",
+        "added": 5,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/hostd-daemon-terminal.txt",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/hostd-library-terminal.txt",
+        "added": 13,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/hostd-unit-first.txt",
+        "added": 25,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/kind-allocation.json",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/nextest-availability.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ordinary-relay-gates.json",
+        "added": 27,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/owner-terminal.txt",
+        "added": 18,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/owner-unit-first.txt",
+        "added": 18,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/postgres-discovery-final.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/postgres-discovery-first-failed.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/postgres-discovery-out-of-line-failed.txt",
+        "added": 32,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/postgres-discovery.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/protocol-tests-regression.txt",
+        "added": 16,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/relay-check-disk-full.txt",
+        "added": 202,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/resources-before-cleanup.json",
+        "added": 69,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/audit-evidence.py",
+        "added": 50,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/clock-probe-build.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/clock-probe-hashes.json",
+        "added": 8,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/clock-probe.rs",
+        "added": 33,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/clock-probe.txt",
+        "added": 18,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/compile-probe.py",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/core-registry.txt",
+        "added": 57,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/evidence-audit.json",
+        "added": 163,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/final-restored-build.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/hostd-registration-first-runner-failed.txt",
+        "added": 78,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/hostd-registration.txt",
+        "added": 10,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/owner-library.txt",
+        "added": 24,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/pruning-probe-first-runner-failed.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/pruning-probe.rs",
+        "added": 43,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/pruning-probe.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/replacement-probe-build.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/replacement-probe-hashes.json",
+        "added": 8,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/replacement-probe.rs",
+        "added": 55,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/replacement-probe.txt",
+        "added": 19,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/restored-build.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/run-index.json",
+        "added": 109,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/ws-final-restored.txt",
+        "added": 45,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/ws-matrix.txt",
+        "added": 45,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/review/ws-terminal-restored.txt",
+        "added": 45,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-contract-corrected.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final-matrix.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-first.txt",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix-corrected.txt",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix.txt",
+        "added": 38,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-ready.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-regressions.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-terminal.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-wire-fault-assertion.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.json",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-command.txt",
+        "added": 8,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-inventory.json",
+        "added": 610,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-result.txt",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/control-continuity.json",
+        "added": 53,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/diff-check.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-exact-base.txt",
+        "added": 35,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-static.txt",
+        "added": 35,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/fmt-final.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/free-space-after.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library-short-runtime.txt",
+        "added": 12,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library.txt",
+        "added": 29,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/matrix-first.txt",
+        "added": 69,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ordinary-affected.txt",
+        "added": 110,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/postgres-discovery.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/privacy-source-census.json",
+        "added": 18,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/regressions-first.txt",
+        "added": 37,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/resources-before-cleanup.json",
+        "added": 34,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/run-index.json",
+        "added": 111,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/synthetic-wire-exchange.json",
+        "added": 195,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-final.txt",
+        "added": 97,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-http-status-assertion-failed.txt",
+        "added": 108,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-matrix.txt",
+        "added": 114,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/subscription-tests-regression.txt",
+        "added": 47,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/unit-gates.json",
+        "added": 67,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/writer-source-policy-terminal.txt",
+        "added": 26,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-client-terminal.txt",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-final-restored.txt",
+        "added": 45,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-incremental-baseline.txt",
+        "added": 45,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-journey-first.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-matrix-first.txt",
+        "added": 20,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-matrix-second.txt",
+        "added": 40,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/ws-matrix-third.txt",
+        "added": 44,
+        "deleted": 0
+      },
+      {
+        "path": "scripts/3720-clippy-diagnostics.py",
+        "added": 81,
+        "deleted": 0
+      },
+      {
+        "path": "scripts/3720-diff-measure.py",
+        "added": 81,
+        "deleted": 0
+      },
+      {
+        "path": "scripts/3720-registration-controls.py",
+        "added": 125,
+        "deleted": 0
+      },
+      {
+        "path": "scripts/3720-registration-proof.sh",
+        "added": 104,
+        "deleted": 0
+      }
+    ]
+  },
+  "round1_delta": {
+    "added": 4032,
+    "deleted": 148,
+    "rust_added": 1462,
+    "rust_deleted": 36,
+    "files": [
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+        "added": 3,
+        "deleted": 1
+      },
+      {
+        "path": "crates/buzz-hostd/src/registration.rs",
+        "added": 5,
+        "deleted": 4
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+        "added": 89,
+        "deleted": 29
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+        "added": 1365,
+        "deleted": 2
+      },
+      {
+        "path": "docs/briefs/3720-registration-proof-execution.md",
+        "added": 36,
+        "deleted": 79
+      },
+      {
+        "path": "docs/briefs/3720-registration-repair-round1.md",
+        "added": 52,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/diff-measurement.json",
+        "added": 686,
+        "deleted": 32
+      },
+      {
+        "path": "docs/verification/3720/round1/build-contract-corrected.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final-matrix.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-first.txt",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix-corrected.txt",
+        "added": 14,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix.txt",
+        "added": 38,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-ready.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-regressions.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-terminal.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/build-wire-fault-assertion.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.json",
+        "added": 9,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.txt",
+        "added": 4,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-command.txt",
+        "added": 8,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-inventory.json",
+        "added": 610,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-result.txt",
+        "added": 1,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/control-continuity.json",
+        "added": 53,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/diff-check.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-exact-base.txt",
+        "added": 35,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-static.txt",
+        "added": 35,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/fmt-final.txt",
+        "added": 0,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/free-space-after.txt",
+        "added": 3,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library-short-runtime.txt",
+        "added": 12,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library.txt",
+        "added": 29,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/matrix-first.txt",
+        "added": 69,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ordinary-affected.txt",
+        "added": 110,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/postgres-discovery.txt",
+        "added": 6,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/privacy-source-census.json",
+        "added": 18,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/regressions-first.txt",
+        "added": 37,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/resources-before-cleanup.json",
+        "added": 34,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/run-index.json",
+        "added": 111,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/synthetic-wire-exchange.json",
+        "added": 195,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-final.txt",
+        "added": 97,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-http-status-assertion-failed.txt",
+        "added": 108,
+        "deleted": 0
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-matrix.txt",
+        "added": 114,
+        "deleted": 0
+      },
+      {
+        "path": "scripts/3720-diff-measure.py",
+        "added": 15,
+        "deleted": 1
+      }
+    ]
+  },
+  "product_delta": {
+    "added": 1462,
+    "deleted": 36,
+    "rust_added": 1462,
+    "rust_deleted": 36,
+    "files": [
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+        "added": 3,
+        "deleted": 1
+      },
+      {
+        "path": "crates/buzz-hostd/src/registration.rs",
+        "added": 5,
+        "deleted": 4
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+        "added": 89,
+        "deleted": 29
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+        "added": 1365,
+        "deleted": 2
+      }
+    ]
+  },
+  "unchanged_removed_guard_text": [
+    "scope",
+    "membership",
+    "parent-generation",
+    "unique-live-binding",
+    "live-reauthorization"
+  ],
+  "supplemental_clippy": {
+    "source_hashes_match": true,
+    "all_40_diagnostics_primary_spans_unchanged_from_baseline": true,
+    "strict_status": "baseline-blocked"
+  },
+  "product_source_modified_by_reviewer": false
+}

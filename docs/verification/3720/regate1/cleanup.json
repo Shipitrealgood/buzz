@@ -1,0 +1,33 @@
+{
+  "databases_remaining_before_teardown": 0,
+  "containers": [
+    {
+      "name": "/buzz-3720-registration-runner",
+      "network_mode": "none",
+      "ports": {},
+      "label": "3720"
+    },
+    {
+      "name": "/buzz-3720-registration-postgres",
+      "network_mode": "container:56f201718ae03af4e74c9984eb1bee3c9abac816071d7efc961b9cfb8459db49",
+      "ports": {},
+      "label": "3720"
+    },
+    {
+      "name": "/buzz-3720-registration-redis",
+      "network_mode": "container:56f201718ae03af4e74c9984eb1bee3c9abac816071d7efc961b9cfb8459db49",
+      "ports": {},
+      "label": "3720"
+    },
+    {
+      "name": "/buzz-3720-registration-tls-proxy",
+      "network_mode": "container:56f201718ae03af4e74c9984eb1bee3c9abac816071d7efc961b9cfb8459db49",
+      "ports": {},
+      "label": "3720"
+    }
+  ],
+  "runner_processes_before_teardown": "PID COMMAND         COMMAND\n      1 sleep           sleep infinity\n     77 ps              ps -eo pid,comm,args",
+  "remaining_task_containers": [],
+  "remaining_private_tls_files": [],
+  "tracked_build_and_test_processes": "all terminal exit 0; fixture runner removed with anonymous fixture volumes"
+}
