@@ -1,0 +1,3 @@
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda4       251G  125G  116G  52% /
+tmpfs           7.9G  7.2G  722M  91% /tmp

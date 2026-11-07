@@ -1,0 +1,9 @@
+{
+  "containers_removed": true,
+  "remaining_task_containers": [],
+  "synthetic_private_files_remaining": [],
+  "tracked_build_test_processes": "all terminal; no cargo/rustc/cargo-clippy processes",
+  "build_processes": "",
+  "worktree_and_ignored_cache": "retained for sequential reviewer re-gate",
+  "live_changes": false
+}

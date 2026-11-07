@@ -1,0 +1,53 @@
+{
+  "source": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
+  "original_control_source": "949063e57",
+  "method": "reconstruct existing five transformations in memory and compare exact removed guard text; no production source mutation, extra control, build or runtime",
+  "controls": [
+    {
+      "name": "scope",
+      "exact_removed_guard_text_unchanged": true,
+      "files": [
+        "crates/buzz-relay/src/handlers/event.rs",
+        "crates/buzz-relay/src/handlers/req.rs",
+        "crates/buzz-relay/src/handlers/count.rs",
+        "crates/buzz-relay/src/handlers/artifact_sync.rs",
+        "crates/buzz-relay/src/handlers/host_registry.rs"
+      ],
+      "guard_text_sha256": "1601448014eea19eaa54ce6d3abd64f69c88ee611232256976410803e64485a4"
+    },
+    {
+      "name": "membership",
+      "exact_removed_guard_text_unchanged": true,
+      "files": [
+        "crates/buzz-db/src/store/paired_hosts.rs"
+      ],
+      "guard_text_sha256": "ba74a6ff8cf8319b9f601d986e20d6d4df0c95e702381aa5c14cb1df9e732160"
+    },
+    {
+      "name": "parent-generation",
+      "exact_removed_guard_text_unchanged": true,
+      "files": [
+        "crates/buzz-db/src/store/paired_hosts.rs"
+      ],
+      "guard_text_sha256": "0fe6447d7257773718ea3728b3fb0918d9005f909cc4329af04f9bd705b5969c"
+    },
+    {
+      "name": "unique-live-binding",
+      "exact_removed_guard_text_unchanged": true,
+      "files": [
+        "crates/buzz-db/src/store/paired_hosts.rs",
+        "schema/tables/public/paired_host_bindings.sql"
+      ],
+      "guard_text_sha256": "f15b3e8fca44d839e6eabf262be19e1d1285ff4e6805000cfb69adc5af36cc56"
+    },
+    {
+      "name": "live-reauthorization",
+      "exact_removed_guard_text_unchanged": true,
+      "files": [
+        "crates/buzz-db/src/store/paired_hosts/registry.rs"
+      ],
+      "guard_text_sha256": "962620f1a1ecc2d52549e289570f532da4463c3b24a3696555346297c2828d64"
+    }
+  ],
+  "runtime_continuity": "original selected guard tests also pass within final24 suite; no claim of newly run guard-removal kills"
+}

@@ -1,0 +1,34 @@
+{
+  "containers": [
+    {
+      "name": "buzz-3720-registration-runner",
+      "network_mode": "none",
+      "ports": {},
+      "running": true,
+      "volume_names": []
+    },
+    {
+      "name": "buzz-3720-registration-postgres",
+      "network_mode": "container:1eb8a62f3c54cd7138912b5217f3503fe0f9d5d73c7da2584b852ef562097f3f",
+      "ports": {},
+      "running": true,
+      "volume_names": []
+    },
+    {
+      "name": "buzz-3720-registration-redis",
+      "network_mode": "container:1eb8a62f3c54cd7138912b5217f3503fe0f9d5d73c7da2584b852ef562097f3f",
+      "ports": {},
+      "running": true,
+      "volume_names": []
+    },
+    {
+      "name": "buzz-3720-registration-tls-proxy",
+      "network_mode": "container:1eb8a62f3c54cd7138912b5217f3503fe0f9d5d73c7da2584b852ef562097f3f",
+      "ports": {},
+      "running": true,
+      "volume_names": []
+    }
+  ],
+  "fixture_databases": [],
+  "runner_processes": "    PID COMMAND\n      1 sleep\n    369 ps\n"
+}

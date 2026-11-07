@@ -1,0 +1,111 @@
+{
+  "repair_base": "b7576dc4ae1400d9688ddcc8b36b44d350703b96",
+  "product_source": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
+  "requested_model": "gpt-6.1-sol/high",
+  "runtime_model_effort": "not independently exposed",
+  "status": "executor finite repair/probe gates pass; independent re-gate pending",
+  "gates": {
+    "registration": {
+      "receipt": "ws-final.txt",
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "seconds": 18.39
+    },
+    "ordinary_affected": {
+      "receipt": "ordinary-affected.txt",
+      "passed": 104,
+      "failed": 0,
+      "ignored": 2,
+      "seconds": 2.24
+    },
+    "hostd": {
+      "receipt": "hostd-library-short-runtime.txt",
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0,
+      "seconds": 1.37
+    }
+  },
+  "probes": {
+    "H-1": {
+      "tests": [
+        "round1_pruning_resets_fresh_mailbox_and_rejects_stale_expired_cursors"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "H-2": {
+      "tests": [
+        "round1_reconcile_refreshes_clock_and_keeps_timely_saved_ack_retry"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "M-1": {
+      "tests": [
+        "round1_old_errors_and_timeouts_preserve_new_subscription_owner",
+        "round1_setup_serializes_close_replacement_and_connection_cleanup"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G0": {
+      "tests": [
+        "round1_wire_exchange_is_complete_and_correlated"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G1": {
+      "tests": [
+        "round1_legitimate_signer_contradictions_have_no_consumer_effect"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G2": {
+      "tests": [
+        "round1_valid_oa_and_channel_guest_cannot_gain_registration"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G3": {
+      "tests": [
+        "round1_offline_tombstone_restart_retry_and_fresh_generation"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G4": {
+      "tests": [
+        "round1_database_failure_retains_cache_and_lost_notice_recovers_on_timer",
+        "round1_pruning_resets_fresh_mailbox_and_rejects_stale_expired_cursors",
+        "process_crash_before_and_after_commit_retries_exact_ack"
+      ],
+      "result": "executed in passing24-case suite"
+    },
+    "G5": {
+      "tests": [
+        "round1_held_work_slots_and_encrypted_boundaries_are_bounded",
+        "tls_proxy_two_dns_tenants_preserve_origin_and_private_registration"
+      ],
+      "result": "executed in passing24-case suite"
+    }
+  },
+  "supplemental_clippy": {
+    "result": "PASS",
+    "baseline_diagnostics": 40,
+    "new_or_error": 0,
+    "unexplained": 0
+  },
+  "strict_clippy": "not rerun; inherited strict failure baseline-blocked; same40 baseline diagnostics",
+  "static": {
+    "discovery": "685 source files passed",
+    "size": "exact723 baseline,10 Node self-tests and configured policy roots passed",
+    "format": "passed"
+  },
+  "not_run": [
+    "full CI/full integration",
+    "standard nextest wrapper: unavailable",
+    "native Windows/desktop UI",
+    "deployed migration/schema parity",
+    "provider/lifecycle/live rollout",
+    "human testing"
+  ],
+  "controls": "No protected guard changed; original five kill/restoration receipts retained, source continuity separately recorded. No extra controls run."
+}

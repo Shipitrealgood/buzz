@@ -1,0 +1,195 @@
+{
+  "scope": "test-only generated identities; no secret keys, real credentials or invitation proof plaintext",
+  "source": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
+  "frames": [
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "AUTH",
+        "57e8462a89dab5ce6b5d8a5732b22f85d3771facb4229616ddf59445092a68b3"
+      ]
+    },
+    {
+      "direction": "client-to-relay",
+      "frame": [
+        "AUTH",
+        {
+          "content": "",
+          "created_at": 1794010302,
+          "id": "a8efbae9256c2dc2b4eb5bf9c393f333f06486d0fd0d5618d2d224299f6d1942",
+          "kind": 22242,
+          "pubkey": "369ae6d25cab5f284a3e1310e3030d1ef4319588f52acb6ae52b85c7121d5de0",
+          "sig": "7c93585e3060eb8c63a587268abf3848972891f6c4a57904e099e098ebefbb29046a9965297edfcde21382f88bce7403fb7fd703b8df258da1c76e158467be85",
+          "tags": [
+            [
+              "challenge",
+              "57e8462a89dab5ce6b5d8a5732b22f85d3771facb4229616ddf59445092a68b3"
+            ],
+            [
+              "relay",
+              "wss://registry-5f267f1b30794ea982af34a7379f1fbb.test"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "OK",
+        "a8efbae9256c2dc2b4eb5bf9c393f333f06486d0fd0d5618d2d224299f6d1942",
+        true,
+        ""
+      ]
+    },
+    {
+      "direction": "client-to-relay",
+      "frame": [
+        "EVENT",
+        {
+          "content": "AoMnQSulGNgbwUvDt1X1k3ptoj1sm/ctb1UnNprFn+sFjqDm3Ln//FXjkLgHSW43mfOZkQE5h0axE2bbT30CqkCEdmmlOhT3j1ShwgErPbygUPbUYHS31pprNTDld+70JANWiZrw2sZwviV6WQYvBxnbNwq53Bl7AjKe24BDWi5OI/LMQFogfxwNAq6w/7TiPpCIeADGmjN0sa6wGWuErIrXCpkMrWT6vl1hKEqiOpikpTH0F+NZ/+QY44DvWhTpdc8+FcmY9los+WpF0a0I5Ls27utG2RrzceqVfiONnFlQkrGPkUugsxXyEHdeNy3UVXe5fo/MRM+BTrYyhDN8NdQJI/FP5Va9u7zpMV0LixrIi1K+xnZpbBsqFx+U8rzEVuIQhy/GuIv6/jHTzhOI6rCSNRgeoZZ5TSd8x/4Iyrf5SJ9p4bW201Gy9uMSohWGpsbdM8dPcYBR+rFTeR02ZUcd5o5DXT5CYSMD936wmXHrjkBKlYB0rmwho3W6pbWeGNfkRLzff5nGYiwUH5AOWZZyRWvlZUr7gV4B4TdchW+IMIRl4pCHPozaEdBz3PYx/gVsz5ZQatpGJOCAulLpEOvAbNzAvJX8MkpVznIA0Gyu86/ArkHirRMQEIuF41+tbrO4GUDKCxmDd4DSX92AoPxvsI6f5XfOIdnP1KNjfb5vuZikIoTHa4O/H5uo+Yf5E08kFSUxtrZEIxn8IBtGBVdlwW9N/58RUyuUf5kZg/QZmN1fYpUtBV7lGKQ12CyLqIGAVQ6S7+oyPrjhdsNuqleZzL9sCqv4QdJLdQ1aDsc8Yy3QVmHiFKo472MagoDFP6YA3+9QcbRPw5UR5RN139hV7V7XjCjtnPich61lJ3rEoSUjLR0jvQbLjmD46Nig7cjL8ZCUmTf36F4eFTH5MeTOwE8tZFTEZxuq27jv/w5M/aw=",
+          "created_at": 1794010302,
+          "id": "d606e0b4531f408f0100337fbe60d127d461cb6d042b189c3dde33917e191485",
+          "kind": 43103,
+          "pubkey": "369ae6d25cab5f284a3e1310e3030d1ef4319588f52acb6ae52b85c7121d5de0",
+          "sig": "cd90a926691db09e5265dc0bf64777983ba9f0efe4b72a5455da8883c0542cebf500a093a739f6d29859d43fd66aed20786ab43ca62d421678a05b2ddd433f2b",
+          "tags": [
+            [
+              "v",
+              "2"
+            ],
+            [
+              "community",
+              "https://registry-5f267f1b30794ea982af34a7379f1fbb.test"
+            ],
+            [
+              "o",
+              "369ae6d25cab5f284a3e1310e3030d1ef4319588f52acb6ae52b85c7121d5de0"
+            ],
+            [
+              "host",
+              "4b399d73511922dd77d06b2577ce0b2b19507a6f0e4d16479f795ae3305540a9"
+            ],
+            [
+              "g",
+              "dededededededededededededededededededededededededededededededede"
+            ],
+            [
+              "p",
+              "4b399d73511922dd77d06b2577ce0b2b19507a6f0e4d16479f795ae3305540a9"
+            ],
+            [
+              "op",
+              "pair-claim"
+            ],
+            [
+              "i",
+              "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"
+            ],
+            [
+              "prev",
+              "-"
+            ],
+            [
+              "expiration",
+              "1794010902"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "OK",
+        "d606e0b4531f408f0100337fbe60d127d461cb6d042b189c3dde33917e191485",
+        true,
+        ""
+      ]
+    },
+    {
+      "direction": "client-to-relay",
+      "frame": [
+        "REQ",
+        "wire",
+        {
+          "#p": [
+            "369ae6d25cab5f284a3e1310e3030d1ef4319588f52acb6ae52b85c7121d5de0"
+          ],
+          "host_registry": {
+            "cursor": null,
+            "nonce": "f7d24a37a4d6af48829c8caf04d967d2f2902821390adc14f9b24fde4d634ebd",
+            "v": 2,
+            "view": "hosts"
+          },
+          "kinds": [
+            43103
+          ]
+        }
+      ]
+    },
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "EVENT",
+        "wire",
+        {
+          "content": "AgZtGFkfTeOqJzppsNEoTf/AuVBXLW9H5DgHjRXfwtB96zA3MgGUxw+/JBqdtU8euEwl5EM0kO7R/XdgRFHRJ5/ie8Ph5DjJtUuR5pXL/MVhiHqHb1S1nbC8rXETGDHZ6bPCcl0VDa5nUZ/iEnUPJoq47AHol6mefkf/EtqvwbBdckEORmJFU89+fWnq7eXVSNXsVcnu38H2mKlaDm4ZAOnezmYjhP+vd6ZhQKz02VE0Fh14NLnSCNA+jj1TqjzGH0F9yVfedqB9mPZuUtAdXu/EPC/CpzRXzxtC8oPXD2PHqznPyWU51KVQO/6Xi+I7xkOSRE2ED/CnwdciEOhDH6EsjTDd8X43zViitL9+crmVVY4Kwvn51IcMkRO6XnDROolW4HaeZQ5AvYeTRTo5yqXfYq7g+FXhnHGVUXKTb+vMy5w74tXkEbBciC2OnG0oXHM8bcKXVy3ZJViPUosM+QglZUFGz973w0Gzq91V10eOX87Ki2jTEbOe6nSJl0zHwvZx//jOOb2eE/D3hK8EpMaoi3cjL77y5pX1WmLaorc3Zpo3oeUxn3aBrAp5Ugl9KCr3CsENARmMuHjf8N4diW9YztYrX8SpgPbplFzuTrZsY1NWQpC7bodcS5grNADO+4YsKdbvP2kwcXNnmlhvdjL0Z0iL3LnFNR1cSLVGrvWsXz4=",
+          "created_at": 1794010302,
+          "id": "0ac343f50172855216b4aa1f70904f60a5a6c75b674f9e890b76b4105545d1e9",
+          "kind": 43103,
+          "pubkey": "21406c5942598fb0481c51331f74413ca63bab2fc4af56d19e4d33995acd8521",
+          "sig": "e55402ecb5e82290632c84e52d3aa039cc99072e651692018df02ce4445929264b3f4cd0df738a912284f8eb6a01c9adf57001b64ac56f694931266546f7a03c",
+          "tags": [
+            [
+              "v",
+              "2"
+            ],
+            [
+              "community",
+              "https://registry-5f267f1b30794ea982af34a7379f1fbb.test"
+            ],
+            [
+              "p",
+              "369ae6d25cab5f284a3e1310e3030d1ef4319588f52acb6ae52b85c7121d5de0"
+            ],
+            [
+              "op",
+              "registry-page"
+            ],
+            [
+              "q",
+              "f7d24a37a4d6af48829c8caf04d967d2f2902821390adc14f9b24fde4d634ebd"
+            ],
+            [
+              "view",
+              "hosts"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "EOSE",
+        "wire"
+      ]
+    },
+    {
+      "direction": "client-to-relay",
+      "frame": [
+        "CLOSE",
+        "wire"
+      ]
+    },
+    {
+      "direction": "relay-to-client",
+      "frame": [
+        "CLOSED",
+        "wire",
+        ""
+      ]
+    }
+  ]
+}

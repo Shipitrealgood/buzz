@@ -1,19 +1,19 @@
 {
   "proof_base": "723c7e849a65af766a7db8ae8c2b62821f7550b4",
-  "production_source_pin": "496c4967d",
+  "production_source_pin": "9005460668bbd3eb0a6cc60095c786bcfee86b67",
   "measurement": "complete staged tree, including new files; final commit identifies artifact pin",
   "command": "git diff --cached --numstat 723c7e849a65af766a7db8ae8c2b62821f7550b4",
   "unit": "physical text lines, not executable SLOC",
   "totals": {
-    "additions": 12160,
+    "additions": 17004,
     "deletions": 36,
-    "net": 12124
+    "net": 16968
   },
   "by_category": {
     "docs/tooling": {
-      "additions": 723,
+      "additions": 862,
       "deletions": 0,
-      "net": 723
+      "net": 862
     },
     "lockfile": {
       "additions": 5,
@@ -21,9 +21,9 @@
       "net": 5
     },
     "mixed production/inline tests": {
-      "additions": 2185,
+      "additions": 2246,
       "deletions": 17,
-      "net": 2168
+      "net": 2229
     },
     "production manifests": {
       "additions": 6,
@@ -31,19 +31,24 @@
       "net": 6
     },
     "production-only Rust": {
-      "additions": 1115,
+      "additions": 1117,
       "deletions": 19,
-      "net": 1096
+      "net": 1098
     },
     "standalone tests/fixtures": {
-      "additions": 1787,
+      "additions": 3150,
       "deletions": 0,
-      "net": 1787
+      "net": 3150
+    },
+    "verification probe source": {
+      "additions": 195,
+      "deletions": 0,
+      "net": 195
     },
     "verification receipts/logs": {
-      "additions": 6339,
+      "additions": 9423,
       "deletions": 0,
-      "net": 6339
+      "net": 9423
     }
   },
   "by_package": {
@@ -58,14 +63,14 @@
       "net": 705
     },
     "buzz-db": {
-      "additions": 376,
+      "additions": 378,
       "deletions": 27,
-      "net": 349
+      "net": 351
     },
     "buzz-hostd": {
-      "additions": 629,
+      "additions": 630,
       "deletions": 1,
-      "net": 628
+      "net": 629
     },
     "buzz-paired-owner": {
       "additions": 797,
@@ -73,9 +78,9 @@
       "net": 794
     },
     "buzz-relay": {
-      "additions": 2569,
+      "additions": 3992,
       "deletions": 4,
-      "net": 2565
+      "net": 3988
     },
     "buzz-ws-client": {
       "additions": 16,
@@ -83,14 +88,14 @@
       "net": 16
     },
     "docs": {
-      "additions": 6685,
+      "additions": 10089,
       "deletions": 0,
-      "net": 6685
+      "net": 10089
     },
     "scripts": {
-      "additions": 377,
+      "additions": 391,
       "deletions": 0,
-      "net": 377
+      "net": 391
     }
   },
   "files": [
@@ -138,7 +143,7 @@
     },
     {
       "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
-      "additions": 290,
+      "additions": 292,
       "deletions": 0,
       "category": "production-only Rust"
     },
@@ -156,7 +161,7 @@
     },
     {
       "path": "crates/buzz-hostd/src/registration.rs",
-      "additions": 602,
+      "additions": 603,
       "deletions": 0,
       "category": "mixed production/inline tests"
     },
@@ -252,13 +257,13 @@
     },
     {
       "path": "crates/buzz-relay/src/handlers/host_registry.rs",
-      "additions": 645,
+      "additions": 705,
       "deletions": 0,
       "category": "mixed production/inline tests"
     },
     {
       "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
-      "additions": 1786,
+      "additions": 3149,
       "deletions": 0,
       "category": "standalone tests/fixtures"
     },
@@ -299,14 +304,26 @@
       "category": "production-only Rust"
     },
     {
+      "path": "docs/audits/post-audit/3720-registration-proof.md",
+      "additions": 116,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
       "path": "docs/briefs/3720-registration-proof-execution.md",
-      "additions": 91,
+      "additions": 48,
       "deletions": 0,
       "category": "docs/tooling"
     },
     {
       "path": "docs/briefs/3720-registration-proof-review.md",
       "additions": 65,
+      "deletions": 0,
+      "category": "docs/tooling"
+    },
+    {
+      "path": "docs/briefs/3720-registration-repair-round1.md",
+      "additions": 52,
       "deletions": 0,
       "category": "docs/tooling"
     },
@@ -474,7 +491,7 @@
     },
     {
       "path": "docs/verification/3720/diff-measurement.json",
-      "additions": 881,
+      "additions": 1535,
       "deletions": 0,
       "category": "verification receipts/logs"
     },
@@ -779,6 +796,354 @@
       "category": "verification receipts/logs"
     },
     {
+      "path": "docs/verification/3720/review/audit-evidence.py",
+      "additions": 50,
+      "deletions": 0,
+      "category": "verification probe source"
+    },
+    {
+      "path": "docs/verification/3720/review/clock-probe-build.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/clock-probe-hashes.json",
+      "additions": 8,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/clock-probe.rs",
+      "additions": 33,
+      "deletions": 0,
+      "category": "verification probe source"
+    },
+    {
+      "path": "docs/verification/3720/review/clock-probe.txt",
+      "additions": 18,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/compile-probe.py",
+      "additions": 14,
+      "deletions": 0,
+      "category": "verification probe source"
+    },
+    {
+      "path": "docs/verification/3720/review/core-registry.txt",
+      "additions": 57,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/evidence-audit.json",
+      "additions": 163,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/final-restored-build.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/hostd-registration-first-runner-failed.txt",
+      "additions": 78,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/hostd-registration.txt",
+      "additions": 10,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/owner-library.txt",
+      "additions": 24,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/pruning-probe-first-runner-failed.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/pruning-probe.rs",
+      "additions": 43,
+      "deletions": 0,
+      "category": "verification probe source"
+    },
+    {
+      "path": "docs/verification/3720/review/pruning-probe.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/replacement-probe-build.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/replacement-probe-hashes.json",
+      "additions": 8,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/replacement-probe.rs",
+      "additions": 55,
+      "deletions": 0,
+      "category": "verification probe source"
+    },
+    {
+      "path": "docs/verification/3720/review/replacement-probe.txt",
+      "additions": 19,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/restored-build.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/run-index.json",
+      "additions": 109,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/ws-final-restored.txt",
+      "additions": 45,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/ws-matrix.txt",
+      "additions": 45,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/review/ws-terminal-restored.txt",
+      "additions": 45,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-contract-corrected.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-final-matrix.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-final.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-first.txt",
+      "additions": 9,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-matrix-corrected.txt",
+      "additions": 14,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-matrix.txt",
+      "additions": 38,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-ready.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-regressions.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-terminal.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/build-wire-fault-assertion.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/cleanup.json",
+      "additions": 9,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/cleanup.txt",
+      "additions": 4,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/clippy-command.txt",
+      "additions": 8,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/clippy-inventory.json",
+      "additions": 610,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/clippy-result.txt",
+      "additions": 1,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/control-continuity.json",
+      "additions": 53,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/diff-check.txt",
+      "additions": 0,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/file-size-exact-base.txt",
+      "additions": 35,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/file-size-static.txt",
+      "additions": 35,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/fmt-final.txt",
+      "additions": 0,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/free-space-after.txt",
+      "additions": 3,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/hostd-library-short-runtime.txt",
+      "additions": 12,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/hostd-library.txt",
+      "additions": 29,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/matrix-first.txt",
+      "additions": 69,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/ordinary-affected.txt",
+      "additions": 110,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/postgres-discovery.txt",
+      "additions": 6,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/privacy-source-census.json",
+      "additions": 18,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/regressions-first.txt",
+      "additions": 37,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/resources-before-cleanup.json",
+      "additions": 34,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/run-index.json",
+      "additions": 111,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/synthetic-wire-exchange.json",
+      "additions": 195,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/ws-final.txt",
+      "additions": 97,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/ws-http-status-assertion-failed.txt",
+      "additions": 108,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
+      "path": "docs/verification/3720/round1/ws-matrix.txt",
+      "additions": 114,
+      "deletions": 0,
+      "category": "verification receipts/logs"
+    },
+    {
       "path": "docs/verification/3720/subscription-tests-regression.txt",
       "additions": 47,
       "deletions": 0,
@@ -846,7 +1211,7 @@
     },
     {
       "path": "scripts/3720-diff-measure.py",
-      "additions": 67,
+      "additions": 81,
       "deletions": 0,
       "category": "docs/tooling"
     },
@@ -872,10 +1237,299 @@
       "net": 16683
     },
     "combined_upstream_to_staged": {
-      "additions": 29033,
+      "additions": 33877,
       "deletions": 226,
-      "net": 28807
+      "net": 33651
     },
     "meaning": "includes pre-existing fork/catch-up work; not attributed to this registration proof"
+  },
+  "round1": {
+    "base": "b7576dc4ae1400d9688ddcc8b36b44d350703b96",
+    "totals": {
+      "additions": 4032,
+      "deletions": 148,
+      "net": 3884
+    },
+    "by_category": {
+      "docs/tooling": {
+        "additions": 103,
+        "deletions": 80,
+        "net": 23
+      },
+      "mixed production/inline tests": {
+        "additions": 94,
+        "deletions": 33,
+        "net": 61
+      },
+      "production-only Rust": {
+        "additions": 3,
+        "deletions": 1,
+        "net": 2
+      },
+      "standalone tests/fixtures": {
+        "additions": 1365,
+        "deletions": 2,
+        "net": 1363
+      },
+      "verification receipts/logs": {
+        "additions": 2467,
+        "deletions": 32,
+        "net": 2435
+      }
+    },
+    "files": [
+      {
+        "path": "crates/buzz-db/src/store/paired_hosts/registry.rs",
+        "additions": 3,
+        "deletions": 1,
+        "category": "production-only Rust"
+      },
+      {
+        "path": "crates/buzz-hostd/src/registration.rs",
+        "additions": 5,
+        "deletions": 4,
+        "category": "mixed production/inline tests"
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry.rs",
+        "additions": 89,
+        "deletions": 29,
+        "category": "mixed production/inline tests"
+      },
+      {
+        "path": "crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs",
+        "additions": 1365,
+        "deletions": 2,
+        "category": "standalone tests/fixtures"
+      },
+      {
+        "path": "docs/briefs/3720-registration-proof-execution.md",
+        "additions": 36,
+        "deletions": 79,
+        "category": "docs/tooling"
+      },
+      {
+        "path": "docs/briefs/3720-registration-repair-round1.md",
+        "additions": 52,
+        "deletions": 0,
+        "category": "docs/tooling"
+      },
+      {
+        "path": "docs/verification/3720/diff-measurement.json",
+        "additions": 686,
+        "deletions": 32,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-contract-corrected.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final-matrix.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-final.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-first.txt",
+        "additions": 9,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix-corrected.txt",
+        "additions": 14,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-matrix.txt",
+        "additions": 38,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-ready.txt",
+        "additions": 4,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-regressions.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-terminal.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/build-wire-fault-assertion.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.json",
+        "additions": 9,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/cleanup.txt",
+        "additions": 4,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-command.txt",
+        "additions": 8,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-inventory.json",
+        "additions": 610,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/clippy-result.txt",
+        "additions": 1,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/control-continuity.json",
+        "additions": 53,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/diff-check.txt",
+        "additions": 0,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-exact-base.txt",
+        "additions": 35,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/file-size-static.txt",
+        "additions": 35,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/fmt-final.txt",
+        "additions": 0,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/free-space-after.txt",
+        "additions": 3,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library-short-runtime.txt",
+        "additions": 12,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/hostd-library.txt",
+        "additions": 29,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/matrix-first.txt",
+        "additions": 69,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/ordinary-affected.txt",
+        "additions": 110,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/postgres-discovery.txt",
+        "additions": 6,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/privacy-source-census.json",
+        "additions": 18,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/regressions-first.txt",
+        "additions": 37,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/resources-before-cleanup.json",
+        "additions": 34,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/run-index.json",
+        "additions": 111,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/synthetic-wire-exchange.json",
+        "additions": 195,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-final.txt",
+        "additions": 97,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-http-status-assertion-failed.txt",
+        "additions": 108,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "docs/verification/3720/round1/ws-matrix.txt",
+        "additions": 114,
+        "deletions": 0,
+        "category": "verification receipts/logs"
+      },
+      {
+        "path": "scripts/3720-diff-measure.py",
+        "additions": 15,
+        "deletions": 1,
+        "category": "docs/tooling"
+      }
+    ]
   }
 }

@@ -1,0 +1,8 @@
+    Checking buzz-db v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-db)
+    Checking buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Checking buzz-deletion v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-deletion)
+    Checking buzz-workflow v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-workflow)
+    Checking buzz-search v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-search)
+    Checking buzz-audit v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-audit)
+    Checking buzz-relay v0.2.1 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-relay)
+    Finished `dev` profile [unoptimized] target(s) in 40.35s

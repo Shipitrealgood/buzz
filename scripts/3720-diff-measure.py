@@ -21,6 +21,8 @@ def totals(rows):
 
 def category(path):
     if path.startswith('docs/verification/'):
+        if path.endswith(('.rs', '.py')):
+            return 'verification probe source'
         return 'verification receipts/logs'
     if path.endswith('Cargo.lock'):
         return 'lockfile'
@@ -45,7 +47,7 @@ for row in rows:
     by_package[package].append(row)
 report = {
     'proof_base': base,
-    'production_source_pin': '496c4967d',
+    'production_source_pin': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
     'measurement': 'complete staged tree, including new files; final commit identifies artifact pin',
     'command': 'git diff --cached --numstat 723c7e849a65af766a7db8ae8c2b62821f7550b4',
     'unit': 'physical text lines, not executable SLOC',
@@ -60,6 +62,18 @@ report = {
         'combined_upstream_to_staged': totals(diff('--cached', upstream)),
         'meaning': 'includes pre-existing fork/catch-up work; not attributed to this registration proof'
     }
+}
+repair_base = 'b7576dc4ae1400d9688ddcc8b36b44d350703b96'
+repair_rows = diff('--cached', repair_base)
+repair_categories = defaultdict(list)
+for row in repair_rows:
+    row['category'] = category(row['path'])
+    repair_categories[row['category']].append(row)
+report['round1'] = {
+    'base': repair_base,
+    'totals': totals(repair_rows),
+    'by_category': {k: totals(v) for k, v in sorted(repair_categories.items())},
+    'files': repair_rows,
 }
 path = root/'docs/verification/3720/diff-measurement.json'
 path.write_text(json.dumps(report, indent=2)+'\n')

@@ -1,0 +1,35 @@
+node --test scripts/check-file-sizes-core.test.mjs
+From /tmp/file-size-base-D52V8t
+ * [new branch]      main       -> origin/main
+Switched to a new branch 'feature'
+fatal: Not a valid object name origin/main
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+Switched to a new branch 'feature'
+✔ local base resolution uses the branch merge-base and fails without origin/main (80.350597ms)
+✔ surface entrypoints execute every production rule (305.358227ms)
+✔ surface entrypoints execute through symlinked paths (311.612644ms)
+✔ surface entrypoints allow every production rule at its ceiling (254.085841ms)
+✔ counts empty, LF, and CRLF content with the existing semantics (0.335506ms)
+✔ surface entrypoints expose the exact ordered production policies (1.00982ms)
+✔ new files use the configured ceiling (0.162174ms)
+✔ a compliant file may not cross the ceiling (0.095934ms)
+✔ parses modifications, deletions, and renames from Git's NUL format (0.262335ms)
+✔ an inherited oversized file may hold or shrink but not grow (0.276175ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1042.917146
+node desktop/scripts/check-file-sizes.mjs
+node web/scripts/check-file-sizes.mjs
+node mobile/scripts/check-file-sizes.mjs

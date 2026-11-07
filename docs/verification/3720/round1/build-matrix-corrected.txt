@@ -1,0 +1,14 @@
+   Compiling buzz-relay v0.2.1 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-relay)
+warning: variable does not need to be mutable
+    --> crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:2809:17
+     |
+2809 |         let (s, mut hw, ack) = signed_pair(&f, &o, &h, &mut net, "fc".repeat(32)).await;
+     |                 ----^^
+     |                 |
+     |                 help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `buzz-relay` (lib test) generated 1 warning (run `cargo fix --lib -p buzz-relay --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized] target(s) in 1m 13s
+  Executable unittests src/lib.rs (target/debug/deps/buzz_relay-b1fcb351a1cd6039)

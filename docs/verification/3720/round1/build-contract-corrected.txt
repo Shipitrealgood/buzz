@@ -1,0 +1,3 @@
+   Compiling buzz-relay v0.2.1 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-relay)
+    Finished `test` profile [unoptimized] target(s) in 34.61s
+  Executable unittests src/lib.rs (target/debug/deps/buzz_relay-b1fcb351a1cd6039)

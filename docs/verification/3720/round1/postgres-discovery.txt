@@ -1,0 +1,6 @@
+validated PostgreSQL test discovery across 6 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+validated PostgreSQL test discovery across 1 Rust source files
+validated PostgreSQL test discovery across 7 Rust source files
+validated PostgreSQL test discovery across 685 Rust source files
+PostgreSQL test discovery convention checks passed

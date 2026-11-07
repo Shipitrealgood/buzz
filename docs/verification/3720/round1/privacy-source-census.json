@@ -1,0 +1,18 @@
+{
+  "kind": "43103 / fork v2",
+  "private_write_path": {
+    "adapter": "crates/buzz-relay/src/handlers/host_registry.rs:post",
+    "writer": "crates/buzz-db/src/store/paired_hosts/registry.rs:post_registry_event -> post_paired_packet",
+    "tables": [
+      "paired_host_events",
+      "paired_host_bindings"
+    ],
+    "generic_event_insert": false
+  },
+  "generic_ingress": "handlers/ingest.rs required_scope_for_kind has no v2 mapping; a matching-author NIP98 HTTP /events refusal is required in disabled_capability_and_private_generic_reads_fail_closed",
+  "delivery": "handlers/event.rs skips KIND_HOST_REGISTRY_V2 before fanout; handlers/req.rs excludes it from generic result delivery; bridge.rs rejects private REQ extensions",
+  "downstream_inference": "Export, feed, push and workflow consume generic stored events or generic ingest side effects. Private writes never enter that pipeline. This is source-backed exclusion plus runtime nonstorage/HTTP rejection, not six independently injected downstream spies.",
+  "guest_root_ingress": "Guest is a channel MemberRole; root supports NIP42, optional OA and NIPFI. No separate guest bearer-token root route exists. Conductor approved real channel guest read/registration-denial proof.",
+  "schema_changes": false,
+  "evidence_kind": "read/inferred paths; exact runtime assertions recorded separately in ws-final.txt"
+}

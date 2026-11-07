@@ -1,0 +1,12 @@
+
+running 8 tests
+test registration::tests::exact_retry_and_revocation_outbox_survive_restart ... ok
+test registration::tests::expired_rebooted_or_rollback_offer_never_first_consumes ... ok
+test registration::tests::wrong_proof_attempts_are_distinct_and_bounded ... ok
+test store::tests::old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_cursor ... ok
+test store::tests::request_tests::create_commit_and_unpair_in_both_orders ... ok
+test store::tests::restart_restores_exact_ack_and_local_tombstone ... ok
+test store::tests::wrong_proof_replay_spends_one_attempt_reboot_invalidates_offer ... ok
+test tests::staged_instance_cannot_select_root_program_provider_or_foreign_catalog ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s

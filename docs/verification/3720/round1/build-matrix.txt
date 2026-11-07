@@ -1,0 +1,38 @@
+   Compiling buzz-relay v0.2.1 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-relay)
+error[E0271]: type mismatch resolving `<Tag as IntoIterator>::Item == Tag`
+    --> crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:2594:19
+     |
+2594 |             .tags(tag.clone())
+     |              ---- ^^^^^^^^^^^ expected `Tag`, found `String`
+     |              |
+     |              required by a bound introduced by this call
+     |
+note: required by a bound in `nostr::event::EventBuilder::tags`
+    --> /home/bryce/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nostr-0.44.7/src/event/builder.rs:225:25
+     |
+ 223 |     pub fn tags<I>(mut self, tags: I) -> Self
+     |            ---- required by a bound in this associated function
+ 224 |     where
+ 225 |         I: IntoIterator<Item = Tag>,
+     |                         ^^^^^^^^^^ required by this bound in `EventBuilder::tags`
+
+error[E0599]: no variant, associated function, or constant named `Public` found for enum `ChannelVisibility` in the current scope
+    --> crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:2658:56
+     |
+2658 |                 buzz_core::channel::ChannelVisibility::Public,
+     |                                                        ^^^^^^ variant, associated function, or constant not found in `ChannelVisibility`
+
+warning: variable does not need to be mutable
+    --> crates/buzz-relay/src/handlers/host_registry/external_infra_registration_tests.rs:2809:17
+     |
+2809 |         let (s, mut hw, ack) = signed_pair(&f, &o, &h, &mut net, "fc".repeat(32)).await;
+     |                 ----^^
+     |                 |
+     |                 help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0271, E0599.
+For more information about an error, try `rustc --explain E0271`.
+warning: `buzz-relay` (lib test) generated 1 warning
+error: could not compile `buzz-relay` (lib test) due to 2 previous errors; 1 warning emitted
