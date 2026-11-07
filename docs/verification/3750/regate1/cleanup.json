@@ -1,0 +1,9 @@
+{
+  "matching_browser_server_processes": [],
+  "port_4173_listeners": [],
+  "fixture": "browser mocks only; no Docker/services/keys created in re-gate",
+  "temporary_source_mutations": [],
+  "retained": "ignored app bundle, dependency/browser cache and synthetic Playwright results",
+  "ownership": "relinquished after report commit",
+  "inspection": "host process executable/cwd and TCP listening-state read only"
+}

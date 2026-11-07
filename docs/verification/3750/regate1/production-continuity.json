@@ -1,0 +1,11 @@
+{
+  "ci_source": "6caf7c250f526b8eb4f9630107b632525e7573ef",
+  "reviewed_head": "1054d035c8194bd56dffe62678c27a7600931cf7",
+  "excluded": [
+    "docs/**",
+    "desktop/tests/e2e/paired-hosts.spec.ts"
+  ],
+  "entries": 6580,
+  "inventory_sha256": "7f242eee903fba0f88f53dd3366fc30c7d9196e98a44d6f7b8882a5ae5b3ade4",
+  "result": "exact Git mode/type/object/path equality; production, workflows and build inputs unchanged"
+}

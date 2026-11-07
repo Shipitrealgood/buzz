@@ -19,11 +19,15 @@ agent creation, or live conversations are part of this test.
   and return to the normal build must be coordinated with the human.
   If using an existing identity, only its **public key** is needed by the fixture.
   Never export/paste its private key. A disposable Windows identity is also valid.
-- A disposable Ubuntu 24.04 WSL distro (compatible with the GitHub Ubuntu debug
-  binaries), or a disposable local Linux VM reachable only over local loopback.
-  Windows `localhost` must reach WSL's loopback listener; verify that first.
-  If the machine's WSL networking does not support this route, stop and record
-  the prerequisite rather than exposing a public listener/tunnel.
+- An existing compatible Ubuntu 24.04 WSL session with the required dependencies
+  already present is sufficient; a new distro is not required. The disposable
+  boundary is the fixture: fresh loopback-only DB/Redis resources, a dedicated
+  unprivileged fixture identity, private state and synthetic keys. Reuse no
+  existing service, data or provider home; make no global package/config changes.
+  Missing dependencies are a concrete prerequisite to report. A disposable local
+  Linux VM is also suitable. Windows `localhost` must reach the fixture's loopback
+  listener; verify that first. If networking does not support this route, stop
+  and record the prerequisite rather than exposing a public listener/tunnel.
 - Local Postgres/Redis with newly created synthetic databases, no reused volumes,
   no production credentials. Apply the pinned candidate's schema only to that
   fresh database. The existing Linux CI rehearsal uses fresh service containers
@@ -147,7 +151,9 @@ that service-isolation result.
 
 Stop only the recorded fixture relay, TLS helper and hostd processes. Delete the
 fixture database/containers/volumes, synthetic keys and host state, and remove
-its dedicated account/distro when no longer needed. Remove the test community
+its dedicated fixture account when no longer needed. Preserve an existing WSL
+distro; remove a separate disposable distro only if this fixture created it and
+its recorded cleanup ownership includes removal. Remove the test community
 from the tested application profile. Remove only the recorded fixture CA thumbprint:
 
 ```powershell

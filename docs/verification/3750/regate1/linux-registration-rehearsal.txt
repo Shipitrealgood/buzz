@@ -1,0 +1,21 @@
+2461d85b0e3d11201c9558c87218093b8c71cb9c8c748b9c0c2a8038db1be56c
+PASS executable/service registered through isolated TLS relay
+PASS service restart and independent journal recovery preserve binding
+PASS single controller, revoke and revoked restart
+PASS actual service identity and filesystem/helper isolation
+Nov 07 01:40:35 runnervm7aw5e systemd[1]: Starting buzz-host-registration.service - Buzz host registration controller (no agent execution)...
+Nov 07 01:40:35 runnervm7aw5e buzz-registration-probe[7076]: PASS actual service namespace: unprivileged, state writable, credential/home/helper denied
+Nov 07 01:40:35 runnervm7aw5e systemd[1]: Started buzz-host-registration.service - Buzz host registration controller (no agent execution).
+Nov 07 01:40:41 runnervm7aw5e systemd[1]: Stopping buzz-host-registration.service - Buzz host registration controller (no agent execution)...
+Nov 07 01:40:41 runnervm7aw5e systemd[1]: buzz-host-registration.service: Deactivated successfully.
+Nov 07 01:40:41 runnervm7aw5e systemd[1]: Stopped buzz-host-registration.service - Buzz host registration controller (no agent execution).
+Nov 07 01:40:41 runnervm7aw5e systemd[1]: Starting buzz-host-registration.service - Buzz host registration controller (no agent execution)...
+Nov 07 01:40:41 runnervm7aw5e buzz-registration-probe[7148]: PASS actual service namespace: unprivileged, state writable, credential/home/helper denied
+Nov 07 01:40:41 runnervm7aw5e systemd[1]: Started buzz-host-registration.service - Buzz host registration controller (no agent execution).
+Nov 07 01:40:47 runnervm7aw5e systemd[1]: Stopping buzz-host-registration.service - Buzz host registration controller (no agent execution)...
+Nov 07 01:40:47 runnervm7aw5e systemd[1]: buzz-host-registration.service: Deactivated successfully.
+Nov 07 01:40:47 runnervm7aw5e systemd[1]: Stopped buzz-host-registration.service - Buzz host registration controller (no agent execution).
+Nov 07 01:40:47 runnervm7aw5e systemd[1]: Starting buzz-host-registration.service - Buzz host registration controller (no agent execution)...
+Nov 07 01:40:47 runnervm7aw5e buzz-registration-probe[7199]: PASS actual service namespace: unprivileged, state writable, credential/home/helper denied
+Nov 07 01:40:47 runnervm7aw5e systemd[1]: Started buzz-host-registration.service - Buzz host registration controller (no agent execution).
+PASS fixture processes, account and credential/state canaries removed

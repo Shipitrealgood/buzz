@@ -2,11 +2,16 @@
 
 Conductor supplies: accepted source SHA, Windows artifact/checksum receipt,
 Linux rehearsal archive/checksums, and the Windows-selected **public** owner key.
-Prepare only a disposable Ubuntu 24.04 WSL distro. The human should receive one
-ready local community URL and the host-console invitation, not setup chores.
-Do not reuse the host machine's databases, agent credentials/homes, service
-accounts or providers. Do not set `GITHUB_ACTIONS` to bypass the hosted probe's
-guard. That script remains the separate actual-service isolation gate.
+Use an existing compatible Ubuntu 24.04 WSL session with the required dependencies
+already present; a new distro is not required. Create disposable fixture resources:
+fresh loopback-only DB/Redis containers, a dedicated unprivileged fixture identity,
+private state and synthetic keys. The human should receive one ready local
+community URL and the host-console invitation, not setup chores. Reuse no existing
+service, data, agent credential/provider home or service account. Make no global
+package/config changes; report missing dependencies as a concrete prerequisite.
+Do not set `GITHUB_ACTIONS` to bypass the hosted probe's guard. The actual-service
+isolation gate ran separately in the disposable GitHub VM; this app journey does
+not replace it.
 
 Read `windows-journey.md`, the pinned `registration-systemd-smoke.py` and
 `loopback_tls.py`. Verify the archive SHA256SUMS before running a binary. Confirm
@@ -78,7 +83,7 @@ Do not reuse the disposable owner-driver secret as the Windows identity.
 
 ## Host and ready receipt
 
-In this disposable distro only, create a dedicated `buzz3750-fixture` unprivileged
+Within the approved WSL fixture, create a dedicated `buzz3750-fixture` unprivileged
 account (fail if it already exists) with no login shell and a private 0700
 `/var/lib/buzz3750-fixture` state directory. Copy the reviewed `buzz-hostd` binary
 and public CA to root-owned readable fixture paths; this account must not gain
@@ -101,6 +106,7 @@ Stop the exact recorded hostd, TLS and relay PIDs; wait for exit. Remove only
 `$fixture_tag-pg` and `$fixture_tag-redis` after verifying their `buzz.proof=3750`
 labels, with their anonymous volumes; remove their exact network. Remove the
 private fixture directory, dedicated account/state and root-owned fixture binary
-and CA copy. The Windows operator removes only the fixture community and recorded
-CA thumbprint, preserving the shared application profile. Return a cleanup receipt
+and CA copy. Preserve the existing WSL distro and all unrelated resources. The
+Windows operator removes only the fixture community and recorded CA thumbprint,
+preserving the shared application profile. Return a cleanup receipt
 or a named owner/deadline for intentionally retained fixture resources.

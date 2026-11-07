@@ -1,0 +1,32 @@
+{
+  "source": "6caf7c250f526b8eb4f9630107b632525e7573ef",
+  "reviewed_head": "1054d035c8194bd56dffe62678c27a7600931cf7",
+  "run": 42325003051,
+  "artifact": 13555041662,
+  "archive_sha256": "35f715b192b9f5836ab83f2fa89fd7463a9b6c5b2ab24d1780ae5336485a8386",
+  "manifest_checks": [
+    {
+      "path": "buzz-hostd",
+      "sha256": "34bdc1f8ada4d70a9c24f705e46d9c4b533899e03165296f87feadddd6a9d71b"
+    },
+    {
+      "path": "buzz-relay",
+      "sha256": "96e425528552f25000247386ab21da182caaf69acbb6e2573c933f74b4e6d9dc"
+    },
+    {
+      "path": "registration",
+      "sha256": "519a2bdf2063fc50328844d00e5a74ce7f412f2c9cc0cb1a1e3a464c6fd83803"
+    },
+    {
+      "path": "buzz-host-registration.service",
+      "sha256": "562581603b4c12851a7069d7fb2d6ba084dd28c151e88713774106032a708de7"
+    },
+    {
+      "path": "source.txt",
+      "sha256": "c791d4b61b66e221a7b3f79ebbf80fc221ddb987290b0d1e90a733a291c91656"
+    }
+  ],
+  "service_matches_reviewed_git_object": true,
+  "result": "independently read actual service lifecycle/isolation/cleanup receipts; independently verified archive and all internal manifest hashes",
+  "scope": "GitHub-hosted VM, debug rehearsal, no deployment or per-port network-isolation certification"
+}

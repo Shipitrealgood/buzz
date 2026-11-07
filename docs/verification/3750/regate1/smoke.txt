@@ -1,0 +1,17 @@
+Command (desktop/, Hermit): CI=1 pnpm exec playwright test tests/e2e/paired-hosts.spec.ts --project=smoke --retries=0 --reporter=list
+Exit: 0
+
+Running 6 tests using 1 worker
+
+(node:3413876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:3413876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [smoke] › tests/e2e/paired-hosts.spec.ts:169:1 › Windows routes registration refresh and revoke by identity despite identical labels (8.2s)
+  ✓  2 [smoke] › tests/e2e/paired-hosts.spec.ts:222:1 › empty supported Windows directory offers Add Host, cancel, expired retry and registration (8.2s)
+  ✓  3 [smoke] › tests/e2e/paired-hosts.spec.ts:259:1 › unsupported Windows community explains registration support without offering Add Host (2.5s)
+  ✓  4 [smoke] › tests/e2e/paired-hosts.spec.ts:274:3 › Windows unavailable directory retains Retry without authorizing Add Host (2.6s)
+  ✓  5 [smoke] › tests/e2e/paired-hosts.spec.ts:274:3 › Windows failed directory retains Retry without authorizing Add Host (2.5s)
+  ✓  6 [smoke] › tests/e2e/paired-hosts.spec.ts:302:1 › other platforms keep the stock Agents surface without registration IPC (2.3s)
+
+  6 passed (27.5s)

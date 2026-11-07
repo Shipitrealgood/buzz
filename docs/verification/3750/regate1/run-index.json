@@ -1,0 +1,34 @@
+{
+  "base": "ccf89c9cabcac8370f94cc9c373e44a06bc95a3c",
+  "head": "1054d035c8194bd56dffe62678c27a7600931cf7",
+  "ci_source": "6caf7c250f526b8eb4f9630107b632525e7573ef",
+  "requested_configuration": "gpt-6-astra/high",
+  "runtime_identity": "unknown",
+  "rework_rounds": 1,
+  "independent_run": {
+    "command": "CI=1 pnpm exec playwright test tests/e2e/paired-hosts.spec.ts --project=smoke --retries=0 --reporter=list",
+    "cwd": "desktop",
+    "toolchain": "repository Hermit",
+    "exit": 0,
+    "passed": 6,
+    "failed": 0,
+    "seconds": 27.5,
+    "receipt": "smoke.txt"
+  },
+  "independent_checks": [
+    "production-continuity.json",
+    "linux-platform.json",
+    "cleanup.json"
+  ],
+  "hosted_measurement_read": [
+    "linux-workflow.json",
+    "linux-registration-rehearsal.txt"
+  ],
+  "not_run": [
+    "Windows native tests/ACL independently reviewed complete receipts",
+    "Windows installer/hash receipt review",
+    "actual native Windows UI journey and human confirmation",
+    "unchanged source/library/full suites and baseline-blocked strict lint"
+  ],
+  "note": "M-1 resolved. Two operator docs edited only under explicit conductor authorization. No implementation or test edits by reviewer."
+}
