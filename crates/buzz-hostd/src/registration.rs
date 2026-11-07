@@ -336,7 +336,7 @@ impl Host {
                     &serde_json::to_vec(&evidence.data["event"])?,
                     wire::MAX_EVENT,
                 )?;
-                match self.claim(g, &e, clock) {
+                match self.claim(g, &e, &clock.refresh()?) {
                     Ok(()) => break,
                     Err(error) if error.is::<store::InvalidPacket>() => {}
                     Err(error) => return Err(error),
@@ -354,7 +354,7 @@ impl Host {
         }
         let binding = self.page(ws, relay, query("binding", None)?).await?;
         if binding.data["state"] != "active" || binding.data["recovery_only"] == true {
-            self.revoke(g, clock)?;
+            self.revoke(g, &clock.refresh()?)?;
         } else {
             let mut mail = query("messages", None)?;
             let mut complete = false;
@@ -362,6 +362,7 @@ impl Host {
             // additional iteration detects any violated server bound explicitly.
             for _ in 0..22 {
                 let messages = self.page(ws, relay, mail.clone()).await?;
+                let current = clock.refresh()?;
                 for reference in messages.data["events"]
                     .as_array()
                     .ok_or_else(|| anyhow::anyhow!("missing messages"))?
@@ -371,7 +372,7 @@ impl Host {
                     if !matches!(reference["op"].as_str(), Some("status-query" | "unpair"))
                         || reference["expires_at"]
                             .as_u64()
-                            .is_none_or(|expiry| expiry <= clock.wall)
+                            .is_none_or(|expiry| expiry <= current.wall)
                     {
                         continue;
                     }
@@ -387,7 +388,7 @@ impl Host {
                     )?;
                     // References only reduce needless crypto; exact evidence is
                     // independently verified before any durable local effect.
-                    self.receive(g, &e, label, clock)?;
+                    self.receive(g, &e, label, &clock.refresh()?)?;
                 }
                 if messages.complete {
                     complete = true;

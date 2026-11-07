@@ -239,18 +239,18 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
         a.len() == 3
     };
     tokio::spawn(async move {
-        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            if !exact {
-                return Err(());
-            }
-            if let Some(event) = event {
-                post(&event, &c, &s).await
-            } else {
-                request(&sub, filter.as_deref().ok_or(())?, &c, &s).await
-            }
-        })
-        .await;
-        if !matches!(result, Ok(Ok(()))) {
+        let result = if !exact {
+            Err(())
+        } else if let Some(event) = event {
+            tokio::time::timeout(std::time::Duration::from_secs(5), post(&event, &c, &s))
+                .await
+                .unwrap_or(Err(()))
+        } else {
+            // REQ bounds database work internally. Never cancel a lifecycle
+            // transition halfway through its index/topic ownership effects.
+            request(&sub, filter.as_deref().unwrap_or_default(), &c, &s).await
+        };
+        if result.is_err() {
             deny(&verb, &sub, &id, &c, &s).await;
         }
         drop(global);
@@ -371,6 +371,14 @@ async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
     #[cfg(test)]
     process_crash_window(&h.op, "after").await;
     c.send(RelayMessage::ok(&event.id.to_hex(), true, ""));
+    #[cfg(test)]
+    if test_seam::DROP_NOTICE
+        .lock()
+        .expect("test notice fault")
+        .remove(&event.id)
+    {
+        return Ok(());
+    }
     // Post-commit best effort invalidation. Exact private ciphertext never enters
     // the ordinary event pipeline. Generic delivery rejects this private kind.
     if let Ok(signal) = EventBuilder::new(Kind::Custom(KIND_HOST_REGISTRY_V2 as u16), "")
@@ -512,17 +520,22 @@ async fn request(
     {
         return Err(());
     }
-    budget(
-        c,
-        s,
-        who,
-        q.view == "binding",
-        c.registry.generation().as_ref(),
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        budget(
+            c,
+            s,
+            who,
+            q.view == "binding",
+            c.registry.generation().as_ref(),
+        ),
     )
-    .await?;
+    .await
+    .map_err(|_| ())??;
     let _permit = c.nip_fi_gate.acquire_effect().await.map_err(|_| ())?;
     // Claim with the existing lifecycle map; all CLOSE/replacement/cleanup paths
     // retire this owner token, so background live delivery cannot outlive it.
+    let events = s.pubsub.subscribe_local();
     let owner = {
         let mut subs = c.subscriptions.lock().await;
         if c.cancel.is_cancelled() || (!subs.contains_key(sub) && subs.len() >= 32) {
@@ -531,20 +544,55 @@ async fn request(
         super::close::retire_locked(&mut subs, sub, c, s).await;
         let owner = super::close::next_owner();
         subs.insert(sub.into(), owner);
+        // Map, index and topic retention are one existing lifecycle transition.
+        // This region is outside timeout cancellation, just like ordinary REQ.
+        if q.view == "live" {
+            s.sub_registry.register_scoped(
+                c.tenant.community(),
+                c.conn_id,
+                sub.into(),
+                vec![],
+                None,
+            );
+            #[cfg(test)]
+            super::close::test_seam::pause_at(&test_seam::SETUP_PAUSE).await;
+            s.pubsub
+                .retain_topic(&c.tenant, buzz_pubsub::EventTopic::Global)
+                .await;
+        }
         owner
     };
-    let mut events = s.pubsub.subscribe_local();
-    // Retain the ordinary global topic through the existing registry lifecycle.
-    if q.view == "live" {
-        s.sub_registry
-            .register_scoped(c.tenant.community(), c.conn_id, sub.into(), vec![], None);
-        s.pubsub
-            .retain_topic(&c.tenant, buzz_pubsub::EventTopic::Global)
-            .await;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        request_owned(sub, owner, &q, events, c, s).await
+    })
+    .await;
+    if !matches!(result, Ok(Ok(()))) {
+        super::close::close_if_owner(
+            sub,
+            owner,
+            Some("resync_required: host registry unavailable"),
+            c,
+            s,
+        )
+        .await;
     }
-    let p = read(c, s, &q).await?;
+    // Post-claim errors are already fenced by owner; dispatch must not refuse
+    // the ID unconditionally and accidentally retire its replacement.
+    Ok(())
+}
+async fn request_owned(
+    sub: &str,
+    owner: u64,
+    q: &wire::Query,
+    mut events: tokio::sync::broadcast::Receiver<buzz_pubsub::ChannelEvent>,
+    c: &Arc<ConnectionState>,
+    s: &Arc<AppState>,
+) -> Result<(), ()> {
+    #[cfg(test)]
+    super::close::test_seam::pause_at(&test_seam::READ_PAUSE).await;
+    let p = read(c, s, q).await?;
     let mut high = p.high_water;
-    let e = page_event(c, s, &q, p, false)?;
+    let e = page_event(c, s, q, p, false)?;
     if !super::close::send_if_owner(sub, owner, RelayMessage::event(sub, &e), c).await {
         return Ok(());
     }
@@ -554,6 +602,7 @@ async fn request(
         return Ok(());
     }
     let (sub, c, s) = (sub.to_owned(), Arc::clone(c), Arc::clone(s));
+    let q = q.clone();
     tokio::spawn(async move {
         let mut periodic = tokio::time::interval(std::time::Duration::from_secs(60));
         periodic.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -642,4 +691,15 @@ fn high_token(
         mac.update(&[0]);
     }
     Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+#[cfg(test)]
+mod test_seam {
+    pub(crate) static DROP_NOTICE: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashSet<nostr::EventId>>,
+    > = std::sync::LazyLock::new(Default::default);
+    tokio::task_local! {
+        pub(crate) static READ_PAUSE: std::sync::Arc<super::super::close::test_seam::Pause>;
+        pub(crate) static SETUP_PAUSE: std::sync::Arc<super::super::close::test_seam::Pause>;
+    }
 }

@@ -1051,9 +1051,33 @@ mod external_infra_tests {
         }
         let router = crate::router::build_router(f.state.clone());
         use base64::Engine as _;
+        let http_scope = buzz_core::paired_message::Scope {
+            owner: outsider.public_key(),
+            generation: "ce".repeat(32),
+            ..scope.clone()
+        };
+        let http_claim = wire::seal(
+            &outsider,
+            &http_scope,
+            wire::Body::PairClaim {
+                proof: "ab".repeat(32),
+            },
+            "cd".repeat(32),
+            None,
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        wire::verify(
+            &serde_json::to_vec(&http_claim).unwrap(),
+            &f.origin(),
+            outsider.public_key(),
+        )
+        .unwrap();
         for (path, filter, unsupported) in [
             ("/query", json!([{"ids":[ack.id.to_hex()]}]), false),
             ("/count", json!([{"ids":[ack.id.to_hex()]}]), false),
+            ("/events", serde_json::to_value(&http_claim).unwrap(), true),
             ("/query", json!([{"kinds":[43103]}]), true),
             ("/count", json!([{"host_registry":{"v":2}}]), true),
         ] {
@@ -1256,7 +1280,20 @@ mod external_infra_tests {
                 drop(h);
                 let h = Host::at(hd.path(), false).unwrap();
                 assert_eq!(h.pending().unwrap()[0].id, ack.id);
-                let mut recovered = f.host_socket(&h, &scope.generation).await;
+                std::fs::remove_file(&ready).unwrap();
+                let replacement=Command::new(std::env::current_exe().unwrap()).args(["handlers::host_registry::external_infra_registration_tests::external_infra_tests::external_infra_process_tests::child_root_relay","--exact","--ignored","--nocapture"])
+                    .env("BUZZ_3720_CHILD_HOST",&f.host).env("BUZZ_3720_CHILD_ADDR",addr.to_string()).env("BUZZ_3720_CHILD_RELAY_KEY",f.state.relay_keypair.secret_key().to_secret_hex()).env("BUZZ_3720_CHILD_READY",&ready).env_remove("BUZZ_3720_CRASH_PHASE").stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+                let _replacement = Child(replacement);
+                marker(&ready).await;
+                let mut recovered = NostrWsConnection::connect_to_addr(
+                    &format!("wss://{}", f.host),
+                    &addr.to_string(),
+                )
+                .await
+                .unwrap();
+                h.authenticate(&mut recovered, &scope.generation)
+                    .await
+                    .unwrap();
                 assert!(recovered.send_event(ack.clone()).await.unwrap().accepted);
                 assert_eq!(f.binding_count(scope.host).await, 1);
                 h.delivered(&ack.id.to_hex()).unwrap();
@@ -1706,7 +1743,27 @@ mod external_infra_tests {
         .await
         .unwrap();
         assert_eq!(h.state(&scope.generation).unwrap(), "dead");
-        println!("TLS_DNS two_tenants=true host_registration_and_reconcile=true ports=32000,34443");
+        let held = f
+            .state
+            .handler_semaphore
+            .clone()
+            .acquire_many_owned(f.state.config.max_concurrent_handlers as u32)
+            .await
+            .unwrap();
+        assert!(a
+            .page(&owner, registry::query("hosts", None, None).unwrap())
+            .await
+            .is_err());
+        assert!(h
+            .page(
+                &mut hw,
+                f.state.relay_keypair.public_key(),
+                registry::query("binding", Some(&scope.generation), None).unwrap()
+            )
+            .await
+            .is_ok());
+        drop(held);
+        println!("TLS_DNS two_tenants=true host_registration_and_reconcile=true ports=32000,34443 global_queue_held=true reserved_binding_via_proxy=true");
         a.disconnect().await.unwrap();
         b.disconnect().await.unwrap();
         hw.disconnect().await.unwrap();
@@ -1780,6 +1837,1312 @@ mod external_infra_tests {
             }
             ws.disconnect().await.unwrap();
         }
+        net.disconnect().await.unwrap();
+        f.stop().await;
+    }
+    fn test_connection(f: &Fixture, o: &Keys) -> crate::connection::tests::TestConn {
+        let ctx = buzz_auth::AuthContext {
+            pubkey: o.public_key(),
+            scopes: vec![],
+            channel_ids: None,
+            auth_method: buzz_auth::AuthMethod::Nip42,
+            agent_owner_pubkey: None,
+        };
+        let mut tc = crate::connection::tests::test_conn_in(
+            AuthState::Authenticated(ctx),
+            None,
+            f.community,
+        );
+        Arc::get_mut(&mut tc.conn).unwrap().tenant =
+            buzz_core::TenantContext::resolved(f.community, f.host.clone());
+        tc
+    }
+    fn request_frame(o: &Keys, sub: &str, q: &wire::Query) -> serde_json::Value {
+        json!(["REQ",sub,{"kinds":[43103],"#p":[o.public_key().to_hex()],"host_registry":q}])
+    }
+    async fn owner_barrier(c: &ConnectionState, sub: &str, previous: Option<u64>) -> u64 {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(owner) = c.subscriptions.lock().await.get(sub).copied() {
+                    if Some(owner) != previous {
+                        return owner;
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_old_errors_and_timeouts_preserve_new_subscription_owner() {
+        for timeout in [false, true] {
+            let f = Fixture::new().await;
+            let o = Keys::generate();
+            f.member(&o).await;
+            let mut tc = test_connection(&f, &o);
+            let mut tx = if timeout {
+                None
+            } else {
+                let mut tx = f.state.db.pool().begin().await.unwrap();
+                sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('invite-admission:' || $1::text,0))")
+                .bind(f.community.as_uuid()).execute(&mut *tx).await.unwrap();
+                Some(tx)
+            };
+            let q = registry::query("binding", Some(&"ab".repeat(32)), None).unwrap();
+            let old = if timeout {
+                let pause = Arc::new(crate::handlers::close::test_seam::Pause::default());
+                let (c, s, raw) = (tc.conn.clone(), f.state.clone(), raw_filter(&o, &q));
+                let task = tokio::spawn(test_seam::READ_PAUSE.scope(pause.clone(), async move {
+                    request("same", &raw, &c, &s).await
+                }));
+                tokio::time::timeout(Duration::from_secs(2), pause.reached.notified())
+                    .await
+                    .unwrap();
+                Some(task)
+            } else {
+                dispatch(
+                    &request_frame(&o, "same", &q).to_string(),
+                    tc.conn.clone(),
+                    f.state.clone(),
+                )
+                .await;
+                None
+            };
+            let first = owner_barrier(&tc.conn, "same", None).await;
+            let q = registry::query("live", None, None).unwrap();
+            dispatch(
+                &request_frame(&o, "same", &q).to_string(),
+                tc.conn.clone(),
+                f.state.clone(),
+            )
+            .await;
+            let second = owner_barrier(&tc.conn, "same", Some(first)).await;
+            if let Some(tx) = tx.take() {
+                tx.commit().await.unwrap();
+            }
+            if let Some(task) = old {
+                tokio::time::timeout(Duration::from_secs(6), task)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+            }
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            let mut eose = 0;
+            while let Ok(Some(frame)) = tokio::time::timeout_at(deadline, tc.send_rx.recv()).await {
+                if let axum::extract::ws::Message::Text(raw) = frame {
+                    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                    assert_ne!(v[0], "CLOSED", "late old terminal frame: {v}");
+                    if v[0] == "EOSE" {
+                        eose += 1;
+                    }
+                }
+            }
+            assert_eq!(eose, 1);
+            assert_eq!(
+                tc.conn.subscriptions.lock().await.get("same"),
+                Some(&second)
+            );
+            crate::handlers::close::handle_close("same".into(), tc.conn.clone(), f.state.clone())
+                .await;
+            assert_eq!(
+                f.state
+                    .pubsub
+                    .topic_refcount(&tc.conn.tenant, buzz_pubsub::EventTopic::Global)
+                    .await,
+                0
+            );
+            assert!(f
+                .state
+                .sub_registry
+                .get_filters(tc.conn.conn_id, "same")
+                .is_none());
+            tc.conn.cancel.cancel();
+            crate::handlers::close::release_connection_subscriptions(&tc.conn, &f.state).await;
+            println!("ROUND1_LIFECYCLE old_timeout={timeout} replacement_retained=true no_late_frames=true topics=0");
+            f.stop().await;
+        }
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_setup_serializes_close_replacement_and_connection_cleanup() {
+        for action in ["close", "replace", "cancel"] {
+            let f = Fixture::new().await;
+            let o = Keys::generate();
+            f.member(&o).await;
+            let mut tc = test_connection(&f, &o);
+            let pause = Arc::new(crate::handlers::close::test_seam::Pause::default());
+            let q = registry::query("live", None, None).unwrap();
+            let raw = request_frame(&o, "setup", &q)[2].to_string();
+            let (c, s) = (tc.conn.clone(), f.state.clone());
+            let setup = tokio::spawn(test_seam::SETUP_PAUSE.scope(pause.clone(), async move {
+                request("setup", &raw, &c, &s).await
+            }));
+            tokio::time::timeout(Duration::from_secs(2), pause.reached.notified())
+                .await
+                .unwrap();
+            let (c, s) = (tc.conn.clone(), f.state.clone());
+            let transition = tokio::spawn(async move {
+                match action {
+                    "close" => crate::handlers::close::handle_close("setup".into(), c, s).await,
+                    "replace" => {
+                        request(
+                            "setup",
+                            &raw_filter(&o, &registry::query("live", None, None).unwrap()),
+                            &c,
+                            &s,
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    _ => {
+                        c.cancel.cancel();
+                        crate::handlers::close::release_connection_subscriptions(&c, &s).await;
+                    }
+                }
+            });
+            tokio::task::yield_now().await;
+            assert!(
+                !transition.is_finished(),
+                "transition crossed incomplete lifecycle"
+            );
+            pause.resume.notify_one();
+            setup.await.unwrap().unwrap();
+            transition.await.unwrap();
+            if action == "replace" {
+                assert_eq!(tc.conn.subscriptions.lock().await.len(), 1);
+                assert_eq!(
+                    f.state
+                        .pubsub
+                        .topic_refcount(&tc.conn.tenant, buzz_pubsub::EventTopic::Global)
+                        .await,
+                    1
+                );
+                crate::handlers::close::handle_close(
+                    "setup".into(),
+                    tc.conn.clone(),
+                    f.state.clone(),
+                )
+                .await;
+            }
+            assert!(tc.conn.subscriptions.lock().await.is_empty());
+            assert!(f
+                .state
+                .sub_registry
+                .get_filters(tc.conn.conn_id, "setup")
+                .is_none());
+            assert_eq!(
+                f.state
+                    .pubsub
+                    .topic_refcount(&tc.conn.tenant, buzz_pubsub::EventTopic::Global)
+                    .await,
+                0
+            );
+            if action != "cancel" {
+                let mut closed = false;
+                let deadline = tokio::time::Instant::now() + Duration::from_millis(80);
+                while let Ok(Some(axum::extract::ws::Message::Text(raw))) =
+                    tokio::time::timeout_at(deadline, tc.send_rx.recv()).await
+                {
+                    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                    assert!(!closed, "late old frame after CLOSED: {v}");
+                    closed = v[0] == "CLOSED";
+                }
+                assert!(closed);
+            }
+            tc.conn.cancel.cancel();
+            crate::handlers::close::release_connection_subscriptions(&tc.conn, &f.state).await;
+            println!("ROUND1_SETUP action={action} map_index_topic_clean=true");
+            f.stop().await;
+        }
+    }
+    fn raw_filter(o: &Keys, q: &wire::Query) -> String {
+        request_frame(o, "unused", q)[2].to_string()
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_reconcile_refreshes_clock_and_keeps_timely_saved_ack_retry() {
+        fn expired() -> anyhow::Result<RegistrationClock> {
+            let mut c = RegistrationClock::read()?;
+            c.wall += 601;
+            c.millis += 601000;
+            Ok(c)
+        }
+        fn rollback() -> anyhow::Result<RegistrationClock> {
+            let mut c = RegistrationClock::read()?;
+            c.wall -= 1000;
+            Ok(c)
+        }
+        fn reboot() -> anyhow::Result<RegistrationClock> {
+            let mut c = RegistrationClock::read()?;
+            c.boot.push_str("-next-boot");
+            Ok(c)
+        }
+        for (name, source) in [
+            (
+                "expired",
+                expired as fn() -> anyhow::Result<RegistrationClock>,
+            ),
+            ("rollback", rollback),
+            ("reboot", reboot),
+            ("saved-retry", expired),
+        ] {
+            let f = Fixture::new().await;
+            let o = Keys::generate();
+            f.member(&o).await;
+            let t = tempfile::tempdir().unwrap();
+            let mut d = Device::at(&t.path().join("owner.sqlite")).unwrap();
+            let (_hd, mut h) = host();
+            let mut start = clock();
+            let inv = h.offer(f.origin(), &start).unwrap();
+            let (s, claim) = d.pair_registry(&f.origin(), &o, &inv).unwrap();
+            let mut net = f.owner(&o).await;
+            net.publish(&o, claim.clone()).await.unwrap();
+            let saved = if name == "saved-retry" {
+                h.claim(&s.generation, &claim, &start).unwrap();
+                Some(h.pending().unwrap()[0].clone())
+            } else {
+                None
+            };
+            let mut ws = f.host_socket(&h, &s.generation).await;
+            if let Some(ack) = &saved {
+                // Commit while timely but keep the durable ack pending locally.
+                assert!(ws.send_event(ack.clone()).await.unwrap().accepted);
+                let q = wire::seal(
+                    &o,
+                    &s,
+                    wire::Body::StatusQuery {
+                        ack_id: ack.id.to_hex(),
+                        nonce: "ab".repeat(32),
+                    },
+                    "cd".repeat(32),
+                    Some(ack.id.to_hex()),
+                    now(),
+                    now() + 60,
+                )
+                .unwrap();
+                net.publish(&o, q).await.unwrap();
+            }
+            start.source = Some(source);
+            let result = h
+                .reconcile(
+                    &mut ws,
+                    f.state.relay_keypair.public_key(),
+                    &s.generation,
+                    "clock",
+                    &start,
+                )
+                .await;
+            if let Some(ack) = saved {
+                result.unwrap();
+                assert_eq!(f.binding_count(s.host).await, 1);
+                assert!(ws.send_event(ack).await.unwrap().accepted);
+                let b = net
+                    .page(
+                        &o,
+                        registry::query("binding", Some(&s.generation), None).unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert!(
+                    b.data["latest_status_id"].is_null(),
+                    "expired readiness query consumed using pre-await time"
+                );
+            } else {
+                assert!(result.is_err(), "{name}");
+                assert_eq!(h.state(&s.generation).unwrap(), "spent");
+                assert_eq!(f.binding_count(s.host).await, 0);
+                assert!(h.pending().unwrap().is_empty());
+            }
+            println!("ROUND1_CLOCK case={name} correct=true");
+            ws.disconnect().await.unwrap();
+            net.disconnect().await.unwrap();
+            f.stop().await;
+        }
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_pruning_resets_fresh_mailbox_and_rejects_stale_expired_cursors() {
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let t = tempfile::tempdir().unwrap();
+        let mut d = Device::at(&t.path().join("owner.sqlite")).unwrap();
+        let (_hd, mut h) = host();
+        let mut net = f.owner(&o).await;
+        let (s, mut ws, claim, ack) = pair(&f, &o, &mut d, &mut h, &mut net).await;
+        let first = d.registry_status_query(&f.origin(), &o, &s).unwrap();
+        net.publish(&o, first.clone()).await.unwrap();
+        sqlx::query("UPDATE paired_host_events SET received_at=now()-interval '6 minutes' WHERE community_id=$1 AND event_id=$2")
+            .bind(f.community.as_uuid()).bind(first.id.as_bytes().as_slice()).execute(f.state.db.pool()).await.unwrap();
+        let fresh = d.registry_status_query(&f.origin(), &o, &s).unwrap();
+        net.publish(&o, fresh.clone()).await.unwrap();
+        let floor:i64=sqlx::query_scalar("SELECT retention_floor FROM paired_host_bindings WHERE community_id=$1 AND generation=$2").bind(f.community.as_uuid()).bind(wire::bytes(&s.generation).unwrap().as_slice()).fetch_one(f.state.db.pool()).await.unwrap();
+        assert!(floor > 0);
+        let tc = test_connection(&f, &o);
+        let q = registry::query("messages", Some(&s.generation), None).unwrap();
+        let high: i64 = sqlx::query_scalar(
+            "SELECT max(seq) FROM paired_host_events WHERE community_id=$1 AND generation=$2",
+        )
+        .bind(f.community.as_uuid())
+        .bind(wire::bytes(&s.generation).unwrap().as_slice())
+        .fetch_one(f.state.db.pool())
+        .await
+        .unwrap();
+        for (kind, position, expires) in [
+            ("pruned", "0", now() + 60),
+            ("expired", &high.to_string(), now() - 1),
+        ] {
+            let parts = scope(&tc.conn, &o.public_key().to_hex(), &q);
+            let parts: Vec<_> = parts.iter().map(String::as_str).collect();
+            let token = crate::api::paired_hosts::seal_cursor(
+                &f.state,
+                &parts,
+                &serde_json::to_string(&Cursor {
+                    position: position.into(),
+                    high,
+                    expires,
+                })
+                .unwrap(),
+                160,
+            )
+            .unwrap();
+            let mut old = q.clone();
+            old.cursor = Some(token);
+            assert!(net.page(&o, old).await.is_err(), "{kind}");
+        }
+        h.reconcile(
+            &mut ws,
+            f.state.relay_keypair.public_key(),
+            &s.generation,
+            "retained",
+            &clock(),
+        )
+        .await
+        .unwrap();
+        let b = net
+            .page(
+                &o,
+                registry::query("binding", Some(&s.generation), None).unwrap(),
+            )
+            .await
+            .unwrap();
+        let status_id = b.data["latest_status_id"].as_str().unwrap();
+        let e = net
+            .page(
+                &o,
+                registry::query("evidence", Some(&s.generation), Some(status_id)).unwrap(),
+            )
+            .await
+            .unwrap();
+        let e: Event = serde_json::from_value(e.data["event"].clone()).unwrap();
+        d.accept_registry_status(&f.origin(), &o, &s, &e).unwrap();
+        for original in [claim, ack] {
+            let p = net
+                .page(
+                    &o,
+                    registry::query("evidence", Some(&s.generation), Some(&original.id.to_hex()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(p.data["event"]["id"], original.id.to_hex());
+        }
+        let list = h
+            .page(&mut ws, f.state.relay_keypair.public_key(), q)
+            .await
+            .unwrap();
+        assert!(list.data["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["id"] != first.id.to_hex()));
+        println!("ROUND1_PRUNING actual_floor={floor} fresh_reconcile_nonce=true consent_retained=true stale_and_expired_closed=true");
+        ws.disconnect().await.unwrap();
+        net.disconnect().await.unwrap();
+        f.stop().await;
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_offline_tombstone_restart_retry_and_fresh_generation() {
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let t = tempfile::tempdir().unwrap();
+        let mut d = Device::at(&t.path().join("owner.sqlite")).unwrap();
+        let (hd, mut h) = host();
+        let mut net = f.owner(&o).await;
+        let (s, ws, _claim, ack) = pair(&f, &o, &mut d, &mut h, &mut net).await;
+        ws.disconnect().await.unwrap();
+        let unpair = d.unpair_registry(&f.origin(), &o, &s).unwrap();
+        net.publish(&o, unpair).await.unwrap();
+        let mut ws = f.host_socket(&h, &s.generation).await;
+        let b = h
+            .page(
+                &mut ws,
+                f.state.relay_keypair.public_key(),
+                registry::query("binding", Some(&s.generation), None).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(b.data["state"], "fenced");
+        ws.disconnect().await.unwrap();
+        h.revoke(&s.generation, &clock()).unwrap();
+        let tomb = h.pending().unwrap()[0].clone();
+        assert_eq!(h.state(&s.generation).unwrap(), "dead");
+        drop(h);
+        let mut h = Host::at(hd.path(), false).unwrap();
+        assert_eq!(h.pending().unwrap()[0], tomb);
+        let mut old = f.host_socket(&h, &s.generation).await;
+        let first = old.send_event(tomb.clone()).await.unwrap();
+        if !first.accepted {
+            let writer = f
+                .state
+                .db
+                .post_registry_event(
+                    f.community,
+                    &f.origin(),
+                    s.host,
+                    &serde_json::to_vec(&tomb).unwrap(),
+                    false,
+                    &[0; 32],
+                )
+                .await;
+            panic!("first tomb denied: {first:?}, exact writer={writer:?}");
+        }
+        // Simulate loss of the first OK at the durable consumer: no delivered
+        // call, reconnect and resend exactly the persisted tombstone.
+        old.disconnect().await.unwrap();
+        let mut old = f.host_socket(&h, &s.generation).await;
+        assert!(
+            old.send_event(tomb.clone()).await.unwrap().accepted,
+            "exact tomb retry after reconnect"
+        );
+        h.delivered(&tomb.id.to_hex()).unwrap();
+        assert!(h.pending().unwrap().is_empty());
+        let inv = h.offer(f.origin(), &clock()).unwrap();
+        let (next, claim) = d.pair_registry(&f.origin(), &o, &inv).unwrap();
+        assert_ne!(s.generation, next.generation);
+        assert_eq!(s.host, next.host);
+        net.publish(&o, claim.clone()).await.unwrap();
+        h.claim(&next.generation, &claim, &clock()).unwrap();
+        let new_ack = h.pending().unwrap()[0].clone();
+        assert!(!old.send_event(new_ack.clone()).await.unwrap().accepted);
+        let mut new = f.host_socket(&h, &next.generation).await;
+        assert!(new.send_event(new_ack.clone()).await.unwrap().accepted);
+        h.delivered(&new_ack.id.to_hex()).unwrap();
+        // Exact immutable history may return OK; it must grant no authority.
+        old.send_event(ack).await.unwrap();
+        let terminal = net
+            .page(
+                &o,
+                registry::query("binding", Some(&s.generation), None).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(terminal.data["state"], "dead");
+        let query = wire::seal(
+            &o,
+            &s,
+            wire::Body::StatusQuery {
+                ack_id: wire::verify(&serde_json::to_vec(&tomb).unwrap(), &f.origin(), s.host)
+                    .unwrap()
+                    .1
+                    .parent
+                    .unwrap(),
+                nonce: "aa".repeat(32),
+            },
+            "bb".repeat(32),
+            wire::verify(&serde_json::to_vec(&tomb).unwrap(), &f.origin(), s.host)
+                .unwrap()
+                .1
+                .parent,
+            now(),
+            now() + 60,
+        )
+        .unwrap();
+        assert!(net.publish(&o, query).await.is_err());
+        assert_eq!(f.binding_count(s.host).await, 1);
+        assert!(h.pending().unwrap().is_empty());
+        // A synthetic legitimate host signer supplies an altered ack against
+        // the same DEAD writer state; the real host facade never re-signs one.
+        let controlled = Keys::generate();
+        let (dead_scope, mut controlled_ws, old_ack) =
+            signed_pair(&f, &o, &controlled, &mut net, "ad".repeat(32)).await;
+        let tomb = wire::seal(
+            &controlled,
+            &dead_scope,
+            wire::Body::Unpaired {
+                ack_id: old_ack.id.to_hex(),
+            },
+            "ae".repeat(32),
+            Some(old_ack.id.to_hex()),
+            now(),
+            now() + 86400,
+        )
+        .unwrap();
+        assert!(controlled_ws.send_event(tomb).await.unwrap().accepted);
+        let header = wire::verify(
+            &serde_json::to_vec(&old_ack).unwrap(),
+            &f.origin(),
+            controlled.public_key(),
+        )
+        .unwrap()
+        .1;
+        let altered = wire::seal(
+            &controlled,
+            &dead_scope,
+            wire::Body::PairAck {
+                claim_id: header.parent.clone().unwrap(),
+            },
+            "af".repeat(32),
+            header.parent,
+            now(),
+            header.expires_at,
+        )
+        .unwrap();
+        assert!(!controlled_ws.send_event(altered).await.unwrap().accepted);
+        assert_eq!(f.binding_count(controlled.public_key()).await, 0);
+        controlled_ws.disconnect().await.unwrap();
+        println!("ROUND1_OFFLINE dead_persisted_before_send=true exact_restart_retry=true fresh_generation=true old_ack_cannot_resurrect=true altered_legitimate_ack_denied=true live_owners=1");
+        old.disconnect().await.unwrap();
+        new.disconnect().await.unwrap();
+        net.disconnect().await.unwrap();
+        f.stop().await;
+    }
+    fn corrupt_payload(
+        e: &Event,
+        signer: &Keys,
+        recipient: PublicKey,
+        edit: impl FnOnce(&mut serde_json::Value),
+    ) -> Event {
+        use nostr::nips::nip44::{self, Version};
+        let plain = nip44::decrypt(signer.secret_key(), &recipient, &e.content).unwrap();
+        let mut p: serde_json::Value = serde_json::from_str(&plain).unwrap();
+        edit(&mut p);
+        let encrypted = nip44::encrypt(
+            signer.secret_key(),
+            &recipient,
+            serde_json::to_vec(&p).unwrap(),
+            Version::V2,
+        )
+        .unwrap();
+        EventBuilder::new(e.kind, encrypted)
+            .tags(e.tags.clone())
+            .custom_created_at(e.created_at)
+            .sign_with_keys(signer)
+            .unwrap()
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_legitimate_signer_contradictions_have_no_consumer_effect() {
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let t = tempfile::tempdir().unwrap();
+        let mut d = Device::at(&t.path().join("owner.sqlite")).unwrap();
+        let (_hd, mut h) = host();
+        let inv = h.offer(f.origin(), &clock()).unwrap();
+        let (s, claim) = d.pair_registry(&f.origin(), &o, &inv).unwrap();
+        for field in [
+            "v",
+            "community",
+            "owner",
+            "host",
+            "generation",
+            "op",
+            "operation_id",
+            "parent",
+            "expires_at",
+            "body-type",
+        ] {
+            let bad = corrupt_payload(&claim, &o, s.host, |p| match field {
+                "v" => p["header"][field] = 3.into(),
+                "expires_at" => p["header"][field] = (now() + 1000).into(),
+                "community" => p["header"][field] = "https://wrong.test".into(),
+                "op" => p["header"][field] = "unpair".into(),
+                "body-type" => p["body"] = json!({"type":"unpair","ack_id":"ab".repeat(32)}),
+                _ => p["header"][field] = "ab".repeat(32).into(),
+            });
+            bad.verify().unwrap();
+            wire::verify(
+                &serde_json::to_vec(&bad).unwrap(),
+                &f.origin(),
+                o.public_key(),
+            )
+            .unwrap();
+            assert!(h.claim(&s.generation, &bad, &clock()).is_err(), "{field}");
+            assert_eq!(h.state(&s.generation).unwrap(), "offered");
+            assert!(h.pending().unwrap().is_empty());
+            println!("ROUND1_CONTRADICTION field={field} outer_signature=true consumer_rejected=true durable_ack=false");
+        }
+        // Owner consumer: both the relay projection and cryptographically valid
+        // peer evidence must agree, even if an untrusted relay supplies new IDs.
+        let h1 = Keys::generate();
+        let h2 = Keys::generate();
+        let ss = buzz_core::paired_message::Scope {
+            community: f.origin(),
+            generation: "dd".repeat(32),
+            owner: o.public_key(),
+            host: h1.public_key(),
+        };
+        let claim = wire::seal(
+            &o,
+            &ss,
+            wire::Body::PairClaim {
+                proof: "ab".repeat(32),
+            },
+            "01".repeat(32),
+            None,
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        let ack = wire::seal(
+            &h1,
+            &ss,
+            wire::Body::PairAck {
+                claim_id: claim.id.to_hex(),
+            },
+            "02".repeat(32),
+            Some(claim.id.to_hex()),
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        let binding = registry::RegistryBinding {
+            generation: ss.generation.clone(),
+            owner: ss.owner.to_hex(),
+            host: ss.host.to_hex(),
+            state: "active".into(),
+            claim_id: claim.id.to_hex(),
+            ack_id: ack.id.to_hex(),
+            tombstone_id: None,
+            latest_status_id: None,
+        };
+        for variant in [
+            "inner-parent",
+            "body-claim",
+            "wrong-host",
+            "recipient",
+            "tenant",
+        ] {
+            let bad = if variant == "wrong-host" {
+                EventBuilder::new(ack.kind, ack.content.clone())
+                    .tags(ack.tags.clone())
+                    .custom_created_at(ack.created_at)
+                    .sign_with_keys(&h2)
+                    .unwrap()
+            } else if matches!(variant, "recipient" | "tenant") {
+                let tags: Vec<_> = ack
+                    .tags
+                    .iter()
+                    .map(|t| {
+                        if t.as_slice()[0]
+                            == if variant == "recipient" {
+                                "p"
+                            } else {
+                                "community"
+                            }
+                        {
+                            Tag::parse([
+                                t.as_slice()[0].as_str(),
+                                if variant == "recipient" {
+                                    h2.public_key().to_hex()
+                                } else {
+                                    "https://other.test".into()
+                                }
+                                .as_str(),
+                            ])
+                            .unwrap()
+                        } else {
+                            t.clone()
+                        }
+                    })
+                    .collect();
+                EventBuilder::new(ack.kind, ack.content.clone())
+                    .tags(tags)
+                    .custom_created_at(ack.created_at)
+                    .sign_with_keys(&h1)
+                    .unwrap()
+            } else {
+                corrupt_payload(&ack, &h1, o.public_key(), |p| {
+                    if variant == "inner-parent" {
+                        p["header"]["parent"] = "ff".repeat(32).into()
+                    } else {
+                        p["body"]["claim_id"] = "ff".repeat(32).into()
+                    }
+                })
+            };
+            bad.verify().unwrap();
+            let mut b = binding.clone();
+            b.ack_id = bad.id.to_hex();
+            assert!(
+                d.restore_registry(&f.origin(), &o, &b, &claim, &bad, None)
+                    .is_err(),
+                "{variant}"
+            );
+            assert!(d
+                .hosts(&f.origin(), &o)
+                .unwrap()
+                .iter()
+                .all(|v| v.scope.generation != ss.generation));
+        }
+        d.restore_registry(&f.origin(), &o, &binding, &claim, &ack, None)
+            .unwrap();
+        let q = d.registry_status_query(&f.origin(), &o, &ss).unwrap();
+        let (_, wire::Body::StatusQuery { nonce, .. }) = wire::open(&h1, &ss, &q, now()).unwrap()
+        else {
+            panic!()
+        };
+        let status = wire::seal(
+            &h1,
+            &ss,
+            wire::Body::Status {
+                ack_id: ack.id.to_hex(),
+                nonce,
+                sequence: 1,
+                state: "active".into(),
+                label: "valid".into(),
+            },
+            "03".repeat(32),
+            Some(q.id.to_hex()),
+            now(),
+            now() + 60,
+        )
+        .unwrap();
+        for field in ["ack_id", "nonce"] {
+            let bad = corrupt_payload(&status, &h1, o.public_key(), |p| {
+                p["body"][field] = "ee".repeat(32).into()
+            });
+            bad.verify().unwrap();
+            assert!(d
+                .accept_registry_status(&f.origin(), &o, &ss, &bad)
+                .is_err());
+        }
+        d.accept_registry_status(&f.origin(), &o, &ss, &status)
+            .unwrap();
+        println!("ROUND1_CONSUMER wrong_host_parent_ack_nonce_recipient_tenant_rejected=true valid_followup=true");
+        f.stop().await;
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_wire_exchange_is_complete_and_correlated() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let tcp = tokio::net::TcpStream::connect(f.addr).await.unwrap();
+        let (mut ws, _) = tokio_tungstenite::client_async(
+            format!("wss://{}", f.host).into_client_request().unwrap(),
+            tcp,
+        )
+        .await
+        .unwrap();
+        macro_rules! recv {()=>{{loop{let frame=tokio::time::timeout(Duration::from_secs(5),ws.next()).await.unwrap().unwrap().unwrap();if let Message::Text(raw)=frame{let v:serde_json::Value=serde_json::from_str(&raw).unwrap();println!("WIRE_TRACE {}",json!({"direction":"relay-to-client","frame":v}));break v;}}}};}
+        macro_rules! send {($v:expr)=>{{let v=$v;println!("WIRE_TRACE {}",json!({"direction":"client-to-relay","frame":v}));ws.send(Message::Text(v.to_string().into())).await.unwrap();}};}
+        let challenge = recv!();
+        assert_eq!(challenge[0], "AUTH");
+        let auth = EventBuilder::auth(
+            challenge[1].as_str().unwrap(),
+            nostr::RelayUrl::parse(&format!("wss://{}", f.host)).unwrap(),
+        )
+        .sign_with_keys(&o)
+        .unwrap();
+        send!(json!(["AUTH", auth]));
+        let ok = recv!();
+        assert_eq!(ok, json!(["OK", auth.id.to_hex(), true, ""]));
+        let h = Keys::generate();
+        let s = buzz_core::paired_message::Scope {
+            community: f.origin(),
+            generation: "de".repeat(32),
+            owner: o.public_key(),
+            host: h.public_key(),
+        };
+        let e = wire::seal(
+            &o,
+            &s,
+            wire::Body::PairClaim {
+                proof: "ab".repeat(32),
+            },
+            "bc".repeat(32),
+            None,
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        send!(json!(["EVENT", e]));
+        let ok = recv!();
+        assert_eq!(ok[0], "OK");
+        assert_eq!(ok[1], e.id.to_hex());
+        assert_eq!(ok[2], true);
+        let q = registry::query("hosts", None, None).unwrap();
+        send!(request_frame(&o, "wire", &q));
+        let p = recv!();
+        assert_eq!(p[0], "EVENT");
+        assert_eq!(p[1], "wire");
+        let e: Event = serde_json::from_value(p[2].clone()).unwrap();
+        wire::open_reply(&o, f.state.relay_keypair.public_key(), &f.origin(), &q, &e).unwrap();
+        assert_eq!(recv!(), json!(["EOSE", "wire"]));
+        send!(json!(["CLOSE", "wire"]));
+        assert_eq!(recv!(), json!(["CLOSED", "wire", ""]));
+        ws.close(None).await.unwrap();
+        f.stop().await;
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_valid_oa_and_channel_guest_cannot_gain_registration() {
+        let mut f = Fixture::new().await;
+        let mut enabled = (*f.state).clone();
+        Arc::make_mut(&mut enabled.config).allow_nip_oa_auth = true;
+        f.state = Arc::new(enabled);
+        let (addr, server) = serve(f.state.clone()).await;
+        f.addr = addr;
+        f.tasks.push(server);
+        let owner = Keys::generate();
+        let agent = Keys::generate();
+        let guest = Keys::generate();
+        let host = Keys::generate();
+        f.member(&owner).await;
+        let tag = buzz_sdk::nip_oa::parse_auth_tag(
+            &buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap(),
+        )
+        .unwrap();
+        let mut oa = f.socket().await;
+        oa.authenticate(&agent, Some(&tag)).await.unwrap();
+        let profile = EventBuilder::new(Kind::Metadata, "{}")
+            .tags([tag.clone()])
+            .sign_with_keys(&agent)
+            .unwrap();
+        assert!(
+            oa.send_event(profile).await.unwrap().accepted,
+            "valid OA ordinary baseline"
+        );
+        let s = buzz_core::paired_message::Scope {
+            community: f.origin(),
+            generation: "fa".repeat(32),
+            owner: agent.public_key(),
+            host: host.public_key(),
+        };
+        let claim = wire::seal(
+            &agent,
+            &s,
+            wire::Body::PairClaim {
+                proof: "ab".repeat(32),
+            },
+            "01".repeat(32),
+            None,
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        assert!(!oa.send_event(claim.clone()).await.unwrap().accepted);
+        expect_denied(
+            &mut oa,
+            request_frame(&agent, "oa", &registry::query("hosts", None, None).unwrap()),
+        )
+        .await;
+        assert_eq!(f.binding_count(host.public_key()).await, 0);
+        // A direct member's independently established rights remain valid.
+        f.member(&agent).await;
+        let mut direct = f.owner(&agent).await;
+        direct.publish(&agent, claim).await.unwrap();
+        let mut mixed = f.socket().await;
+        let ClientReply::Auth { challenge } =
+            mixed.next_event(Duration::from_secs(5)).await.unwrap()
+        else {
+            panic!()
+        };
+        let auth = EventBuilder::auth(
+            challenge,
+            nostr::RelayUrl::parse(&format!("wss://{}", f.host)).unwrap(),
+        )
+        .tags([
+            tag,
+            Tag::parse(["host-registry", "2", &s.generation]).unwrap(),
+        ])
+        .sign_with_keys(&agent)
+        .unwrap();
+        mixed.send_raw(&json!(["AUTH", auth])).await.unwrap();
+        assert!(
+            matches!(mixed.next_event(Duration::from_secs(5)).await.unwrap(),ClientReply::Ok(ok) if !ok.accepted)
+        );
+        // Guest is a supported channel role, not a root bearer/token identity.
+        let channel = f
+            .state
+            .db
+            .create_channel(
+                f.community,
+                "guest-proof",
+                buzz_core::channel::ChannelType::Stream,
+                buzz_core::channel::ChannelVisibility::Open,
+                None,
+                owner.public_key().as_bytes(),
+                None,
+            )
+            .await
+            .unwrap();
+        f.state
+            .db
+            .add_member(
+                f.community,
+                channel.id,
+                guest.public_key().as_bytes(),
+                buzz_core::channel::MemberRole::Guest,
+                None,
+            )
+            .await
+            .unwrap();
+        let mut open = (*f.state).clone();
+        Arc::make_mut(&mut open.config).require_relay_membership = false;
+        let (addr, t) = serve(Arc::new(open)).await;
+        f.tasks.push(t);
+        let mut ws =
+            NostrWsConnection::connect_to_addr(&format!("wss://{}", f.host), &addr.to_string())
+                .await
+                .unwrap();
+        ws.authenticate(&guest, None).await.unwrap();
+        ws.send_raw(&json!(["REQ","guest-read",{"#h":[channel.id.to_string()]}]))
+            .await
+            .unwrap();
+        loop {
+            match ws.next_event(Duration::from_secs(5)).await.unwrap() {
+                ClientReply::Eose { .. } => break,
+                ClientReply::Closed { message, .. } => {
+                    panic!("guest baseline read denied {message}")
+                }
+                _ => {}
+            }
+        }
+        let gs = buzz_core::paired_message::Scope {
+            owner: guest.public_key(),
+            generation: "fb".repeat(32),
+            ..s.clone()
+        };
+        let gc = wire::seal(
+            &guest,
+            &gs,
+            wire::Body::PairClaim {
+                proof: "ab".repeat(32),
+            },
+            "02".repeat(32),
+            None,
+            now(),
+            now() + 600,
+        )
+        .unwrap();
+        assert!(!ws.send_event(gc).await.unwrap().accepted);
+        expect_denied(
+            &mut ws,
+            request_frame(
+                &guest,
+                "guest-registry",
+                &registry::query("hosts", None, None).unwrap(),
+            ),
+        )
+        .await;
+        let mut enforcing = (*f.state).clone();
+        Arc::make_mut(&mut enforcing.config).nip_fi.mode = buzz_auth::NipFiMode::Enforce;
+        assert!(!enforcing.config.serves_host_registry());
+        let (addr, t) = serve(Arc::new(enforcing)).await;
+        f.tasks.push(t);
+        assert!(
+            NostrWsConnection::connect_to_addr(&format!("wss://{}", f.host), &addr.to_string())
+                .await
+                .is_err(),
+            "enforcing FI root refuses missing token at actual upgrade"
+        );
+        println!("ROUND1_CREDENTIALS valid_oa_ordinary=true oa_registration=false direct_member_owner=true channel_guest_read=true guest_registration=false no_guest_token_root_route=true enforcing_fi_upgrade_refused=true");
+        oa.disconnect().await.unwrap();
+        direct.disconnect().await.unwrap();
+        mixed.disconnect().await.unwrap();
+        ws.disconnect().await.unwrap();
+        f.stop().await;
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_database_failure_retains_cache_and_lost_notice_recovers_on_timer() {
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let t = tempfile::tempdir().unwrap();
+        let mut d = Device::at(&t.path().join("owner.sqlite")).unwrap();
+        let (_hd, mut h) = host();
+        let mut net = f.owner(&o).await;
+        let (s, mut hw, _, _) = pair(&f, &o, &mut d, &mut h, &mut net).await;
+        net.subscribe(&o).await.unwrap();
+        let cached = serde_json::to_value(d.hosts(&f.origin(), &o).unwrap()).unwrap();
+        let mut raw = f.socket().await;
+        raw.authenticate(&o, None).await.unwrap();
+        // Only this fresh task database; restore before asserting the outcome.
+        sqlx::query("ALTER TABLE paired_host_bindings RENAME TO paired_host_bindings_fault3720")
+            .execute(f.state.db.pool())
+            .await
+            .unwrap();
+        raw.send_raw(&request_frame(
+            &o,
+            "db-unavailable",
+            &registry::query("binding", Some(&s.generation), None).unwrap(),
+        ))
+        .await
+        .unwrap();
+        let terminal = raw.next_event(Duration::from_secs(2)).await;
+        let late = raw.next_event(Duration::from_millis(80)).await;
+        let unavailable = net.recover(&mut d, &o).await;
+        let after = serde_json::to_value(d.hosts(&f.origin(), &o).unwrap()).unwrap();
+        sqlx::query("ALTER TABLE paired_host_bindings_fault3720 RENAME TO paired_host_bindings")
+            .execute(f.state.db.pool())
+            .await
+            .unwrap();
+        assert!(
+            matches!(terminal, Ok(ClientReply::Closed { .. })),
+            "DB failure sent success/EOSE: {terminal:?}"
+        );
+        assert!(
+            matches!(late, Err(buzz_ws_client::WsClientError::Timeout)),
+            "late success after DB failure: {late:?}"
+        );
+        raw.disconnect().await.unwrap();
+        assert!(
+            unavailable.is_err(),
+            "DB loss must not become complete empty list/EOSE"
+        );
+        assert_eq!(cached, after);
+        assert_eq!(net.recover(&mut d, &o).await.unwrap().len(), 1);
+        let q = d.registry_status_query(&f.origin(), &o, &s).unwrap();
+        net.publish(&o, q.clone()).await.unwrap();
+        h.receive(&s.generation, &q, "lost notification label", &clock())
+            .unwrap();
+        let status = h.pending().unwrap()[0].clone();
+        net.subscribe(&o).await.unwrap(); // establish high-water barrier after query
+        test_seam::DROP_NOTICE.lock().unwrap().insert(status.id);
+        assert!(hw.send_event(status.clone()).await.unwrap().accepted);
+        h.delivered(&status.id.to_hex()).unwrap();
+        assert!(
+            !test_seam::DROP_NOTICE.lock().unwrap().contains(&status.id),
+            "fault must be consumed after commit"
+        );
+        let start = tokio::time::Instant::now();
+        net.wait_for_refresh(&o, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert!(
+            start.elapsed() >= Duration::from_millis(900),
+            "unexpected notification delivered"
+        );
+        net.recover(&mut d, &o).await.unwrap();
+        let cards = serde_json::to_value(d.hosts(&f.origin(), &o).unwrap()).unwrap();
+        assert!(cards.to_string().contains("lost notification label"));
+        println!("ROUND1_DEPENDENCY snapshot_failed_closed=true cache_retained=true db_recovered=true postcommit_notice_dropped=true periodic_resync_label_recovered=true");
+        hw.disconnect().await.unwrap();
+        net.disconnect().await.unwrap();
+        f.stop().await;
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn round1_held_work_slots_and_encrypted_boundaries_are_bounded() {
+        let f = Fixture::new().await;
+        let o = Keys::generate();
+        f.member(&o).await;
+        let h = Keys::generate();
+        let mut net = f.owner(&o).await;
+        let (s, hw, ack) = signed_pair(&f, &o, &h, &mut net, "fc".repeat(32)).await;
+        let mut tc = test_connection(&f, &o);
+        let held = tc
+            .conn
+            .registry
+            .ordinary
+            .clone()
+            .acquire_many_owned(3)
+            .await
+            .unwrap();
+        let held_global = f
+            .state
+            .handler_semaphore
+            .clone()
+            .acquire_many_owned(f.state.config.max_concurrent_handlers as u32)
+            .await
+            .unwrap();
+        dispatch(
+            &request_frame(&o, "busy", &registry::query("hosts", None, None).unwrap()).to_string(),
+            tc.conn.clone(),
+            f.state.clone(),
+        )
+        .await;
+        let frame = tokio::time::timeout(Duration::from_secs(2), tc.send_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame,axum::extract::ws::Message::Text(raw) if raw.contains("CLOSED")));
+        dispatch(
+            &request_frame(
+                &o,
+                "recover",
+                &registry::query("binding", Some(&s.generation), None).unwrap(),
+            )
+            .to_string(),
+            tc.conn.clone(),
+            f.state.clone(),
+        )
+        .await;
+        let mut recovered = false;
+        for _ in 0..2 {
+            let frame = tokio::time::timeout(Duration::from_secs(2), tc.send_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if let axum::extract::ws::Message::Text(raw) = frame {
+                let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                assert_ne!(v[0], "CLOSED");
+                if v[0] == "EOSE" {
+                    recovered = true;
+                }
+            }
+        }
+        assert!(recovered);
+        // Real socket is also blocked by the global ordinary queue; restrictive
+        // binding uses the independently reserved connection slot.
+        assert!(net
+            .page(&o, registry::query("hosts", None, None).unwrap())
+            .await
+            .is_err());
+        assert!(net
+            .page(
+                &o,
+                registry::query("binding", Some(&s.generation), None).unwrap()
+            )
+            .await
+            .is_ok());
+        drop(held_global);
+        drop(held);
+        let valid = wire::seal(
+            &o,
+            &s,
+            wire::Body::StatusQuery {
+                ack_id: ack.id.to_hex(),
+                nonce: "ab".repeat(32),
+            },
+            "dc".repeat(32),
+            Some(ack.id.to_hex()),
+            now(),
+            now() + 60,
+        )
+        .unwrap();
+        let empty = EventBuilder::new(valid.kind, "")
+            .tags(valid.tags.clone())
+            .custom_created_at(valid.created_at)
+            .sign_with_keys(&o)
+            .unwrap();
+        let overhead = serde_json::to_vec(&empty).unwrap().len();
+        for target in [wire::MAX_EVENT, wire::MAX_EVENT + 4] {
+            use base64::Engine as _;
+            let tags: Vec<_> = valid
+                .tags
+                .iter()
+                .map(|t| {
+                    if t.as_slice()[0] == "i" {
+                        Tag::parse(["i", &format!("{target:064x}")]).unwrap()
+                    } else {
+                        t.clone()
+                    }
+                })
+                .collect();
+            let mut envelope = vec![0; ((target - overhead) / 4) * 3];
+            envelope[0] = 2;
+            let content = base64::engine::general_purpose::STANDARD.encode(envelope);
+            let bad = EventBuilder::new(valid.kind, content)
+                .tags(tags)
+                .custom_created_at(valid.created_at)
+                .sign_with_keys(&o)
+                .unwrap();
+            let size = serde_json::to_vec(&bad).unwrap().len();
+            assert!(size <= target && target - size < 4);
+            assert_eq!(
+                net.publish(&o, bad.clone()).await.is_ok(),
+                size <= wire::MAX_EVENT
+            );
+            assert!(wire::open(&h, &s, &bad, now()).is_err());
+            println!(
+                "ROUND1_EVENT_EDGE serialized_bytes={size} bound={} accepted={}",
+                wire::MAX_EVENT,
+                size <= wire::MAX_EVENT
+            );
+        }
+        // Exact encrypted payload limit with a valid JSON body plus whitespace,
+        // then one byte over; ordinary relay cannot decrypt peer payloads.
+        use nostr::nips::nip44::{self, Version};
+        let plain = nip44::decrypt(o.secret_key(), &s.host, &valid.content).unwrap();
+        for size in [wire::MAX_PAYLOAD, wire::MAX_PAYLOAD + 1] {
+            let mut bytes = plain.as_bytes().to_vec();
+            bytes.resize(size, b' ');
+            let content = nip44::encrypt(o.secret_key(), &s.host, &bytes, Version::V2).unwrap();
+            let e = EventBuilder::new(valid.kind, content)
+                .tags(valid.tags.clone())
+                .custom_created_at(valid.created_at)
+                .sign_with_keys(&o)
+                .unwrap();
+            e.verify().unwrap();
+            assert!(serde_json::to_vec(&e).unwrap().len() <= wire::MAX_EVENT);
+            assert_eq!(
+                wire::open(&h, &s, &e, now()).is_ok(),
+                size == wire::MAX_PAYLOAD
+            );
+        }
+        let content = nip44::encrypt(o.secret_key(), &s.host, b"{malformed", Version::V2).unwrap();
+        let malformed_json = EventBuilder::new(valid.kind, content)
+            .tags(valid.tags.clone())
+            .custom_created_at(valid.created_at)
+            .sign_with_keys(&o)
+            .unwrap();
+        assert!(wire::open(&h, &s, &malformed_json, now()).is_err());
+        let malformed = EventBuilder::new(valid.kind, "not-nip44")
+            .tags(valid.tags.clone())
+            .custom_created_at(valid.created_at)
+            .sign_with_keys(&o)
+            .unwrap();
+        assert!(wire::open(&h, &s, &malformed, now()).is_err());
+        let q = registry::query("hosts", None, None).unwrap();
+        let mut reply = wire::Reply {
+            v: 2,
+            community: f.origin(),
+            recipient: o.public_key().to_hex(),
+            op: "registry-page".into(),
+            query: q.clone(),
+            high_water: "ab".repeat(32),
+            data: json!(""),
+            next_cursor: None,
+            complete: true,
+        };
+        let overhead = serde_json::to_vec(&reply).unwrap().len();
+        reply.data = json!("x".repeat(wire::MAX_PAGE - overhead));
+        let event =
+            wire::reply(&f.state.relay_keypair, o.public_key(), reply.clone(), now()).unwrap();
+        assert!(serde_json::to_vec(&event).unwrap().len() + 300 < wire::MAX_FRAME);
+        wire::open_reply(
+            &o,
+            f.state.relay_keypair.public_key(),
+            &f.origin(),
+            &q,
+            &event,
+        )
+        .unwrap();
+        reply.data = json!("x".repeat(wire::MAX_PAGE - overhead + 1));
+        assert!(wire::reply(&f.state.relay_keypair, o.public_key(), reply, now()).is_err());
+        net.publish(&o, valid).await.unwrap();
+        assert!(net
+            .page(
+                &o,
+                registry::query("binding", Some(&s.generation), None).unwrap()
+            )
+            .await
+            .is_ok());
+        println!("ROUND1_BOUNDS ordinary_slots_held=3 global_queue_held=true reserved_recovery=true encrypted_page_exact_limit=true oversize_and_malformed_denied=true valid_followup=true");
+        tc.conn.cancel.cancel();
+        crate::handlers::close::release_connection_subscriptions(&tc.conn, &f.state).await;
+        hw.disconnect().await.unwrap();
         net.disconnect().await.unwrap();
         f.stop().await;
     }

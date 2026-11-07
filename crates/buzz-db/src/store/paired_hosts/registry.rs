@@ -220,7 +220,9 @@ impl Db {
                                 .unwrap_or("0")
                                 .parse::<i64>()
                                 .map_err(|_| denied())?;
-                            if after < b.get::<i64, _>("retention_floor") {
+                            // A null cursor starts a new snapshot of retained evidence.
+                            // Only a continuation promises coverage from its old position.
+                            if r.after.is_some() && after < b.get::<i64, _>("retention_floor") {
                                 return Err(DbError::PairedCursorPruned);
                             }
                             let rows=sqlx::query("SELECT event_id,seq,operation,expires_at FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND seq>$5 AND (operation<>'pair-claim' OR event_id=$6) AND (event_json::jsonb->>'kind')::int=43103 ORDER BY seq LIMIT 101")
