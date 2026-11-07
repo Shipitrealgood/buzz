@@ -39,7 +39,7 @@ install -d -m 0755 /etc/systemd/system/buzz-host-registration.service.d
 cat > /etc/systemd/system/buzz-host-registration.service.d/probe.conf <<'DROPIN'
 [Service]
 BindReadOnlyPaths=/usr/local/libexec/buzz-registration-probe
-ExecPaths=/usr/local/libexec/buzz-registration-probe
+ExecPaths=+/usr/local/libexec/buzz-registration-probe
 ExecStartPre=/usr/local/libexec/buzz-registration-probe
 DROPIN
 systemd-analyze verify /etc/systemd/system/buzz-host-registration.service

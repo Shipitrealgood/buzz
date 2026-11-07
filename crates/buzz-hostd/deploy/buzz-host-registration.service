@@ -37,9 +37,10 @@ CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
-NoExecPaths=/
-ExecPaths=/usr/local/libexec/buzz-hostd /usr/lib /lib /lib64
-ReadWritePaths=/state
+# Filesystem policy paths must resolve inside RootDirectory, not the host root.
+NoExecPaths=+/ +/state
+ExecPaths=+/usr/local/libexec/buzz-hostd +/usr/lib +/lib +/lib64
+ReadWritePaths=+/state
 # The shipped rehearsal unit permits loopback relay traffic only. An actual
 # remote installation requires its separately reviewed relay-address drop-in.
 IPAddressDeny=any

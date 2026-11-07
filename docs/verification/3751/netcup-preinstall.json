@@ -1,0 +1,47 @@
+{
+  "task": 3751,
+  "status": "PREPARED / WAITING FOR INDEPENDENT PREINSTALL GATE",
+  "binary_source": "f316fb46d89c3e16eedc6173ae06e85fe224a1a9",
+  "binary_sha256": "06ef06b83181db97338851b01a08627d7fd23c437bda7b6aac602cdb9124230a",
+  "canonical_unit_sha256": "ee30e40b472a05d5d7931464dbc692dddd652a9c36f65e4d98dc00d398155b3e",
+  "site_unit_sha256": "9cb7a6d7b9df3e18b39d46916d1d7b32140e0567e123305dfe8685a5e8a03bce",
+  "manifest_sha256": "7f145bb3c571d3f4ff7e372b34003be333465db1d3478c2a149c271b2990e373",
+  "archive_sha256": "19d7ee7ab7ccffabe481561aac25c4e4384a08b929630fd6400d327b1073fb45",
+  "gates": {
+    "release_build": "PASS optimized locked offline; 3m30s",
+    "probe_build": "PASS 3.88s",
+    "actual_systemd_rehearsal": "PASS",
+    "rustfmt": "PASS scoped example",
+    "shell_syntax": "PASS existing staging script",
+    "diff_check": "PASS",
+    "existing_agent_continuity": "PASS exact unit/PID/start/restarts/executable/config hashes match"
+  },
+  "not_run": [
+    "permanent account/service installation",
+    "production identity/invitation/pairing",
+    "native Windows journey and human confirmation",
+    "actual reboot",
+    "full repository CI (no PR; bounded deployment delta)",
+    "full hosted registration fixture rerun (prior protocol journey retained; local exact unit boundary/lifecycle newly measured)"
+  ],
+  "deviations": [
+    "Canonical unit and hosted probe exception now use RootDirectory-relative + paths; measured NoExecPaths regression failed before fix and passed after. No product Rust behavior change.",
+    "Site config: remote relay/native TLS roots/fixed hosts+IP-only outbound/label netcup/resource caps.",
+    "Fixture uses uniquely named temporary account/paths and one probe executable bind; no production state or invitation."
+  ],
+  "cleanup": {
+    "cleanup_paths_absent": true,
+    "cleanup_account_absent": true,
+    "cleanup_group_absent": true
+  },
+  "requested_model": "gpt-6-astra",
+  "requested_reasoning": "high",
+  "runtime_identity": "not independently observable",
+  "failure_evidence": {
+    "attempts_1_2": "outside probe denied on noexec staging filesystem; all cleanup passed",
+    "attempt_3": "original host-root NoExecPaths allowed copied writable-state executable",
+    "attempt_4": "adding unprefixed /state still allowed it",
+    "attempt_5": "corrected root-relative policy passed; test sampled pre-exec systemd child UID too early",
+    "final": "wait for executable; actual boundary/TLS/nonroot/singleton/restart/cleanup passed"
+  }
+}
