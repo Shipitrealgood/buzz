@@ -1,0 +1,10 @@
+✔ empty registration journey supports cancel, expiry, retry and revoke without provisioning (360.031559ms)
+✔ unsupported, failed and changed sessions cannot reuse Add Host or late pairing feedback (140.467501ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2418.612076

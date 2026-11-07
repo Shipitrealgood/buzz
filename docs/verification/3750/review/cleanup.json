@@ -1,0 +1,14 @@
+{
+  "fixture_databases_before_teardown": 0,
+  "remaining_task_containers": [],
+  "runner_processes_before_teardown": [
+    "sleep (fixture PID1)",
+    "ps (inspection only)"
+  ],
+  "test_build_processes": "all completed exit0; no detached process",
+  "synthetic_tls_private_keys_present": [],
+  "source_mutations": [],
+  "teardown": "scripts/3720-registration-proof.sh down exit0; four task-labelled containers and anonymous volumes removed",
+  "retained": "pinned worktree and ignored build/dependency cache",
+  "ownership": "relinquished after report commit"
+}

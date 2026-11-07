@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized] target(s) in 1.21s
+  Executable unittests src/lib.rs (target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd)

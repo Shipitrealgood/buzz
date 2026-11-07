@@ -1,0 +1,97 @@
+{
+  "source": {
+    "base": "621c777b886dad8aed7eeee4b428d57c153829e5",
+    "head": "d67ecff347bf81392adad6345e05c43634b4d9d1",
+    "workspace": "/home/bryce/services/buzz-wt-3720-host-registration"
+  },
+  "requested_configuration": "gpt-6-astra/high",
+  "runtime_model": "unknown",
+  "runtime_effort": "unknown",
+  "review_round": 0,
+  "toolchain": "Repository Hermit; Cargo jobs2; DEV_DEBUG=0 TEST_DEBUG=0 INCREMENTAL=1",
+  "runs": [
+    {
+      "command": "cargo test -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --lib",
+      "exit": 0,
+      "results": {
+        "hostd": 8,
+        "owner": 14,
+        "ws": 5,
+        "failures": 0
+      },
+      "receipt": "libraries.txt"
+    },
+    {
+      "command": "cargo test -p buzz-relay --lib --no-run",
+      "exit": 0,
+      "receipt": "build-relay.txt"
+    },
+    {
+      "command": "cargo build --locked -p buzz-hostd --bin buzz-hostd",
+      "exit": 0,
+      "receipt": "build-hostd.txt"
+    },
+    {
+      "command": "scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd handlers::host_registry::external_infra_registration_tests::external_infra_tests --ignored --nocapture --test-threads=1 --skip child_root_relay",
+      "exit": 0,
+      "passed": 25,
+      "failed": 0,
+      "seconds": 21.17,
+      "receipt": "registration.txt"
+    },
+    {
+      "command": "target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd connection::tests handlers::req::tests --test-threads=2",
+      "exit": 0,
+      "passed": 104,
+      "failed": 0,
+      "existing_ignored": 2,
+      "seconds": 2.13,
+      "receipt": "ordinary.txt"
+    },
+    {
+      "command": "node --import ./test-jsdom-setup.mjs --import ./test-loader.mjs --experimental-strip-types --test-force-exit --test src/features/agents/ui/PairedHostsSection.jsdom-test.mjs",
+      "cwd": "desktop",
+      "exit": 0,
+      "passed": 2,
+      "failed": 0,
+      "receipt": "ui.txt"
+    },
+    {
+      "command": "pnpm exec tsc --noEmit",
+      "cwd": "desktop",
+      "exit": 0,
+      "receipt": "typescript.txt"
+    },
+    {
+      "command": "cargo fmt --all -- --check; cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check; rustfmt --edition 2021 --check crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs",
+      "exit": 0,
+      "receipt": "format.txt"
+    },
+    {
+      "command": "CHECK_FILE_SIZES_BASE=621c777b886dad8aed7eeee4b428d57c153829e5 just file-size-check",
+      "exit": 0,
+      "receipt": "size.txt"
+    },
+    {
+      "command": "Python ast.parse(registration-systemd-smoke.py), yaml.safe_load(paired-hosts-staging.yml), bash -n stage-registration-on-actions.sh; independent source SHA256/line totals",
+      "exit": 0,
+      "receipt": "source-continuity.json"
+    }
+  ],
+  "not_run": [
+    "actual hosted systemd unit/isolation probe",
+    "Windows native tests and ACL probe",
+    "Windows canary installer build/checksum",
+    "actual Windows native UI to isolated relay/hostd journey",
+    "human app confirmation",
+    "strict clippy rerun and full just ci; existing strict lint baseline-blocked, not green",
+    "live/deployment/migration-compatibility/provider-lifecycle gates (outside this scope)"
+  ],
+  "historical_attempts": [
+    "Initial Hermit and Docker attempts denied by sandbox; justified escalations succeeded. No automatic approval rejection.",
+    "Initial continuity assertion requiring all artifact byte identity failed only for independently rebuilt hostd. Source hashes all match; actual review binary is pinned in source-continuity.json."
+  ],
+  "verdict": "Source review passed; full acceptance held for required platform evidence. No C/H/M/L source findings.",
+  "continuity": "source-continuity.json",
+  "cleanup": "cleanup.json"
+}
