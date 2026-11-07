@@ -1,0 +1,108 @@
+Excerpt from completed Windows job128258171608, run42325013869. Compile/setup logs omitted; all test result lines and actual ACL outcome retained.
+
+running 14 tests
+test http::session_tests::switch_between_host_pages_stops_second_authenticated_read ... ok
+test http::session_tests::lock_between_candidate_queries_stops_second_authenticated_read ... ok
+test ready::tests::read_back_requires_agent_signature_correct_owner_and_requested_policy ... ok
+test registry::registration_adapter_tests::invitation_validation_and_exact_retry_keep_registration_separate ... ok
+test tests::corrected_invitation_can_enroll_same_generation_and_exact_retry_survives_restart ... ok
+test tests::directory_retains_history_gap_across_worker_success_failure_and_verified_recovery ... ok
+test tests::enroll_inventory_revocation_and_restart ... ok
+test tests::repeated_tap_is_idempotent_after_ipc_loss_and_process_restart ... ok
+test tests::fresh_complete_replacement_challenge_recovers_an_expired_unaccepted_confirm ... ok
+test tests::short_signed_inventory_cannot_grant_a_minute_of_display_freshness ... ok
+test tests::status_replies_never_create_signing_authority ... ok
+test tests::only_initiating_tap_can_automate_credentials_after_exact_commit ... ok
+test tests::retry_rotation_delivers_ninth_pending_revocation_across_restart ... ok
+test tests::verified_precommit_closure_retires_an_undelivered_outbox_item ... ok
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.35s
+running 73 tests
+test nostr_convert::oa_profile_tests::rejects_duplicate_auth_tags_including_malformed_tags_in_either_order ... ok
+test nostr_convert::oa_profile_tests::rejects_absent_authority_self_attestation_and_wrong_agent_binding ... ok
+test nostr_convert::oa_profile_tests::rejects_malformed_tag_shapes_and_hex ... ok
+test nostr_convert::oa_profile_tests::rejects_non_profile_and_invalid_event_even_with_valid_auth_tag ... ok
+test nostr_convert::oa_profile_tests::accepts_unconditional_and_applicable_conditional_ownership ... ok
+test nostr_convert::tests::agents_default_sparse_agent_profiles_for_directory_parse ... ok
+test nostr_convert::tests::agents_handles_invalid_content ... ok
+test nostr_convert::tests::agents_overwrites_pubkey_from_event_author ... ok
+test nostr_convert::tests::agents_preserves_allowlist_metadata_for_directory_parse ... ok
+test nostr_convert::oa_profile_tests::rejects_wrong_kind_condition_and_conflicting_clauses ... ok
+test nostr_convert::tests::agents_preserves_public_respond_to_mode_for_directory_parse ... ok
+test nostr_convert::tests::channel_detail_basic ... ok
+test nostr_convert::tests::channel_info_dm_inferred_from_hidden_tag ... ok
+test nostr_convert::tests::channel_info_merges_summary ... ok
+test nostr_convert::tests::channel_info_minimal ... ok
+test nostr_convert::tests::authenticated_malformed_managed_policy_does_not_fall_back_to_legacy_permissions ... ok
+test nostr_convert::tests::channel_info_missing_d_errors ... ok
+test nostr_convert::tests::channel_info_open_when_neither_public_nor_private ... ok
+test nostr_convert::oa_profile_tests::rejects_signed_but_malformed_conditions ... ok
+test nostr_convert::tests::channel_info_private_when_visibility_tag_present ... ok
+test nostr_convert::tests::channel_members_extracts_p_tags ... ok
+test nostr_convert::tests::channel_members_missing_d_errors ... ok
+test nostr_convert::tests::contact_list_preserves_tags_and_content ... ok
+test nostr_convert::tests::forged_managed_policy_cannot_suppress_a_headless_directory_agent ... ok
+test nostr_convert::tests::known_owned_agents_have_membership_independent_of_role ... ok
+test nostr_convert::tests::managed_agent_candidates_use_only_relay_signed_bot_membership ... ok
+test nostr_convert::tests::managed_agent_directory_rejects_agents_without_verified_owner_profiles ... ok
+test nostr_convert::tests::managed_agent_directory_query_pubkeys_reject_malformed_d_tags ... ok
+test nostr_convert::tests::managed_agent_directory_accepts_only_the_verified_owner_policy ... ok
+test nostr_convert::tests::managed_agent_directory_uses_the_latest_profile_head ... ok
+test nostr_convert::tests::profile_info_falls_back_to_name ... ok
+test nostr_convert::tests::managed_directory_rejects_tampered_event_envelopes ... ok
+test nostr_convert::tests::profile_info_invalid_json_errors ... ok
+test nostr_convert::tests::profile_info_extracts_valid_nip_oa_owner ... ok
+test nostr_convert::tests::profile_info_parses_content ... ok
+test nostr_convert::tests::relay_members_dedupes_and_defaults_role ... ok
+test nostr_convert::tests::relay_members_fallback_p_tags ... ok
+test nostr_convert::tests::relay_agent_directory_resolves_equal_timestamp_heads_by_event_id ... ok
+test nostr_convert::oa_profile_tests::time_bounds_are_strict_and_use_event_time_not_wall_clock ... ok
+test nostr_convert::tests::relay_agent_directory_preserves_headless_profiles_and_prefers_verified_managed_policy ... ok
+test nostr_convert::tests::runtime_policy_tests::forged_latest_runtime_cannot_supply_or_revive_availability ... ok
+test nostr_convert::tests::runtime_policy_tests::malformed_latest_host_and_add_policy_do_not_revive_old_values ... ok
+test nostr_convert::tests::runtime_policy_tests::latest_runtime_without_status_does_not_revive_older_online_status ... ok
+test nostr_convert::tests::runtime_policy_tests::policy_only_has_unknown_availability ... ok
+test nostr_convert::tests::runtime_policy_tests::policy_preserves_signed_away_runtime ... ok
+test nostr_convert::tests::runtime_policy_tests::policy_preserves_signed_offline_runtime ... ok
+test nostr_convert::tests::search_response_assigns_descending_scores ... ok
+test nostr_convert::tests::runtime_policy_tests::policy_preserves_signed_online_runtime ... ok
+test nostr_convert::tests::timestamp_to_iso_known_value ... ok
+test nostr_convert::tests::search_response_single_hit_full_score ... ok
+test nostr_convert::tests::user_notes_empty_has_no_cursor ... ok
+test nostr_convert::tests::user_notes_builds_cursor_from_last ... ok
+test nostr_convert::tests::users_batch_keeps_latest_and_reports_missing ... ok
+test nostr_convert::tests::runtime_policy_tests::host_fleet_keeps_attested_identity_separate_from_policy_and_membership ... ok
+test nostr_convert::tests::users_batch_marks_valid_nip_oa_profiles_as_agents ... ok
+test nostr_convert::user_search::tests::rank_case_insensitive ... ok
+test nostr_convert::user_search::tests::list_user_search_results_sorts_dedupes_and_limits ... ok
+test nostr_convert::user_search::tests::rank_dedupes_by_pubkey ... ok
+test nostr_convert::user_search::tests::rank_empty_query_returns_empty ... ok
+test nostr_convert::user_search::tests::rank_display_name_beats_nip05_match_of_same_tier ... ok
+test nostr_convert::user_search::tests::rank_display_substring_still_beats_nip05_exact ... ok
+test nostr_convert::tests::runtime_policy_tests::missing_or_unrecognized_runtime_status_is_unknown ... ok
+test nostr_convert::user_search::tests::rank_falls_back_to_name_when_display_name_absent ... ok
+test nostr_convert::user_search::tests::rank_pubkey_prefix_match ... ok
+test nostr_convert::user_search::tests::rank_exact_display_name_beats_substring_match ... ok
+test nostr_convert::user_search::tests::rank_skips_non_kind_zero_events ... ok
+test nostr_convert::user_search::tests::rank_skips_results_with_no_name_or_nip05_match ... ok
+test nostr_convert::user_search::tests::rank_zero_limit_returns_empty ... ok
+test nostr_convert::user_search::tests::rank_tiebreak_preserves_relay_relevance_order ... ok
+test nostr_convert::user_search::tests::search_users_maps_each_event ... ok
+test nostr_convert::user_search::tests::rank_respects_limit ... ok
+test nostr_convert::user_search::tests::user_search_result_ignores_invalid_nip_oa_auth_tag ... ok
+test nostr_convert::user_search::tests::user_search_result_marks_valid_nip_oa_profile_as_agent ... ok
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 3213 filtered out; finished in 0.15s
+running 7 tests
+test commands::agent_discovery::relay_directory::tests::exact_author_queries_prevent_noisy_agent_crowd_out ... ok
+test commands::agent_discovery::relay_directory::tests::managed_policy_queries_are_exact_coordinates ... ok
+test commands::agent_discovery::relay_directory::tests::oss_build_preserves_ownerless_legacy_agents ... ok
+test commands::agent_discovery::relay_directory::tests::marked_build_requires_verified_policy_without_requiring_viewer_ownership ... ok
+test commands::agent_discovery::relay_directory::tests::relay_filter_batches_do_not_exceed_protocol_limit ... ok
+test commands::agent_discovery::relay_directory::people::tests::plain_people_require_a_verified_profile_and_absence_of_agent_evidence ... ok
+test commands::agent_discovery::relay_directory::owned_tests::remote_owned_discovery_and_membership_do_not_require_local_records ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 3279 filtered out; finished in 0.25s
+running 3 tests
+test commands::paired_hosts::create::tests::unchanged_wider_tap_is_rejected_when_resumed_in_an_owner_only_build ... ok
+test commands::paired_hosts::create::tests::captured_session_rejects_lock_and_workspace_generation_switch ... ok
+test commands::paired_hosts::create::tests::private_desktop_inventory_reads_the_real_instance_store_without_keyring_or_public_profile ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 3283 filtered out; finished in 0.01s
+Owner used SQLite; another standard user read the control and was denied the DB, WAL and SHM.

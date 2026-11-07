@@ -1,0 +1,4 @@
+Source: 6caf7c250f526b8eb4f9630107b632525e7573ef
+Version: 0.5.29-test.18
+Installer: Buzz_0.5.29-test.18_x64-setup.exe
+SHA-256: 66b42dd71cd36165936254731a18c40588cdb2d8be30c48fd24e7b414d868513

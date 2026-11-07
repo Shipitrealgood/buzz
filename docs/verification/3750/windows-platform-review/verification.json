@@ -1,0 +1,35 @@
+{
+  "ci_source": "6caf7c250f526b8eb4f9630107b632525e7573ef",
+  "reviewed_head": "41c046e06e0fc98cbfe66eab613c3439a72b75c5",
+  "run": 42325013869,
+  "artifact": 13555857312,
+  "installer": {
+    "name": "Buzz_0.5.29-test.18_x64-setup.exe",
+    "bytes": 56089869,
+    "sha256": "66b42dd71cd36165936254731a18c40588cdb2d8be30c48fd24e7b414d868513",
+    "source_and_hash_match_job_receipt": true,
+    "pe_header_verified": true
+  },
+  "native_log_sha256": "414e65641a2b563070c7d0513157f07cb1d5c3dbde0ec49688cbb74496b273f9",
+  "native_results": {
+    "owner": 14,
+    "conversion": 73,
+    "directory": 7,
+    "paired_hosts": 3,
+    "failed": 0,
+    "ignored": 0,
+    "actual_acl_probe": "positive standard-user control read; denied DB/WAL/SHM"
+  },
+  "production_continuity": {
+    "entries": 6580,
+    "inventory_sha256": "7f242eee903fba0f88f53dd3366fc30c7d9196e98a44d6f7b8882a5ae5b3ade4",
+    "exclusions": [
+      "docs/**",
+      "desktop/tests/e2e/paired-hosts.spec.ts"
+    ],
+    "equal": true
+  },
+  "method": "Independent local receipt read, installer hash/PE check and Git inventory comparison. Hosted results are measured by GitHub Windows runner; reviewer did not rerun Windows tests or install executable.",
+  "remaining": "actual Windows application-to-fixture journey and explicit human confirmation",
+  "cleanup": "no processes, fixture resources or source/test mutations; installer and personalized identity prompt remain outside repository"
+}
