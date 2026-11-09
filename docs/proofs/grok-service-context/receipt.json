@@ -5,8 +5,8 @@
     "/home/bryce/.grok/downloads/grok-1.0.70-linux-x86_64": "22d281c5964c5444147328096ba2a221f3f0874c6858e27c825656a80f6e58e9"
   },
   "source_inputs": {
-    "/home/bryce/services/buzz-wt-3720-host-registration/docs/proofs/grok-service-context/run-proof.py": "61d74ce72a77dd8d33a1ea5a27dc331711d2a71dd08fe51a87a5652068f59f0b",
-    "/home/bryce/services/buzz-wt-3720-host-registration/docs/proofs/grok-service-context/context.py": "138f5dea32b3fb5a9e6b458722a83a7c96fe5d38dfce976ac1ff9578ddafed23",
+    "/home/bryce/services/buzz-wt-3720-host-registration/docs/proofs/grok-service-context/run-proof.py": "e2117f9d65c93839ec9ffc121a748275a0fa6400f767d0b720e8cfeb31b0fcbc",
+    "/home/bryce/services/buzz-wt-3720-host-registration/docs/proofs/grok-service-context/context.py": "a9ed19daa99ef9629a93b7716a03cf789698c35879420a7af6aa487bdbe98a85",
     "/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-acp/tests/fixtures/task_agent.py": "2fe58c4e6376e5d78b03165d0c8c8c551cd9adc6b2671e46afc8745b9634b072",
     "/usr/bin/bwrap": "573236e5328ac2ebb08f59ae3a9805b4f8d12bdef14be8af4450d5463294985f"
   },
@@ -46,8 +46,8 @@
     "lib/x86_64-linux-gnu/libpcre2-8.so.0": "92e9b4167f9bbc237ca8f5526d82ee99ec9f8dbd0270ef1dd0ab24e2217f48e3",
     "lib/x86_64-linux-gnu/libz.so.1": "6c13931760210e8b391b63a337dfe4071346c4ad6e3827694edb7b6989bb16dd",
     "lib64/ld-linux-x86-64.so.2": "c8438e4fde1934e61c88311633f00949ff645d5c04cdb8671fa3d78164d2f307",
-    "proof/context.py": "138f5dea32b3fb5a9e6b458722a83a7c96fe5d38dfce976ac1ff9578ddafed23",
-    "proof/probes.json": "cc0aab5b4fdc5011bbe6de87bbfc888e104745ab97b58217887d07d77152cde9",
+    "proof/context.py": "a9ed19daa99ef9629a93b7716a03cf789698c35879420a7af6aa487bdbe98a85",
+    "proof/probes.json": "64c0cf842851de5fce7d4166a6c9eae388c36d96f9dcac6c917ce1170766b67c",
     "proof/runtime.json": "6a92266971755dc6b332e1f0b5f4919e674cc056c77a84385604c10b22300e55",
     "proof/task_agent.py": "2fe58c4e6376e5d78b03165d0c8c8c551cd9adc6b2671e46afc8745b9634b072",
     "runtime/buzz-acp": "fa3f1a36919d3d1c34fd523f40695495bb58cd00e7f6b52b62e59edc140341fb",

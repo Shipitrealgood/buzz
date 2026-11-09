@@ -1,25 +1,25 @@
 # REVIEW CANDIDATE ONLY. Never installed by run-proof.py.
-# Populate the exact rootfs and synthetic fixtures in an approved native rehearsal.
+# native-proof.py renders a unique transient unit from these properties after approval.
 [Unit]
 Description=Disposable Buzz service-context proof
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 DynamicUser=yes
 StateDirectory=buzz-service-proof
 StateDirectoryMode=0700
 RootDirectory=/run/buzz-service-proof/rootfs
-WorkingDirectory=/state/work
-BindPaths=/var/lib/buzz-service-proof/home:/state/home
-BindPaths=/var/lib/buzz-service-proof/work:/state/work
-ExecStart=/usr/bin/env -i HOME=/state/home GROK_HOME=/state/home/.grok PATH=/usr/bin:/bin:/runtime XDG_CONFIG_HOME=/state/home/.config XDG_RUNTIME_DIR=/run LANG=C.UTF-8 LC_CTYPE=C.UTF-8 PWD=/state/work /usr/bin/python3 -S /proof/context.py service-proof-agent read
+WorkingDirectory=/state
+BindPaths=/var/lib/buzz-service-proof:/state
+ExecStart=/usr/bin/env -i HOME=/state/home GROK_HOME=/state/home/.grok PATH=/usr/bin:/bin:/runtime XDG_CONFIG_HOME=/state/home/.config XDG_RUNTIME_DIR=/run LANG=C.UTF-8 LC_CTYPE=C.UTF-8 PWD=/state/work /usr/bin/python3 -S /proof/context.py service-proof-agent native-suite
 PrivateNetwork=yes
 PrivateTmp=yes
 PrivateDevices=yes
 MountAPIVFS=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/state/home /state/work
+ReadWritePaths=/state
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectProc=invisible

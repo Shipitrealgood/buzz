@@ -16,7 +16,7 @@ import tempfile
 import time
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+REPO = HERE.parents[2] if len(HERE.parents) > 2 else HERE
 ACP = Path('/home/bryce/services/buzz-agents/releases/paired-hosts-canary-723c7e849/netcup/bin/buzz-acp')
 GROK = Path('/home/bryce/.grok/downloads/grok-1.0.70-linux-x86_64')
 PINS = {ACP: 'fa3f1a36919d3d1c34fd523f40695495bb58cd00e7f6b52b62e59edc140341fb',
@@ -78,6 +78,66 @@ def bounded(argv, timeout=15):
             stream.close()
 
 
+def build_rootfs(root):
+    for path, dest in [(Path('/usr/bin/python3'), None), (Path('/usr/bin/git'), None),
+                       (Path('/bin/sh'), '/bin/sh'), (Path('/usr/bin/env'), None), (ACP, '/runtime/buzz-acp')]:
+        elf(root, path, dest)
+    # A copied, pinned interpreter stdlib; no site customization, site packages or host config.
+    stdlib = Path('/usr/lib/python3.13')
+    (root / 'usr/lib/python3.13/lib-dynload').mkdir(parents=True)
+    for path in stdlib.glob('*.py'):
+        if path.name != 'sitecustomize.py':
+            copy_file(root, path)
+    for name in ['encodings', 'json', 're', 'collections', 'importlib', 'pathlib']:
+        shutil.copytree(stdlib / name, root / str(stdlib).lstrip('/') / name,
+                        ignore=shutil.ignore_patterns('__pycache__'))
+    for name in ['_socket', 'select', 'fcntl', '_posixsubprocess', 'math', 'array', 'binascii', '_struct']:
+        matches = list((stdlib / 'lib-dynload').glob(name + '.*.so'))
+        for path in matches:
+            elf(root, path)
+    copy_file(root, GROK, '/runtime/grok')
+    copy_file(root, HERE / 'context.py', '/proof/context.py')
+    copy_file(root, REPO / 'crates/buzz-acp/tests/fixtures/task_agent.py', '/proof/task_agent.py')
+    runtime = {'synthetic': {'harness': '/runtime/buzz-acp', 'command': '/usr/bin/python3',
+                            'args': ['-S', '/proof/task_agent.py']},
+               'grok': {'harness': '/runtime/buzz-acp', 'command': '/runtime/grok',
+                        'args': ['agent', '--always-approve', 'stdio'], 'login': ['login', '--device-auth']}}
+    (root / 'proof/runtime.json').write_text(json.dumps(runtime))
+    for name in ['state/home', 'state/work', 'run', 'tmp', 'proc', 'dev']:
+        (root / name).mkdir(parents=True, exist_ok=True)
+
+
+def prepare_probes(base):
+    listeners = []
+    # Only synthetic files. Their world readability makes the mount boundary meaningful.
+    denied = []
+    for name in ['operator', 'sibling', 'non-home', 'machine-config']:
+        path = base / name
+        path.write_text('SYNTHETIC-CANARY')
+        path.chmod(0o644)
+        assert path.read_text() == 'SYNTHETIC-CANARY'
+        denied.append(str(path))
+    for family, address in [(socket.AF_INET, ('127.0.0.1', 0)),
+                            (socket.AF_INET6, ('::1', 0)),
+                            (socket.AF_UNIX, str(base / 'shared.sock')),
+                            (socket.AF_UNIX, '\0buzz-service-proof-' + base.name)]:
+        server = socket.socket(family, socket.SOCK_STREAM)
+        listeners.append(server)
+        server.bind(address)
+        if family == socket.AF_UNIX and not str(address).startswith('\0'):
+            Path(address).chmod(0o666)
+        server.listen(16)
+        server.settimeout(1)
+        with socket.socket(family, socket.SOCK_STREAM) as client:
+            client.connect(server.getsockname())
+            accepted, _ = server.accept()
+            accepted.close()
+    probes = {'denied_files': denied, 'ipv4': listeners[0].getsockname(),
+              'ipv6': listeners[1].getsockname(), 'unix': listeners[2].getsockname(),
+              'abstract': listeners[3].getsockname()[1:].decode()}
+    return probes, listeners
+
+
 def main():
     os.umask(0o077)
     for path, expected in PINS.items():
@@ -96,58 +156,11 @@ def main():
         (home / '.grok').mkdir()
         work = base / 'work'
         work.mkdir()
-        # Only synthetic files. Their world readability makes the mount boundary meaningful.
-        denied = []
-        for name in ['operator', 'sibling', 'non-home', 'machine-config']:
-            path = base / name
-            path.write_text('SYNTHETIC-CANARY')
-            path.chmod(0o644)
-            assert path.read_text() == 'SYNTHETIC-CANARY'
-            denied.append(str(path))
-        for family, address in [(socket.AF_INET, ('127.0.0.1', 0)),
-                                (socket.AF_INET6, ('::1', 0)),
-                                (socket.AF_UNIX, str(base / 'shared.sock')),
-                                (socket.AF_UNIX, '\0buzz-service-proof-' + base.name)]:
-            server = socket.socket(family, socket.SOCK_STREAM)
-            listeners.append(server)
-            server.bind(address)
-            server.listen(16)
-            server.settimeout(1)
-            with socket.socket(family, socket.SOCK_STREAM) as client:
-                client.connect(server.getsockname())
-                accepted, _ = server.accept()
-                accepted.close()
+        probes, listeners = prepare_probes(base)
+        denied = probes['denied_files']
         result['checks'].append('positive controls: four readable canaries and IPv4/IPv6/path/abstract listeners')
-        for path, dest in [(Path('/usr/bin/python3'), None), (Path('/usr/bin/git'), None),
-                           (Path('/bin/sh'), '/bin/sh'), (Path('/usr/bin/env'), None), (ACP, '/runtime/buzz-acp')]:
-            elf(root, path, dest)
-        # A copied, pinned interpreter stdlib; no site customization, site packages or host config.
-        stdlib = Path('/usr/lib/python3.13')
-        (root / 'usr/lib/python3.13/lib-dynload').mkdir(parents=True)
-        for path in stdlib.glob('*.py'):
-            if path.name != 'sitecustomize.py':
-                copy_file(root, path)
-        for name in ['encodings', 'json', 're', 'collections', 'importlib', 'pathlib']:
-            shutil.copytree(stdlib / name, root / str(stdlib).lstrip('/') / name,
-                            ignore=shutil.ignore_patterns('__pycache__'))
-        for name in ['_socket', 'select', 'fcntl', '_posixsubprocess', 'math', 'array', 'binascii', '_struct']:
-            matches = list((stdlib / 'lib-dynload').glob(name + '.*.so'))
-            for path in matches:
-                elf(root, path)
-        copy_file(root, GROK, '/runtime/grok')
-        copy_file(root, HERE / 'context.py', '/proof/context.py')
-        copy_file(root, REPO / 'crates/buzz-acp/tests/fixtures/task_agent.py', '/proof/task_agent.py')
-        runtime = {'synthetic': {'harness': '/runtime/buzz-acp', 'command': '/usr/bin/python3',
-                                'args': ['-S', '/proof/task_agent.py']},
-                   'grok': {'harness': '/runtime/buzz-acp', 'command': '/runtime/grok',
-                            'args': ['agent', '--always-approve', 'stdio'], 'login': ['login', '--device-auth']}}
-        (root / 'proof/runtime.json').write_text(json.dumps(runtime))
-        probes = {'denied_files': denied, 'ipv4': listeners[0].getsockname(),
-                  'ipv6': listeners[1].getsockname(), 'unix': listeners[2].getsockname(),
-                  'abstract': listeners[3].getsockname()[1:].decode()}
+        build_rootfs(root)
         (root / 'proof/probes.json').write_text(json.dumps(probes))
-        for name in ['state/home', 'state/work', 'run', 'tmp', 'proc', 'dev']:
-            (root / name).mkdir(parents=True, exist_ok=True)
         result['rootfs_manifest'] = {str(p.relative_to(root)): digest(p)
                                     for p in sorted(root.rglob('*')) if p.is_file()}
         def command(mode, ref='service-proof-agent', expose=False, share_network=False):

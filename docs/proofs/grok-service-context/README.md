@@ -118,28 +118,24 @@ exec environment and control-group cleanup. Compared with
 real instance credentials, restart loops and the canonical runtime helper. It
 retains resource restrictions and adds a closed root plus network-none. It is
 not a drop-in replacement and does not prove the canonical DynamicUser mapping,
-credential injection or production startup. Its read mode requires the prepared
-synthetic marker/probe fixtures; a bare unit installation is insufficient.
+credential injection or production startup. Its fixed native-suite mode uses the shared builder/probes and a private
+StateDirectory; the complete command is in [NATIVE.md](NATIVE.md).
 
 Measured environment: PID 1 is `codex`; systemd markers/socket exist but read-only
 `env -i PATH=/usr/bin:/bin timeout 3s systemctl show --property=Version --value`
 returns EPERM. A disposable native manager cannot be established with existing
 permitted resources. No container/privileged mount/new account/unit was created.
 
-Proposed **next native offline action**, requiring separate approval before host
-mutation: on a disposable systemd machine, populate
-`/run/buzz-service-proof/rootfs` from this driver’s exact copy inventory and
-`/var/lib/buzz-service-proof/{home,work}` as fresh synthetic directories. Keep
-four synthetic listeners and canaries alive with outside positive controls;
-write their exact addresses into `/proof/probes.json`. Use this one unit name,
-run write → read → models by approved operator-only ExecStart substitutions,
-then stop/restart, contention, timeout and failure variants. Capture effective
-UID, state mapping and cgroup emptiness. Install nothing in the existing paired
-agent namespace. Cleanup: stop the proof unit, remove only its runtime unit file,
-reload the manager, terminate the four owned listeners, remove its exact `/run`
-root and its synthetic StateDirectory. No invocation is authorized by this doc.
-The current driver is a namespace runner, not this native staging orchestrator;
-implementing that small staging adaptation is part of the next approved gate.
+A runnable **native offline candidate** is now prepared in [NATIVE.md](NATIVE.md),
+with a private checksummed release bundle and exact root bootstrap command.
+Preparation and dry-run validation ran; actual native execution is **NOT RUN**.
+The command requires separate user approval after independent re-gate. It creates
+one uniquely named transient unit with DynamicUser, a closed staged rootfs and
+one distinct private StateDirectory, then exercises first start, restart, generic
+synthetic discovery and unit failure/cleanup. Numeric DynamicUser IDs may change;
+the native-only check requires correct per-start state ownership and persistence.
+The original namespace gate still requires a stable literal UID. No existing
+unit, account, credential or online policy is modified by preparation.
 
 Proposed **online/native action is blocked on an egress decision**, not ready to
 execute: maintain a dedicated persistent identity/context and one exclusive lock
@@ -179,9 +175,15 @@ receipt, not only the prose summary.
 6. Candidate unit: env-clearing and offline constraints are deliberate; native
    execution and online enforcement must not be inferred from syntax verification.
 
-Deviations: no native systemd execution is possible within current resources;
+Deviations: native systemd execution remains separately approved on the netcup terminal;
 old canary ACP used with conductor approval and explicit source drift; proof-only
 brief lives here to honor scoped ownership. There is no production implementation.
 Native authentication, deployment, UI/protocol and relay work belong to later
 approved assignments. Return findings to the conductor; executor self-review
 is not an independent gate. Review reruns need the same scoped test escalation.
+
+Native continuation starts from review commit
+`0a54e180cbdb0b95b51e5cf3a9785e43ba98aeab` (earlier offline review C0/H0/M0/L0).
+`native-proof.py` and `bootstrap-native.py` are preparation artifacts, not a new
+production runtime. See NATIVE.md for the delta-specific reviewer watchpoints,
+bundle/source pins, measured preparation gates and exact approval boundary.
