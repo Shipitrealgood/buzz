@@ -71,7 +71,8 @@ Use additive private storage, outside generic events/search/fanout:
 
 1. Relay `paired_agent_placements`: primary key `(community_id, agent_pubkey)`;
    immutable `owner_pubkey`, `host_pubkey`, `generation`; monotonic `revision`;
-   state (`pending`, `applied`, `cleanup-pending`, `cleaned`, `failed`),
+   immutable `unit_id` (the original create operation ID, reusing hostd request/unit
+   identity), state (`pending`, `applied`, `cleanup-pending`, `cleaned`, `failed`),
    `last_operation_id`, and nullable `cleanup_operation_id`. A cleaned row remains
    a tombstone. Keeping the primary key independent of host/owner prevents a
    second placement for the same community agent. Re-enrollment cannot silently
@@ -102,7 +103,7 @@ Use additive private storage, outside generic events/search/fanout:
 5. Hostd extends its existing durable journal, catalog hash checks, request/unit
    identity and privileged helper path. No second daemon, runtime table or unit
    naming scheme. The slice 2 adapter must bind one stable unit to the accepted
-   agent placement, persist cleanup fences before helper calls, and recheck relay
+   agent placement (retain its original create operation ID across redeploys), persist cleanup fences before helper calls, and recheck relay
    execution authority before applying queued work. Do not equate the legacy v1
    request workflow or registration refresh loop with this deployment path.
 
