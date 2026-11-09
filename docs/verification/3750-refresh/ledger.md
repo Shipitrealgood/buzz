@@ -22,3 +22,5 @@ Negative control held: registration_cli.rs restored from a68c81902 for old sched
 Negative control terminal exit=101; implementation restored from saved source.
 
 Final source gates: 43 library/binary tests,25 isolated registration cases, final executable recheck, formatter and size checks passed. Clippy completed with9 existing warnings; no new refresh diagnostics. Fixture removed; no task containers/private TLS keys remain. No live changes. Release build receipt follows after source commit.
+
+Implementation commit: 0bacd58f5369f61a4da1fd794c26d25503117a23. Release build completed25.97s; candidate de05655071c5f6af3451cc70116969f53da0df0ff64448593a0fc913bf10d3ee. No source changes after verified commit; receipt-only followup. All owned processes stopped.

@@ -1,0 +1,15 @@
+{
+  "source_commit": "0bacd58f5369f61a4da1fd794c26d25503117a23",
+  "source_manifest": "source-hashes.json",
+  "command": "CARGO_BUILD_JOBS=2 cargo build --release --locked --offline -p buzz-hostd --bin buzz-hostd",
+  "exit": 0,
+  "seconds": 25.97,
+  "artifact": "/home/bryce/services/buzz-wt-3720-host-registration/target/3750-refresh-candidate/buzz-hostd-de05655071c5f6af",
+  "sha256": "de05655071c5f6af3451cc70116969f53da0df0ff64448593a0fc913bf10d3ee",
+  "bytes": 16707864,
+  "platform": "x86_64-unknown-linux-gnu",
+  "build_log": "release-build.txt",
+  "smoke": "release-help.txt; registration run --help exit0",
+  "runtime_limit": "actual relay journey ran final debug executable; release executable built and help-tested, not installed or service-tested",
+  "deployment": "not performed; independent review and human approval required"
+}

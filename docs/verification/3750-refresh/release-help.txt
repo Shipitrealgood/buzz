@@ -1,0 +1,11 @@
+Reconcile registration only. The relay public key is operator-pinned
+
+Usage: buzz-hostd registration run [OPTIONS] --community <COMMUNITY> --relay-key <RELAY_KEY>
+
+Options:
+      --community <COMMUNITY>  
+      --relay-key <RELAY_KEY>  
+      --label <LABEL>          [default: "Linux host"]
+      --ca-cert <CA_CERT>      Explicit private community CA. TLS identity verification stays enabled
+      --once                   One bounded pass, useful for operator checks and disposable fixtures
+  -h, --help                   Print help

@@ -4,5 +4,6 @@
   "test_processes": "all commands reached terminal exit; task fixture containers removed",
   "live_system_actions": "none",
   "unrelated_resources": "unchanged; no cleanup outside task fixtures",
-  "build_cache": "retained for reviewer; release build next"
+  "build_cache": "retained for reviewer; release build completed, candidate outside Git",
+  "owned_processes": "none; all test/build/fixture commands terminal"
 }
