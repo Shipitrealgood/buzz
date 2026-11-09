@@ -1,0 +1,31 @@
+// Temporary reviewer test appended to registration_refresh_tests.rs, then restored.
+// Same production connected() and shared reader; only backstop/coalescing shortened.
+#[tokio::test]
+async fn reviewer_continuous_heartbeat_cannot_starve_backstop() {
+    let f = Fixture::new().await;
+    let (_dir, mut host, g) = host(true);
+    let mut ws = f.settings.connect().await.unwrap();
+    host.authenticate(&mut ws, &g).await.unwrap();
+    host.subscribe_live(&mut ws, f.settings.relay, &g).await.unwrap();
+    let flood = async {
+        wait_for(|| f.counts.pages.load(Ordering::SeqCst) == 2).await;
+        f.counts.dead.store(true, Ordering::SeqCst); // no invalidation hint
+        loop {
+            f.commands.send("ping").unwrap();
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    let started = Instant::now();
+    tokio::select! {
+        result = tokio::time::timeout(Duration::from_secs(5), connected(
+            &mut host, &mut ws, &g, &f.settings,
+            Duration::from_secs(2), Duration::from_millis(250),
+        )) => result.expect("continuous frames starved timer").unwrap(),
+        _ = flood => panic!("flood unexpectedly ended"),
+    }
+    assert_eq!(host.state(&g).unwrap(), "dead");
+    assert_eq!(f.counts.auth.load(Ordering::SeqCst), 1);
+    let pongs = f.counts.pongs.load(Ordering::SeqCst);
+    assert!(pongs > 100, "traffic was not sustained: {pongs}");
+    println!("REVIEW_HEARTBEAT elapsed_ms={} pongs={pongs} auth=1 lost_notice_dead=true", started.elapsed().as_millis());
+}

@@ -1,0 +1,77 @@
+{
+  "reviewer": "codex-chuck; independent of executor",
+  "requested_configuration": {
+    "model": "gpt-6-astra",
+    "effort": "high"
+  },
+  "runtime_configuration": {
+    "model": "unknown",
+    "effort": "unknown"
+  },
+  "base": "a68c819029004e341fea43f2b527c454396c45b3",
+  "head": "da4e8c3acab16af005b15f03bebc650856fc4343",
+  "implementation": "0bacd58f5369f61a4da1fd794c26d25503117a23",
+  "environment": "Hermit activated; locked offline dependencies; CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=1; one sequential test lane",
+  "runs": [
+    {
+      "command": "cargo test --locked --offline -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --lib --bins -- --nocapture",
+      "exit": 0,
+      "passed": 43,
+      "receipt": "libraries.txt"
+    },
+    {
+      "command": "cargo test --locked --offline -p buzz-relay --lib --no-run",
+      "exit": 0,
+      "receipt": "relay-build.txt"
+    },
+    {
+      "command": "scripts/3720-registration-proof.sh up; scripts/3720-registration-proof.sh tls; scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd handlers::host_registry::external_infra_registration_tests::external_infra_tests --ignored --nocapture --test-threads=1 --skip child_root_relay; scripts/3720-registration-proof.sh down",
+      "exit": 0,
+      "passed": 25,
+      "seconds": 36.81,
+      "receipt": "registration-release.txt",
+      "control": "1 of 2: exact release candidate temporarily substituted for hardcoded debug executable path; original restored by EXIT trap",
+      "candidate_sha256": "de05655071c5f6af3451cc70116969f53da0df0ff64448593a0fc913bf10d3ee"
+    },
+    {
+      "command": "cargo test --locked --offline -p buzz-hostd --bin buzz-hostd reviewer_continuous_heartbeat_cannot_starve_backstop -- --nocapture",
+      "exit": 0,
+      "passed": 1,
+      "receipt": "heartbeat-control.txt",
+      "control": "2 of 2: appended heartbeat-control.rs.txt to existing synthetic test module; restored original bytes in finally block",
+      "observed": "473 Pongs; AUTH1; silent revocation discovered and local session ended in3003ms; injected backstop2s"
+    },
+    {
+      "command": "cargo fmt --all -- --check; rustfmt --edition 2021 --check crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs; git diff --check",
+      "exit": 0,
+      "receipt": "format.txt"
+    }
+  ],
+  "continuity": "source-restoration.json; all9 manifest entries match, candidate unchanged, original debug artifact restored",
+  "cleanup": "fixture-down.txt and remaining-fixture-containers.txt; containers0 and private TLS keys removed",
+  "retained_executor_evidence": [
+    "../3750-refresh/old-scheduler-build.txt",
+    "../3750-refresh/old-scheduler-red.txt",
+    "../3750-refresh/final-executable.txt",
+    "../3750-refresh/size.txt",
+    "../3750-refresh/clippy.txt"
+  ],
+  "not_run": [
+    "full just ci",
+    "strict baseline clippy remediation",
+    "104 unchanged ordinary relay tests",
+    "native Windows remaining observations",
+    "actual systemd/reboot",
+    "human acceptance",
+    "live installation",
+    "fleet benchmark"
+  ],
+  "verdict": "merge-safe for scoped increment, no full3750 or deployment completion",
+  "findings": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
+  "rework_rounds": 0
+}

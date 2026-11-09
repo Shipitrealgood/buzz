@@ -1,0 +1,73 @@
+
+running 25 tests
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::disabled_capability_and_private_generic_reads_fail_closed ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::executable_registration_restart_recovery_revoke_and_native_scope_fence ... REFRESH_EXECUTABLE retained_connection=true idle_seconds=6 status_reply=1 self_amplification=0 notification_revoke=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::external_infra_process_tests::process_crash_before_and_after_commit_retries_exact_ack ... PROCESS_CRASH phase=before committed_before_kill=false exact_ack=6790e974633b795c5e2c2c1715ef9f65cfbd2f5b3b0c04076de5271fbd5fa9f7 live_bindings=1
+PROCESS_CRASH phase=after committed_before_kill=true exact_ack=975bb748076e314eae8ce2d703003ac613a4d90ac265fa6189a1b618eb117c9f live_bindings=1
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::host_scope_denies_every_other_message_and_bootstrap ... ok
+LIVE_BARRIER both_nodes_high_water=18
+LIVE_POST_REMOVAL new_event_id=b2174849c5d001cd2f521cf9f1b1f8065c7437434337afabdf11811c0f7c9527
+ok
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::pagination_cursor_races_and_saturation_are_bounded ... ok
+ok
+ok
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::retained_timely_ack_has_exact_twenty_four_hour_recovery_boundary ... ok
+ROUND1_DEPENDENCY snapshot_failed_closed=true cache_retained=true db_recovered=true postcommit_notice_dropped=true periodic_resync_label_recovered=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_held_work_slots_and_encrypted_boundaries_are_bounded ... ROUND1_EVENT_EDGE serialized_bytes=16384 bound=16384 accepted=true
+ROUND1_EVENT_EDGE serialized_bytes=16388 bound=16384 accepted=false
+ROUND1_BOUNDS ordinary_slots_held=3 global_queue_held=true reserved_recovery=true encrypted_page_exact_limit=true oversize_and_malformed_denied=true valid_followup=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_legitimate_signer_contradictions_have_no_consumer_effect ... ROUND1_CONTRADICTION field=v outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=community outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=owner outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=host outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=generation outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=op outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=operation_id outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=parent outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=expires_at outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONTRADICTION field=body-type outer_signature=true consumer_rejected=true durable_ack=false
+ROUND1_CONSUMER wrong_host_parent_ack_nonce_recipient_tenant_rejected=true valid_followup=true
+ok
+ROUND1_OFFLINE dead_persisted_before_send=true exact_restart_retry=true fresh_generation=true old_ack_cannot_resurrect=true altered_legitimate_ack_denied=true live_owners=1
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_old_errors_and_timeouts_preserve_new_subscription_owner ... ROUND1_LIFECYCLE old_timeout=false replacement_retained=true no_late_frames=true topics=0
+ROUND1_LIFECYCLE old_timeout=true replacement_retained=true no_late_frames=true topics=0
+ok
+ROUND1_PRUNING actual_floor=100 fresh_reconcile_nonce=true consent_retained=true stale_and_expired_closed=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_reconcile_refreshes_clock_and_keeps_timely_saved_ack_retry ... ROUND1_CLOCK case=expired correct=true
+ROUND1_CLOCK case=rollback correct=true
+ROUND1_CLOCK case=reboot correct=true
+ROUND1_CLOCK case=saved-retry correct=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_setup_serializes_close_replacement_and_connection_cleanup ... ROUND1_SETUP action=close map_index_topic_clean=true
+ROUND1_SETUP action=replace map_index_topic_clean=true
+ROUND1_SETUP action=cancel map_index_topic_clean=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_valid_oa_and_channel_guest_cannot_gain_registration ... ROUND1_CREDENTIALS valid_oa_ordinary=true oa_registration=false direct_member_owner=true channel_guest_read=true guest_registration=false no_guest_token_root_route=true enforcing_fi_upgrade_refused=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::round1_wire_exchange_is_complete_and_correlated ... WIRE_TRACE {"direction":"relay-to-client","frame":["AUTH","8d33a19c2f9a386860087466dd56adbac277fdabc516c318c6fc1dc459d4d7fa"]}
+WIRE_TRACE {"direction":"client-to-relay","frame":["AUTH",{"content":"","created_at":1794240038,"id":"f796707131e0b2feb04661cefdad68b85470707b0cded4a56a5f881a307ba655","kind":22242,"pubkey":"3c271de7ccee1526a38dd1d00aef4bdb7476c1077c5edbdb2fd3a33efb21ab05","sig":"53c1224642ceb49f0b12af943170e106aab807d37f98c3750760ef8baf1a47383eab9a81c615bef354fc0e9331c85abbb541a844420f408d97f9e76453099f85","tags":[["challenge","8d33a19c2f9a386860087466dd56adbac277fdabc516c318c6fc1dc459d4d7fa"],["relay","wss://registry-df1c1d79397444a2b18db0543562174a.test"]]}]}
+WIRE_TRACE {"direction":"relay-to-client","frame":["OK","f796707131e0b2feb04661cefdad68b85470707b0cded4a56a5f881a307ba655",true,""]}
+WIRE_TRACE {"direction":"client-to-relay","frame":["EVENT",{"content":"At7NY01f7fcuOQrwvqrW1J7fq1p2F70fTIMYv1hdmVjxTPD9K0PrfoHlyT7wYPtxtVy6JOmp1YTaBiUK0XwJlJW7n8u7PhUV7KRngD1VePV/HFFDjvCexKNx9eUjIEATvmCD4VENehZcS2g0MvET8YLgtvHCpvksuOdBx8NqzPuwVBH9QPMc4Fj8OhB8Ez+zQXehO5t7utEdOkedxoEiybDpLRKiEQ9fdT6a7eqRj9Az87gikKqS/kvFlgNbv+Rj5c0MENRD9C4hUuQL7DTzk9jUiJf6YLPnq6C/8hx/aCvGylieRHHw7heSHGfcS54ORUTNGl+eAGLkFyvkay2vMyfAJcJi0LAur8tec0MGumSu/5Y0N2lxPUw+EB5jMYuMpscObWxSJelwzXHwh8YSJxu+UXPXV/LEdtzcHhlBSEJ6ZiKOOty78v+oYqesgn5r2HKOQFeP1xVuTLs6kR1bImYl8hiKSfOQOVBwi676k7jRm0XUm6gB1aEWJ0XqhjGLQ9B41mB8BHt3XPajx/TwGZV2kI2KWO8FkwSjQDMnkRpEHIHGpY/ZWLoAsjhJTCuyXHvI1aiWhUgPmlPwJRCuv9g5dTQHwN0SAu4TnddbdfqrJYSchioxbABrDM8lBJgMhVZfN3vGRSV2TiDg4SIcdXAxql6ieoNZ3BDwR64vSqEXagfZnJ2eMKdEMgmYQfftgjW7Mxu8RDz01YcXMm+srx2d3YYineOUTXKeHS+SmMv6gy/UxsAnz1a+h9XtZB/OKIhE6Gv3SXORNlqWMUs09vpMRBGUGqu02wsc3Q8aQ3T9wVMITogsCkx1qcnIQS770L9jIDujrPxm4vaB541CAzczlfeBeBRdqBRTnZdt/ntTdBhl85McSD3fXgh4lAsBYv41i5I4QlLkgpSMJ5ciQtDM8AIk8jGQiPKkDX4HtbipfYk=","created_at":1794240038,"id":"f532171601e8f32a3829bfb3d528ba45a0a9eac3cbca327344016445d11c96c9","kind":43103,"pubkey":"3c271de7ccee1526a38dd1d00aef4bdb7476c1077c5edbdb2fd3a33efb21ab05","sig":"a7bb2226e9c81f77a20d6591dea7ea6641c1a9ec7261affd008bf14ac35227fa0fa0bf7cd5a9b34175e8cd027e6d723e9398acaa5ae3180dd055e59672214e1e","tags":[["v","2"],["community","https://registry-df1c1d79397444a2b18db0543562174a.test"],["o","3c271de7ccee1526a38dd1d00aef4bdb7476c1077c5edbdb2fd3a33efb21ab05"],["host","3efe02a1e4f41337fa51a23fa98cb90e86ff71d3f9ee1bc11e743026f9996056"],["g","dededededededededededededededededededededededededededededededede"],["p","3efe02a1e4f41337fa51a23fa98cb90e86ff71d3f9ee1bc11e743026f9996056"],["op","pair-claim"],["i","bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"],["prev","-"],["expiration","1794240638"]]}]}
+WIRE_TRACE {"direction":"relay-to-client","frame":["OK","f532171601e8f32a3829bfb3d528ba45a0a9eac3cbca327344016445d11c96c9",true,""]}
+WIRE_TRACE {"direction":"client-to-relay","frame":["REQ","wire",{"#p":["3c271de7ccee1526a38dd1d00aef4bdb7476c1077c5edbdb2fd3a33efb21ab05"],"host_registry":{"cursor":null,"nonce":"a6fbee2423886f444bf2963980f3824eb9b9c9f54b0a7da9d18d87e41a1bcbf9","v":2,"view":"hosts"},"kinds":[43103]}]}
+WIRE_TRACE {"direction":"relay-to-client","frame":["EVENT","wire",{"content":"Ahzrszi5r0uKvmzwYZI4hHRBd75TS6jdMx1cku48FPzrXJzyeqNme1G87iAz92IKYKJyE0mXQpmeK33mhM0FU3sIi8r3hJY8uXTmd8UfikLOS4aFY3O7OexUBBAphtQ3/H5Q+4kk3NFu+nLN1KgXM2EhBA2M8obJzUY/NSUVZvC+WW4ecN5WGVfgt5LZPU+u7vmK2z10vlxXpjj8hPeGhu6q1hTifQmVPPL/9Bkcf5XEscHX8BKjddj2dX2x1fEb1MWrHgIzNqcH+JbDF1LLl6z4oD0unnE02sskpt9V8274XCCZzBKCwlHzud9utp3etKWtUQb10QaJFtBRaEk11OlHFhqioDf/5vX5D7dIwiFfFzIJ7NnOHJTuj4Wc7Ug6sj9FL+SUcPocU/Q9JQkUQ6p8RSyCzdNRkYcl0vIXhq1FhXMxxdK/X0UlGC5VbAanozZqeeOpiLKCQ8qOonDEwX6mj+5B9VUEn00c7Zmtez832KhwmtvxpnrmzKebFivolmcYwwcuPDYAm3Xs3cF19K2V0W2TqpszsLqVkUCB2sIR4FtIY8VeInMhXePDqkeC3yxMt9c/gxRwsgKjMm1yyUTYHaseo8CuQJ/lI8ZCvQgxj2vZ1tM+eMcmUf+f6odLhRl+PfYklZ5KxBBx3UwflSoHL7fMFlb+tsoJuGZEbQrpbCI=","created_at":1794240038,"id":"f3a1cfb8b60c3016bc2064a256e3ed3ed0e0f21c5e3e10daf0e9332094ee9f55","kind":43103,"pubkey":"2f4a81778f0b267007f09b3980e37fe080ba25d21b933ee5c0e355d0affc6d0e","sig":"57ca5cf1625b3bfd7ce0922c38f32e6efb9feaba9e4b85c7409b1754c01718ba037b70a5a217765eaea5959306e921f5f00e4a8535efa14be471cf1b4fa83386","tags":[["v","2"],["community","https://registry-df1c1d79397444a2b18db0543562174a.test"],["p","3c271de7ccee1526a38dd1d00aef4bdb7476c1077c5edbdb2fd3a33efb21ab05"],["op","registry-page"],["q","a6fbee2423886f444bf2963980f3824eb9b9c9f54b0a7da9d18d87e41a1bcbf9"],["view","hosts"]]}]}
+WIRE_TRACE {"direction":"relay-to-client","frame":["EOSE","wire"]}
+WIRE_TRACE {"direction":"client-to-relay","frame":["CLOSE","wire"]}
+WIRE_TRACE {"direction":"relay-to-client","frame":["CLOSED","wire",""]}
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::scoped_auth_rejects_wrong_scope_challenge_relay_and_delegation ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::timely_ack_retries_after_expiry_with_no_candidate_read_rights ... ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::tls_proxy_two_dns_tenants_preserve_origin_and_private_registration ... TLS_DNS two_tenants=true host_registration_and_reconcile=true ports=32000,34443 global_queue_held=true reserved_binding_via_proxy=true
+ok
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::unique_live_binding_survives_competing_signed_host_acks ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 2180 filtered out; finished in 36.81s
+

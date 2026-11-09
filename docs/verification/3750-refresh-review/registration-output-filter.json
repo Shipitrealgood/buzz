@@ -1,0 +1,6 @@
+{
+  "raw_sha256": "a8cbef762f6a8c6f3f0070ca3c6b5d7ad26051f7a0bbbd1677f9584f111e5c0e",
+  "raw_bytes": 63165,
+  "omitted_lines": 27,
+  "omitted": "Lines containing PROOF_FRAME encrypted synthetic event transcripts; aggregate test result and other proof markers retained (some test-name prefixes share omitted lines)"
+}
