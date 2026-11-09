@@ -9,7 +9,7 @@ RemainAfterExit=yes
 DynamicUser=yes
 StateDirectory=buzz-service-proof
 StateDirectoryMode=0700
-RootDirectory=/run/buzz-service-proof/rootfs
+RootDirectory=/var/lib/buzz-service-proof-stage/rootfs
 WorkingDirectory=/state
 BindPaths=/var/lib/buzz-service-proof:/state
 ExecStart=/usr/bin/env -i HOME=/state/home GROK_HOME=/state/home/.grok PATH=/usr/bin:/bin:/runtime XDG_CONFIG_HOME=/state/home/.config XDG_RUNTIME_DIR=/run LANG=C.UTF-8 LC_CTYPE=C.UTF-8 PWD=/state/work /usr/bin/python3 -S /proof/context.py service-proof-agent native-suite

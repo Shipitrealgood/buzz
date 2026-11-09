@@ -1,130 +1,126 @@
-# Native offline proof: proposed command awaiting approval
+# Native offline proof: repaired command awaiting review and approval
 
-**Actual native execution NOT RUN.** This is the concrete candidate for the
-independent re-gate and subsequent user approval on the netcup terminal. The
-current Codex environment has PID 1 `codex`; it cannot run this native gate.
-No provider sign-in, native Grok, real relay or model request is authorized.
+**Repaired candidate native execution NOT RUN.** The previous approved attempt
+failed at systemd EXEC before Python or any proof ran. No native isolation,
+model-discovery or service-lifecycle pass is claimed. This candidate awaits the
+same independent reviewer, then separate user approval before execution.
+
+## Observed failure and repair
+
+The conductor's exact-unit read-only journal inspection reported
+`Unable to locate executable /usr/bin/env: Permission denied`, status `203/EXEC`,
+for `buzz-service-proof-f9f6cc3173de5c84.service`. Parent directories/executable had
+expected modes; native findmnt showed `/run` mounted `noexec`. `/var/lib` is on the
+existing executable ext4 filesystem. This was a staging-path error, not a Grok
+or provider failure. The original namespace test used `/tmp` and did not establish
+native `/run` execution. The conductor confirmed that old unit/state/cgroup are
+gone; old `/run/buzz-service-proof-f9f6cc3173de5c84` staging remains intentionally
+untouched. This command neither cleans nor reuses it.
+
+The new candidate stages at `/var/lib/buzz-service-proof-stage-<16hex>`, separate
+from `/var/lib/buzz-service-proof-<16hex>` DynamicUser state. Both bootstrap and
+native preflight reject `ST_NOEXEC`; host mount flags are never changed. Failed
+commands retain escaped, bounded stdout/stderr, and failure handling saves only
+the exact synthetic unit's bounded journal to private `failure.json` before cleanup.
 
 ## Exact prepared inputs
 
 - Archive: `/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/native-offline-proof.tar`
-- SHA-256: `d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64`
-- Archive bytes: 236933120; unpacked file bytes: 236279806.
-- Manifest entries: 336. All hashes checked after packaging.
+- SHA-256: `b5f965927381d36d967469bd27e488bd1c0e4e4bce76d2ff4ea8c5524981c23d`
+- Archive bytes: 236933120; unpacked file bytes: 236281343.
+- Manifest entries: 336; all hashes and packaged/source equality checked.
 - Bootstrap: `/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/bootstrap-native.py`
-- Bootstrap SHA-256: `66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707`.
-- M-1 repair source starts at `947378553964dfdb0f3f6a44e813defea9b7de14`; candidate
-  commit is recorded in the operations receipt. Earlier offline acceptance was
-  at `3e9f6dac0cc712d1871518dff6cd19c2247ab8b5`.
+- Bootstrap SHA-256: `09746fb9420bc612d2e471d3b445e57443d8b9938114213b5379540e718c4437`.
+- Source repair starts at `055006a30901ef0e4d9fea6404856ae04c996e2a`; final commit
+  is recorded in the operations receipt. Release directory is mode0700,
+  archive/bootstrap mode0400; root trust comes from verified bytes, not owner
+  inability to chmod a file.
 
-The release directory is mode 0700; archive/bootstrap are mode 0400. This is
-checksum pinning, not filesystem immutability against the owning user. The root
-command verifies the exact bytes before executing them. Changing source later
-does not change this bundle; a changed candidate requires a new hash/review.
+The old archive `d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64` and bootstrap `66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707`
+are superseded. The prior command rejects the replacement bootstrap before it
+executes; the prior archive hash also rejects the replacement archive. A source
+change does not update this bundle without repackaging and re-review.
 
-## Command for separate approval
-
-Run only after the conductor's independent re-gate and explicit user approval:
+## Exact command for subsequent approval
 
 ```sh
-sudo -- /usr/bin/python3 -I -S -c 'import hashlib,sys; data=open(sys.argv[1],"rb").read(); assert hashlib.sha256(data).hexdigest()=="66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707", "bootstrap hash mismatch"; exec(compile(data, "<verified-native-bootstrap>", "exec"))' \
+sudo -- /usr/bin/python3 -I -S -c 'import hashlib,sys; data=open(sys.argv[1],"rb").read(); assert hashlib.sha256(data).hexdigest()=="09746fb9420bc612d2e471d3b445e57443d8b9938114213b5379540e718c4437", "bootstrap hash mismatch"; exec(compile(data, "<verified-native-bootstrap>", "exec"))' \
   /home/bryce/services/buzz-agents/releases/3719-3722-native-proof/bootstrap-native.py \
   /home/bryce/services/buzz-agents/releases/3719-3722-native-proof/native-offline-proof.tar \
-  d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64
+  b5f965927381d36d967469bd27e488bd1c0e4e4bce76d2ff4ea8c5524981c23d
 ```
 
-The literal root bootstrap reads and verifies its own supplied bytes before
-execution, then reads the archive into memory and verifies the pinned hash before
-extracting. It uses standard tar data filtering, rejects links/special files,
-and extracts only into an exclusively created root-owned directory under `/run`.
-Only those verified staged Python files are imported/executed as root. No root
-`ldd`, runtime reads from an operator HOME, mutable-workspace imports, caller
-command/descriptor or environment overrides are used. Grok is staged but never
-launched. Runtime pins and the existing model-discovery interface remain those
-of the offline receipt; this is still the older ACP artifact, not a current-source
-build.
+The literal command hashes the supplied bootstrap bytes before executing them.
+That verified bootstrap reads the archive once, verifies its approved hash,
+rejects links/special files and uses standard tar data filtering to extract into
+an exclusively created root-owned stage directory. Root imports/executes only
+those staged files. No root ldd, runtime read from operator HOME or mutable-source
+import is performed. Grok is bundled but never launched; provider modes remain
+rejected. ACP is still the exact older canary artifact with the source-continuity
+limit recorded in README.md, not a current-source deployment build.
 
-## Exact effects and sequence
+## Resources and tests
 
-The suffix is 16 random hex digits generated after verification. One invocation
-owns only:
+One generated suffix owns only:
 
-- `/run/buzz-service-proof-<suffix>`: verified sources/rootfs, four synthetic
-  canary files, one filesystem socket; plus one abstract socket and IPv4/IPv6
-  loopback listeners on kernel-assigned ports.
-- `buzz-service-proof-<suffix>.service`: a transient systemd unit created with
-  `systemd-run`. No installed unit, daemon-reload, enablement or existing agent
-  service is involved.
-- `/var/lib/buzz-service-proof-<suffix>` and systemd's corresponding
-  `/var/lib/private/buzz-service-proof-<suffix>` mapping: one private writable
-  StateDirectory. DynamicUser state is separate from the immutable rootfs;
-  systemd cannot recursively chown the staged runtime.
+- `/var/lib/buzz-service-proof-stage-<suffix>`: immutable rootfs/scripts,
+  four synthetic canary files, one filesystem socket, and a failure receipt if
+  needed. One abstract Unix socket and two loopback listeners use unique/kernel
+  assigned addresses.
+- `buzz-service-proof-<suffix>.service`: one transient unit via systemd-run.
+  No installed unit, daemon-reload, enablement or existing agent action.
+- `/var/lib/buzz-service-proof-<suffix>` and its standard
+  `/var/lib/private/buzz-service-proof-<suffix>` mapping: private writable state.
+  Systemd's state ownership handling cannot recursively chown the distinct stage.
 
-Preflight requires root, PID 1 systemd, root-owned/non-writable staged paths,
-valid staged manifest, no existing unit/state collision, free `/run` space of
-archive size times two plus 32 MiB (507420672 bytes),
-and 32 MiB free under `/var/lib`. The archive is under the 256 MiB input bound.
-The bootstrap also holds the archive in memory; plan roughly 0.5 GiB transient
-memory plus runtime processes. Native process limits remain 1 GiB, 128 tasks,
-100% CPU, 20-second startup and five-second stop deadlines per unit.
+Preflight requires root, PID1 systemd, executable staging filesystem, root-owned
+non-writable staged inputs, correct manifest and no unit/state collisions.
+Bootstrap requires 507420672 free bytes under `/var/lib`
+(archive size times two plus 32 MiB); the native state preflight requires 32 MiB.
+The archive is below its 256 MiB bound; allow about 0.5 GiB transient bootstrap memory
+plus service processes. Unit limits remain 1 GiB/128 tasks/100% CPU, 20-second start
+and five-second stop deadlines. `PrivateNetwork=yes` remains unconditional.
 
-The first start runs the same boundary probes, writes synthetic persistent
-state, invokes real ACP against the unchanged synthetic adapter, checks fixed
-failure handling, and re-reads state. `systemctl restart` repeats read/models;
-per-start UID and file ownership are recorded. DynamicUser may change its numeric
-UID: the invariant is the same logical enrolled service/home, private state
-ownership/access, and preserved bytes. The namespace test still requires identical
-numeric UID; it is not silently weakened. The native service then deliberately
-exits 70 on a fixed synthetic flag, and the controller checks the unit failure.
-All provider modes stay rejected and `PrivateNetwork=yes` stays enforced.
+First start exercises the same filesystem/socket/network probes, synthetic
+state write/read, real generic ACP discovery against the unchanged test adapter
+and fixed failure handling. Restart repeats read/models and records per-start
+UID/file ownership. Numeric DynamicUser UID may change; private own-state access
+and persistence are required. Namespace tests continue to require equal numeric
+UID. A fixed flag then forces unit exit 70 and its failure status is checked.
+No native Grok, provider request, authentication, real model or relay traffic runs.
 
-## Cleanup and limits
+## Diagnostics and cleanup
 
-Normal/failure unwinding closes only owned listeners, verifies the unit's unique
-Description before stopping it, checks its expected cgroup is absent or unpopulated,
-resets only that unit's failed state, and removes only its known StateDirectory
-and exact private-directory mapping. A successful bootstrap removes its own
-staging. SIGINT/SIGTERM permit the controller cleanup to run. Forced process kill,
-machine loss, or uncertain ownership can leave resources; the bootstrap prints
-the exact preserved staging path and fails rather than deleting unknown paths.
-A failed run is not a passing gate. Use that printed suffix and inspect the
-matching unit/state before any manual cleanup; do not run a wildcard cleanup.
+On unexpected failure, the command error contains exit code and at most 4 KiB each
+of captured stdout/stderr. Before cleanup, only this unit's last 40 journal lines
+are requested with a ten-second/64KiB capture bound; the receipt retains at most
+16 KiB journal and 4 KiB diagnostic stderr. JSON escapes terminal controls.
+`failure.json` is mode0600 in the owned staging directory; original errors remain
+available even when journal capture itself fails. No broad journal query occurs.
 
-Sanitized JSON output contains generated unit/resource names, UIDs, synthetic
-model payload and cleanup status. Provider credentials, invitation codes and
-private endpoints never enter this fixture. A native pass would establish this
-specific offline candidate only, not selective online egress, canonical service
-credentials/readiness, authenticated Grok or production launch safety.
+Cleanup checks the unique unit Description, stops only that unit, requires its
+expected cgroup to be absent/unpopulated, resets only its failed status, and
+removes only the exact owned StateDirectory/mapping. Success removes the new
+staging tree. Unknown ownership, cgroup state, forced kill or machine loss can
+leave resources: failure preserves and prints the exact stage path rather than
+deleting unknown/live paths. Inspect only the printed suffix for recovery;
+no wildcard cleanup and no prior-run cleanup is authorized by this candidate.
 
-## Verification performed here
+## Local verification and next gate
 
-- Shared namespace regression and both falsification controls: PASS after refactor.
-- Default dry-run plan and required systemd property assertions: PASS.
-- Wrong confirmation, conflicting actions and unprivileged native execution:
-  rejected before manager access.
-- Python AST syntax; archive SHA, all manifest hashes and staged/source equality:
-  PASS.
-- `systemd-analyze verify` on the uninstalled candidate: PASS.
-- Native manager/unit/root bootstrap execution: **NOT RUN**; pending approval.
+- Focused no-manager tests: distinct staging/state and executable/noexec guards;
+  failed-command diagnostics; bounded exact-unit journal receipt and capture
+  failure; existing umask077 descriptor regression: PASS.
+- AST, dry-run plan, all archive manifest hashes and packaged-source equality:
+  PASS. Old bootstrap/archive hashes reject replacement bytes.
+- Updated uninstalled unit `systemd-analyze verify`: PASS.
+- Shared builder/context are unchanged; accepted namespace regression retained,
+  not repeated.
+- Repaired root bootstrap/native unit: **NOT RUN**. The previous actual attempt
+  failed 203/EXEC before proof execution; no native pass is inferred.
 
-For review, scrutinize `native-proof.py` staging ownership, unit collision checks,
-per-start state mapping, and cleanup's exact path bounds; `bootstrap-native.py`
-verified-byte handoff; `context.py`'s separate native ownership policy; and the
-shared builder's unchanged namespace regression. No online-policy implementation
-or application changes are included. The next step is independent review of
-this delta, then approval of the command above.
-
-## M-1 repair and superseded candidate
-
-The archive `29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2` and its prior approval command are superseded.
-The unchanged bootstrap's archive-hash predicate rejects that old hash against
-the replacement bytes before native execution. The command above pins only the
-new candidate; native execution remains **NOT RUN**.
-
-The actual native descriptor writer now chmods the trusted generated
-`/proof/probes.json` to 0444 before startup. The no-root regression invokes that
-same helper under umask077, verifies JSON content and exact read-only mode, and
-shows that suppressing chmod makes its permission assertion fail. Targeted test,
-AST, unchanged dry-run plan, archive/source comparisons and all manifest hashes
-pass. Shared namespace/context code is unchanged by this repair, so its accepted
-regression was not repeated.
+Reviewer attention: stage versus StateDirectory naming, both noexec preflights,
+exact RootDirectory argument, bounded diagnostics before owned cleanup, and the
+new literal command pins. No application, online policy, provider or broader
+lifecycle changes are included. Same independent reviewer checks this delta,
+then the conductor may request approval for this exact revised command.

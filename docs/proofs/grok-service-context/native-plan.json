@@ -1,6 +1,6 @@
 {
   "status": "PLAN ONLY; actual native service NOT RUN",
-  "staging": "/run/buzz-service-proof-DRYRUN",
+  "staging": "/var/lib/buzz-service-proof-stage-DRYRUN",
   "state": [
     "/var/lib/buzz-service-proof-DRYRUN",
     "/var/lib/private/buzz-service-proof-DRYRUN"
@@ -15,7 +15,7 @@
     "--property=DynamicUser=yes",
     "--property=StateDirectory=buzz-service-proof-DRYRUN",
     "--property=StateDirectoryMode=0700",
-    "--property=RootDirectory=/run/buzz-service-proof-DRYRUN/rootfs",
+    "--property=RootDirectory=/var/lib/buzz-service-proof-stage-DRYRUN/rootfs",
     "--property=WorkingDirectory=/state",
     "--property=BindPaths=/var/lib/buzz-service-proof-DRYRUN:/state",
     "--property=PrivateNetwork=yes",

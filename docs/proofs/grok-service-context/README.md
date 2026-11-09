@@ -82,7 +82,7 @@ init and detached descendants. No shell command is accepted from the caller.
 | Cancellation including detached descendant, timeout and retry | PASS; namespace processes dead; no running child retained |
 | Unknown commands/references and native modes | Rejected; provider modes deliberately disabled |
 | Cleanup | Temporary root removed; sockets closed; direct children reaped |
-| Native systemd actual unit | NOT RUN |
+| Native systemd actual unit | Previous candidate failed 203/EXEC before Python; repaired candidate NOT RUN |
 | Non-loopback private/link-local/public IPv4/IPv6 selective egress | NOT RUN; network-none is deny-all, not an online policy |
 | Native login, authenticated models, conversation, refresh | NOT RUN |
 | Provider credential persistence, entitlement, concurrent subscription impact | NOT RUN |
@@ -121,7 +121,7 @@ not a drop-in replacement and does not prove the canonical DynamicUser mapping,
 credential injection or production startup. Its fixed native-suite mode uses the shared builder/probes and a private
 StateDirectory; the complete command is in [NATIVE.md](NATIVE.md).
 
-Measured environment: PID 1 is `codex`; systemd markers/socket exist but read-only
+Original executor environment: PID 1 is `codex`; systemd markers/socket exist but read-only
 `env -i PATH=/usr/bin:/bin timeout 3s systemctl show --property=Version --value`
 returns EPERM. A disposable native manager cannot be established with existing
 permitted resources. No container/privileged mount/new account/unit was created.
@@ -187,3 +187,11 @@ Native continuation starts from review commit
 `native-proof.py` and `bootstrap-native.py` are preparation artifacts, not a new
 production runtime. See NATIVE.md for the delta-specific reviewer watchpoints,
 bundle/source pins, measured preparation gates and exact approval boundary.
+
+The first user-approved native attempt later failed before Python because its
+`/run` rootfs inherited noexec. The conductor's read-only journal/mount checks
+confirmed 203/EXEC and expected file modes; the old unit/state/cgroup are gone,
+while old staging remains intentionally untouched. The repaired candidate in
+NATIVE.md uses a separate executable `/var/lib/buzz-service-proof-stage-<id>`
+staging path, noexec preflights and bounded own-unit diagnostics. This is still
+preparation: the revised native command has not run and awaits a fresh delta gate.

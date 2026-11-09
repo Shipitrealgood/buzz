@@ -16,6 +16,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 PREFIX = 'buzz-service-proof-'
+STAGE_PREFIX = 'buzz-service-proof-stage-'
 CONFIRM = 'isolated-native-offline-proof'
 
 
@@ -32,6 +33,7 @@ def invocation(name, base):
     unit.optionxform = str
     unit.read_string(text)
     properties = dict(unit['Service'])
+    properties['RootDirectory'] = str(base / 'rootfs')
     command = properties.pop('ExecStart').split()
     argv = ['/usr/bin/systemd-run', '--unit=' + name + '.service',
             '--description=' + name, '--service-type=oneshot']
@@ -40,7 +42,7 @@ def invocation(name, base):
 
 
 def plan(name=PREFIX + 'DRYRUN', base=None):
-    base = base or Path('/run') / name
+    base = base or Path('/var/lib') / (STAGE_PREFIX + name.removeprefix(PREFIX))
     unit = name + '.service'
     return {'status': 'PLAN ONLY; actual native service NOT RUN',
             'staging': str(base), 'state': ['/var/lib/' + name, '/var/lib/private/' + name],
@@ -92,15 +94,46 @@ def write_probes(root, probes):
     descriptor.chmod(0o444)
 
 
+def require_executable_filesystem(path):
+    if os.statvfs(path).f_flag & os.ST_NOEXEC:
+        raise RuntimeError('proof staging filesystem is noexec: ' + str(path))
+
+
+def checked_command(proof, args, expected=0):
+    code, out, err = proof.bounded(args, timeout=30)
+    if code != expected:
+        raise RuntimeError('native command failed: ' + json.dumps({
+            'command': args[:2], 'exit_code': code,
+            'stdout': out[:4096].decode(errors='replace'),
+            'stderr': err[:4096].decode(errors='replace')}))
+    return out.decode().strip()
+
+
+def write_failure(proof, base, unit, error):
+    receipt = {'unit': unit, 'error': str(error)[:12288]}
+    try:
+        code, out, err = proof.bounded(['/usr/bin/journalctl', '--unit=' + unit,
+                                       '--lines=40', '--no-pager', '--output=short-precise'], timeout=10)
+        receipt.update(journal_exit_code=code, journal=out[:16384].decode(errors='replace'),
+                       journal_error=err[:4096].decode(errors='replace'))
+    except Exception as diagnostic_error:
+        receipt['journal_error'] = str(diagnostic_error)[:4096]
+    path = base / 'failure.json'
+    path.write_text(json.dumps(receipt, indent=2))
+    path.chmod(0o600)
+    print('Bounded failure diagnostics: ' + str(path), file=sys.stderr)
+
+
 def native():
     base = HERE
-    name = base.name
-    if os.geteuid() != 0 or not re.fullmatch(PREFIX + '[a-f0-9]{16}', name) or base.parent != Path('/run'):
-        raise RuntimeError('requires verified root-owned /run bundle bootstrap')
+    if os.geteuid() != 0 or not re.fullmatch(STAGE_PREFIX + '[a-f0-9]{16}', base.name) or base.parent != Path('/var/lib'):
+        raise RuntimeError('requires verified root-owned /var/lib staging bootstrap')
+    name = PREFIX + base.name.removeprefix(STAGE_PREFIX)
     for path in [base, *base.parents, *base.rglob('*')]:
         info = path.lstat()
         if info.st_uid != 0 or info.st_mode & 0o022 or stat.S_ISLNK(info.st_mode):
             raise RuntimeError('untrusted staged path')
+    require_executable_filesystem(base / 'rootfs')
     if shutil.disk_usage('/var/lib').free < 32 * 1024 * 1024:
         raise RuntimeError('insufficient private state space')
     if Path('/proc/1/comm').read_text().strip() != 'systemd':
@@ -122,10 +155,7 @@ def native():
             raise RuntimeError('state collision')
 
     def command(args, expected=0):
-        code, out, err = proof.bounded(args, timeout=30)
-        if code != expected:
-            raise RuntimeError('native command failed: ' + args[1])
-        return out.decode().strip()
+        return checked_command(proof, args, expected)
 
     def show(key):
         return command(['/usr/bin/systemctl', 'show', unit, '--property=' + key, '--value'])
@@ -170,6 +200,9 @@ def native():
         if code == 0 or show('ExecMainStatus') != '70' or show('Result') != 'exit-code':
             raise RuntimeError('forced unit failure was not observed')
         result['forced_failure'] = 70
+    except BaseException as error:
+        write_failure(proof, base, unit, error)
+        raise
     finally:
         for listener in listeners:
             listener.close()

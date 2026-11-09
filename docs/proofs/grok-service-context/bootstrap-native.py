@@ -21,14 +21,16 @@ with open(sys.argv[2], 'rb') as source:
     archive_bytes = source.read(256 * 1024 * 1024 + 1)
 if len(archive_bytes) > 256 * 1024 * 1024 or hashlib.sha256(archive_bytes).hexdigest() != sys.argv[3]:
     raise SystemExit('archive size/hash mismatch')
-if shutil.disk_usage('/run').free < len(archive_bytes) * 2 + 32 * 1024 * 1024:
-    raise SystemExit('insufficient /run space')
+if os.statvfs('/var/lib').f_flag & os.ST_NOEXEC:
+    raise SystemExit('proof staging filesystem /var/lib is noexec')
+if shutil.disk_usage('/var/lib').free < len(archive_bytes) * 2 + 32 * 1024 * 1024:
+    raise SystemExit('insufficient /var/lib staging space')
 def interrupted(signum, frame):
     raise KeyboardInterrupt('native bootstrap interrupted')
 
 signal.signal(signal.SIGTERM, interrupted)
 os.umask(0o077)
-stage = Path('/run') / ('buzz-service-proof-' + secrets.token_hex(8))
+stage = Path('/var/lib') / ('buzz-service-proof-stage-' + secrets.token_hex(8))
 stage.mkdir(mode=0o700)  # Exclusive create; never overwrite a pre-existing path.
 try:
     with tarfile.open(fileobj=io.BytesIO(archive_bytes)) as archive:

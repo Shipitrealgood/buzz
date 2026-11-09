@@ -1,11 +1,12 @@
 {
   "bundle": "/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/native-offline-proof.tar",
-  "sha256": "d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64",
+  "sha256": "b5f965927381d36d967469bd27e488bd1c0e4e4bce76d2ff4ea8c5524981c23d",
   "files": 336,
   "archive_bytes": 236933120,
-  "unpacked_bytes": 236279806,
+  "unpacked_bytes": 236281343,
   "native": "NOT RUN",
-  "bootstrap_sha256": "66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707",
-  "source_base": "947378553964dfdb0f3f6a44e813defea9b7de14",
-  "supersedes_archive_sha256": "29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2"
+  "bootstrap_sha256": "09746fb9420bc612d2e471d3b445e57443d8b9938114213b5379540e718c4437",
+  "source_base": "055006a30901ef0e4d9fea6404856ae04c996e2a",
+  "supersedes_archive_sha256": "d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64",
+  "supersedes_bootstrap_sha256": "66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707"
 }
