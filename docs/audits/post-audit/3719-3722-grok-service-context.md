@@ -1,6 +1,6 @@
 # #3719/#3722 Grok service-context preparation — independent post-audit
 
-2026-11-09. **Current verdict: rework before requesting native-command approval.** C=0/H=0/M=1/L=0; M-1 below blocks the prepared native command. The original namespace preparation remains accepted. Native service isolation, online egress and subscription readiness remain unrun prerequisites with #3719/#3721/#3722.
+2026-11-09. **Current verdict: merge-safe preparation; ready to request explicit approval for the pinned temporary native offline fixture.** Open C=0/H=0/M=0/L=0; M-1 is resolved in round 2 below. This is not execution approval or a native pass. Native service isolation, online egress and subscription readiness remain unrun prerequisites with #3719/#3721/#3722.
 
 Reviewer: `/root/grok_service_context_review`, independent `codex-chuck`. Requested dispatch configuration: `gpt-6-astra`, high. Actual served model/reasoning routing is not independently exposed. Rework rounds: 0.
 
@@ -67,3 +67,17 @@ Traced first start/restart/failure and cleanup in [native-proof.py:126](../../pr
 Return to the conductor for the single fix-in-lane repair. Native execution, exact current-source build, online policy/authentication and the original product gates remain **NOT RUN**. This first native-preparation review is complete; no further verification expansion is proposed.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=0a54e180cbdb0b95b51e5cf3a9785e43ba98aeab..bcd16de77bc06a8c4cbaca94f77afc2a43f1e0d3 findings=C=0/H=0/M=1/L=0 rework_rounds=1
+
+## M-1 targeted re-gate, round 2 — resolved
+
+Reviewed exact repair `947378553964dfdb0f3f6a44e813defea9b7de14..c4e8a82c02e95c083527ad108ecaa98868163a01`, starting clean in the same worktree after executor handoff. No expansion beyond M-1 and artifact continuity. The shared namespace builder, context, bootstrap and service unit have no delta; the prior independent namespace/syntax/lifecycle assessment remains applicable and was not rerun.
+
+**Read:** [native-proof.py:88](../../proofs/grok-service-context/native-proof.py:88) now defines `write_probes`, writing the trusted synthetic descriptor and explicitly chmodding it to 0444. The native startup path calls that exact helper at line 143 before starting the unit. Root ownership is retained, other-UID reads are permitted, and service writes remain denied. This fixes the concrete mode-0600 failure without widening the runtime mounts or credential permissions. **M-1: resolved/landed** at the repair pin; no open findings or approval blockers remain within this preparation scope.
+
+**Measured:** `/usr/bin/python3 -I -S docs/proofs/grok-service-context/test-native-probes.py` ran one test, exit 0. It invokes the actual helper under umask 077, requires exact JSON and mode 0444, then suppresses the helper's chmod and requires that same permission assertion to fail. Thus the original defect is detected against a green ordinary case, without root/native execution or source mutations. No permission-test temporary roots remained.
+
+**Measured:** focused AST parsing and the unchanged default dry-run plan passed. Replacement archive SHA-256 is `d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64`, 236933120 bytes; all 336 manifest hashes and packaged script/unit/adapter equality to the source passed. Bootstrap bytes and SHA-256 remain `66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707`. The literal command blocks in source [NATIVE.md](../../proofs/grok-service-context/NATIVE.md:29) and release [RUN.md](/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/RUN.md:29) match and pin the replacement archive. The superseded archive hash does not match the new bytes, so the unchanged bootstrap hash guard rejects the old command. Diff whitespace check passed.
+
+Recommended routing: accept the repaired preparation and request the user's explicit approval for that exact temporary **offline** native fixture command and its documented resources/cleanup. Actual root bootstrap, native systemd start/restart/failure/cgroup cleanup, current-source ACP build, online egress, Grok authentication/readiness and other product gates remain **NOT RUN**. Retain #3719/#3721/#3722 open. No live or provider action follows automatically from this verdict. Requested Astra/high; actual served model/reasoning remains unknown. Only this report was changed by the reviewer; test processes finished and workspace ownership returns to the conductor.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=947378553964dfdb0f3f6a44e813defea9b7de14..c4e8a82c02e95c083527ad108ecaa98868163a01 findings=C=0/H=0/M=0/L=0 rework_rounds=2
