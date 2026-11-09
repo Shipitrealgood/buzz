@@ -2,7 +2,6 @@
 //! provisioning poller, runtime catalog, activation helper or agent unit code.
 use anyhow::{ensure, Context, Result};
 use buzz_hostd::registration::{Host, RegistrationClock};
-use buzz_ws_client::NostrWsConnection;
 use clap::Subcommand;
 use nostr::PublicKey;
 use std::{
@@ -11,7 +10,6 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
 };
 
 #[derive(Subcommand)]
@@ -85,57 +83,18 @@ pub async fn execute(dir: &Path, command: Command) -> Result<()> {
             ensure!(relay.to_hex() == relay_key, "invalid relay public key");
             let _lock = controller_lock(dir)?;
             let connector = connector(ca_cert.as_deref())?;
-            let mut failures = 0u32;
-            loop {
-                let mut failed = false;
-                for generation in host.work(&community, &RegistrationClock::read()?)? {
-                    let result = tokio::time::timeout(Duration::from_secs(45), async {
-                        let url = community.replacen("https://", "wss://", 1);
-                        let mut ws = match &connector {
-                            Some(tls) => {
-                                NostrWsConnection::connect_with_tls_connector(&url, tls.clone())
-                                    .await?
-                            }
-                            None => NostrWsConnection::connect(&url).await?,
-                        };
-                        host.authenticate(&mut ws, &generation).await?;
-                        host.reconcile(
-                            &mut ws,
-                            relay,
-                            &generation,
-                            &label,
-                            &RegistrationClock::read()?,
-                        )
-                        .await?;
-                        ws.disconnect().await?;
-                        Ok::<_, anyhow::Error>(())
-                    })
-                    .await;
-                    if !matches!(result, Ok(Ok(()))) {
-                        failed = true;
-                    }
-                }
-                if once {
-                    ensure!(
-                        !failed,
-                        "registration reconciliation incomplete; exact retry remains in journal"
-                    );
-                    return Ok(());
-                }
-                failures = if failed { failures + 1 } else { 0 };
-                ensure!(failures < 6, "registration unavailable after six bounded attempts; restart controller to retry");
-                if failed {
-                    eprintln!("registration unavailable; exact retry retained");
-                }
-                // One controller, one socket at a time, bounded backoff and a
-                // terminal failure. No tight reconnect loop on persistent denial.
-                tokio::time::sleep(Duration::from_secs(if failed {
-                    (2u64 << failures).min(60)
-                } else {
-                    5
-                }))
-                .await;
-            }
+            crate::registration_refresh::run(
+                dir,
+                crate::registration_refresh::Settings {
+                    url: community.replacen("https://", "wss://", 1),
+                    community,
+                    relay,
+                    label,
+                    connector,
+                },
+                once,
+            )
+            .await?;
         }
     }
     Ok(())

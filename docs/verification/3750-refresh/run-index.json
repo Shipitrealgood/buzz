@@ -1,0 +1,88 @@
+{
+  "task": 3750,
+  "status": "source ready for independent review; complete milestone remains open",
+  "base": "a68c819029004e341fea43f2b527c454396c45b3",
+  "workspace": "/home/bryce/services/buzz-wt-3720-host-registration",
+  "branch": "proof/3720-host-registration-events",
+  "requested_configuration": "gpt-6-astra/high",
+  "runtime_identity": "not independently exposed",
+  "toolchain": "repository Hermit, Rust1.98.1; CARGO_BUILD_JOBS=2, CARGO_PROFILE_DEV_DEBUG=0, CARGO_PROFILE_TEST_DEBUG=0, CARGO_INCREMENTAL=1",
+  "source_manifest": "source-hashes.json",
+  "runs": [
+    {
+      "command": "cargo test --offline -p buzz-hostd -p buzz-paired-owner -p buzz-ws-client --lib --bins -- --nocapture",
+      "exit": 0,
+      "receipt": "final-libraries.txt",
+      "passed": 43,
+      "counts": {
+        "host_lib": 9,
+        "host_activate": 3,
+        "hostd_bin": 12,
+        "owner_lib": 14,
+        "ws_lib": 5
+      },
+      "note": "8 new scheduler tests plus one new generation outbox test; all final source"
+    },
+    {
+      "command": "scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd handlers::host_registry::external_infra_registration_tests::external_infra_tests --ignored --nocapture --test-threads=1 --skip child_root_relay",
+      "exit": 0,
+      "passed": 25,
+      "seconds": 35.92,
+      "receipt": "registration.txt",
+      "source_note": "Before final scheduler running-set cap; all other product and fixture source identical. Final cap tested by final libraries and actual executable recheck.",
+      "pre_cap_scheduler_sha256": "47c9687810fd40af323b0543f8e1d149d6f35995cf8301262e7acc277bc03da0"
+    },
+    {
+      "command": "scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-c2b3b5c8e5b2b5dd executable_registration_restart_recovery_revoke_and_native_scope_fence --ignored --nocapture --test-threads=1",
+      "exit": 0,
+      "passed": 1,
+      "seconds": 17.39,
+      "receipt": "final-executable.txt",
+      "note": "Final hostd debug binary against actual isolated relay/TLS/Postgres/Redis"
+    },
+    {
+      "command": "same executable test with only registration_cli.rs restored from base, cargo build --offline -p buzz-hostd --bin buzz-hostd",
+      "exit": 101,
+      "receipt": "old-scheduler-red.txt",
+      "build_receipt": "old-scheduler-build.txt",
+      "expected_failure": "idle registration must retain its authenticated connection: observed0 expected1",
+      "restoration": "original implementation restored before all final runs; saved control removed at cleanup"
+    },
+    {
+      "command": "cargo clippy --offline -p buzz-hostd --all-targets --no-deps",
+      "exit": 0,
+      "receipt": "clippy.txt",
+      "warning_count": 9,
+      "warning_note": "Existing7 library diagnostics in request/onboard/transport, plus unchanged writeln expressions in main/registration_cli. No diagnostic in new refresh code. Strict -D warnings not rerun; prior baseline failure remains."
+    },
+    {
+      "command": "cargo fmt --all -- --check; rustfmt --edition2021 --check crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs",
+      "exit": 0,
+      "receipt": "format.txt"
+    },
+    {
+      "command": "CHECK_FILE_SIZES_BASE=a68c819029004e341fea43f2b527c454396c45b3 just file-size-check",
+      "exit": 0,
+      "receipt": "size.txt"
+    }
+  ],
+  "measured": {
+    "synthetic_idle": "12 real seconds: AUTH1 liveREQ1 finitePages2 Pong12 openSocket1",
+    "coalescing": "20 verified changes ->1 additional snapshot; 250ms test coalesce window",
+    "missed_notice": "2 real second test backstop reaches dead state without hint; production backstop60s",
+    "actual_executable": "same connection UUID across6s idle and status flow; one new status event, no status-event amplification over6s; notification revoke before10s bound"
+  },
+  "not_run": [
+    "native Windows UI/recovery/revoke/negative/scope observations",
+    "actual systemd or host reboot",
+    "full just ci",
+    "unchanged ordinary104 relay cases",
+    "strict baseline lint remediation",
+    "live installation/deployment"
+  ],
+  "limits": [
+    "No fleet benchmark; relay same-community DB wakes remain",
+    "Six failed attempts terminalize controller; other generations progress during retries",
+    "No new Windows build or canary; desktop source unchanged"
+  ]
+}

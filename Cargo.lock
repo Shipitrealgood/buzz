@@ -1277,6 +1277,7 @@ dependencies = [
  "buzz-sdk",
  "buzz-ws-client",
  "clap",
+ "futures-util",
  "hex",
  "nostr 0.44.7",
  "rand 0.10.1",
@@ -1289,6 +1290,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "uuid",
  "zeroize",
 ]

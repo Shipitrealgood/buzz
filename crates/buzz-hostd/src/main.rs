@@ -1,6 +1,7 @@
 mod clock;
 mod onboard;
 mod registration_cli;
+mod registration_refresh;
 mod request;
 mod store;
 mod transport;

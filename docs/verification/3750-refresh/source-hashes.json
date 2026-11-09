@@ -1,0 +1,11 @@
+{
+  "Cargo.lock": "69919cf1228a83c38c976f6d586a33944ed4d77a04d20644241c08b7f716d61f",
+  "crates/buzz-hostd/Cargo.toml": "da4b7342a316ea562b4b8612c42199ca6deb453156699cd8f6c8be4d1969b356",
+  "crates/buzz-hostd/src/main.rs": "8633ae9455518a5087ddffa4ae8fc153bbd86e3f42cde0081e7b99e5abbd2edd",
+  "crates/buzz-hostd/src/registration.rs": "00dea0fe35da7fbbe6344ea07ee65b859d493949725054f1ebc782c08f3ff8e3",
+  "crates/buzz-hostd/src/registration_cli.rs": "31cea91f667674b7eb7801ea5a242a569a7c61f5eeec696fab9f29af3d813ed4",
+  "crates/buzz-hostd/src/registration_refresh.rs": "943ef6aab37c17d24d0f57204cf5bc28cfa1ce3568978e05a922e5a4068860e5",
+  "crates/buzz-hostd/src/registration/live.rs": "176e861b6cb9428c2a9d147be402f1dbc62669decc3016eb93a4d11d866e46ed",
+  "crates/buzz-hostd/src/registration_refresh_tests.rs": "8a8a8d29da25f057582b8273015a337ba6f8141cdc4478eee1372b22115e0103",
+  "crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs": "32e3de94e0572da848dfd480892dff0dcc6468f494e323862265e651b9283873"
+}

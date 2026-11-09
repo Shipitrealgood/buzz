@@ -26,3 +26,7 @@ tokio.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio-tungstenite.workspace = true

@@ -1036,18 +1036,33 @@ and submissions do not support this contract. NIP-98 authentication alone does
 not supply the host-scoped session or private read permissions. V2 has no legacy
 `/api/paired-hosts/v1` fallback.
 
-### Current scope and refresh limitation
+### Current scope and registration refresh
 
 `buzz-hostd registration run` handles registration only. It does not invoke the
 provisioning poller, runtime catalog or privileged service helper, and does not
 adopt existing agents. Agent creation, subscription login and process lifecycle
 require their own execution and authorization integration.
 
-The current [controller loop](crates/buzz-hostd/src/registration_cli.rs) reconnects,
-authenticates and reconciles each eligible generation, then sleeps five seconds
-after a successful cycle, including for idle active bindings. Failures use
-bounded backoff. Although the relay supports live invalidations and a periodic
-recheck, the controller does not yet retain that subscription between cycles.
-Moving to a persistent connection must preserve missed-notification recovery,
-current-authorization checks and exact journal retries; simply reducing check
-frequency is not an equivalent implementation.
+The [controller](crates/buzz-hostd/src/registration_refresh.rs) retains the existing
+NIP-42-authenticated WebSocket and a generation-scoped live REQ. It subscribes
+before the protected snapshot, verifies encrypted relay-signed change hints, and
+coalesces them into reconciliation at most once per five seconds. A 60-second
+backstop and reconnect snapshots recover lost hints; live hints confer no authority.
+The shared WebSocket reader services relay heartbeats while idle. One-second local
+journal checks detect CLI invitation/revocation changes without network reads.
+
+The existing single offered/active grant invariant normally means one retained
+socket. Up to 32 eligible generations (including old restrictive outboxes) have
+independent bounded tasks, so a failed recovery write cannot stall another
+invitation. Exact journal writes precede protected reads, including write-only
+expired-ack recovery; completed dead/spent generations release their sockets.
+Failures use jittered exponential delays capped at 60 seconds and terminate after
+six failed attempts; a full healthy backstop interval resets that budget.
+`--once` remains one bounded pass without a retained subscription.
+
+The relay still reauthorizes its live view on same-community registry mutations
+and its own periodic timer; per-generation high-water deduplication suppresses
+unrelated notifications, but does not remove those server-side database wakes.
+No relay protocol, schema, generic transport or agent execution behavior changes.
+See the [refresh review brief](docs/briefs/3750-registration-refresh.md) for measured
+bounds, verification receipts and remaining native Windows observations.

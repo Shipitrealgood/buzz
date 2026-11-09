@@ -19,12 +19,15 @@ pub use crate::clock::Clock as RegistrationClock;
 /// Host registration state backed by the existing host.sqlite store.
 pub struct Host {
     store: Store,
+    live: std::cell::RefCell<Option<live::Live>>,
 }
+mod live;
 impl Host {
     /// Initialize or reopen a private canonical state directory.
     pub fn at(dir: &Path, init: bool) -> Result<Self> {
         Ok(Self {
             store: Store::load(dir, init)?,
+            live: std::cell::RefCell::new(None),
         })
     }
     /// Persistent public control identity. The private key never leaves hostd.
@@ -242,13 +245,16 @@ impl Host {
     }
     /// Exact pending signed events, bounded to eight for fair reconciliation.
     pub fn pending(&self) -> Result<Vec<Event>> {
+        self.pending_generation(None)
+    }
+    fn pending_generation(&self, generation: Option<&str>) -> Result<Vec<Event>> {
         // Readiness replies confer no authority after expiry. Expire their
         // retry obligation explicitly; immutable ack/tombstone evidence stays.
         self.store.0.execute("UPDATE sent SET pending=0 WHERE op='status' AND pending=1 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<=unixepoch()",[])?;
         self.store.0.execute("DELETE FROM sent WHERE op='status' AND pending=0 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<unixepoch()-300",[])?;
 
-        let mut q=self.store.0.prepare("SELECT packet FROM sent WHERE pending=1 AND json_extract(packet,'$.event.kind')=43103 ORDER BY rowid LIMIT 8")?;
-        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        let mut q=self.store.0.prepare("SELECT packet FROM sent WHERE pending=1 AND json_extract(packet,'$.event.kind')=43103 AND (?1 IS NULL OR g=?1) ORDER BY CASE op WHEN 'unpaired' THEN 0 ELSE 1 END,rowid LIMIT 8")?;
+        let rows = q.query_map([generation], |r| r.get::<_, String>(0))?;
         rows.map(|r| {
             let p: Packet = serde_json::from_str(&r?)?;
             Ok(serde_json::from_str(p.event.get())?)
@@ -305,12 +311,14 @@ impl Host {
                 RelayMessage::Closed {
                     subscription_id, ..
                 } if subscription_id == sub => anyhow::bail!("registry unavailable"),
-                _ => {}
+                other => {
+                    self.observe_live(&other)?;
+                }
             }
         }
     }
     /// One bounded registration reconciliation. A daemon schedules this on
-    /// reconnect/resume and at most once per60 seconds while connected.
+    /// verified change/reconnect, with a bounded periodic backstop.
     pub async fn reconcile(
         &mut self,
         ws: &mut buzz_ws_client::NostrWsConnection,
@@ -362,26 +370,8 @@ impl Host {
                 }
             }
         }
-        for e in self.pending()? {
-            // AUTH is generation-scoped; another generation keeps its own retry.
-            let (_, header) = wire::verify(
-                &serde_json::to_vec(&e)?,
-                e.tags
-                    .iter()
-                    .find(|t| t.as_slice()[0] == "community")
-                    .and_then(|t| t.content())
-                    .ok_or_else(|| anyhow::anyhow!("missing community"))?,
-                e.pubkey,
-            )?;
-            if header.generation != g {
-                continue;
-            }
-            let id = e.id.to_hex();
-            let ok = ws.send_event(e).await?;
-            ensure!(ok.accepted, "registry denied");
-            self.delivered(&id)?;
-        }
-        if self.state(g)? == "offered" {
+        self.flush_pending(ws, g).await?;
+        if matches!(self.state(g)?.as_str(), "offered" | "dead") {
             return Ok(());
         }
         let binding = self.page(ws, relay, query("binding", None)?).await?;
@@ -430,7 +420,17 @@ impl Host {
             }
             ensure!(complete, "registration mailbox page bound exceeded");
         }
-        for e in self.pending()? {
+        self.flush_pending(ws, g).await?;
+        Ok(())
+    }
+    /// Deliver only this generation's exact journal entries before protected
+    /// reads, including expired timely acknowledgements and restrictive writes.
+    pub async fn flush_pending(
+        &self,
+        ws: &mut buzz_ws_client::NostrWsConnection,
+        g: &str,
+    ) -> Result<()> {
+        for e in self.pending_generation(Some(g))? {
             // AUTH is generation-scoped; another generation keeps its own retry.
             let (_, header) = wire::verify(
                 &serde_json::to_vec(&e)?,
@@ -567,6 +567,31 @@ mod tests {
         )
         .unwrap();
         (s.generation, e)
+    }
+    #[test]
+    fn generation_outbox_is_not_starved_by_older_restrictive_work() {
+        let (_dir, mut h, c) = fixture();
+        let owner = Keys::generate();
+        let mut generations = Vec::new();
+        for _ in 0..10 {
+            let (g, e) = claim(&mut h, &c, &owner, None);
+            h.claim(&g, &e, &c).unwrap();
+            h.revoke(&g, &c).unwrap();
+            generations.push(g);
+        }
+        assert_eq!(h.pending().unwrap().len(), 8);
+        let newest = generations.last().unwrap();
+        let selected = h.pending_generation(Some(newest)).unwrap();
+        assert_eq!(selected.len(), 1);
+        let (_, header) = wire::verify(
+            &serde_json::to_vec(&selected[0]).unwrap(),
+            "https://registry.test",
+            h.public_key().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(&header.generation, newest);
+        assert_eq!(header.op, "unpaired");
+        assert_eq!(h.work("https://registry.test", &c).unwrap().len(), 10);
     }
     #[test]
     fn exact_retry_and_revocation_outbox_survive_restart() {

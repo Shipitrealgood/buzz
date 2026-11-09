@@ -1,0 +1,17 @@
+
+running 1 test
+test handlers::host_registry::external_infra_registration_tests::external_infra_tests::executable_registration_restart_recovery_revoke_and_native_scope_fence ... 
+thread 'handlers::host_registry::external_infra_registration_tests::external_infra_tests::executable_registration_restart_recovery_revoke_and_native_scope_fence' (19) panicked at crates/buzz-relay/src/handlers/host_registry/registration_executable_tests.rs:186:5:
+assertion `left == right` failed: idle registration must retain its authenticated connection
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    handlers::host_registry::external_infra_registration_tests::external_infra_tests::executable_registration_restart_recovery_revoke_and_native_scope_fence
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2204 filtered out; finished in 0.67s
+

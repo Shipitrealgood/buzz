@@ -1,0 +1,67 @@
+   Compiling buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+warning: constant `LOCAL_CHECK` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:12:7
+   |
+12 | const LOCAL_CHECK: Duration = Duration::from_secs(1);
+   |       ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `COALESCE` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:13:7
+   |
+13 | const COALESCE: Duration = Duration::from_secs(5);
+   |       ^^^^^^^^
+
+warning: constant `BACKSTOP` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:14:7
+   |
+14 | const BACKSTOP: Duration = Duration::from_secs(60);
+   |       ^^^^^^^^
+
+warning: constant `ATTEMPT` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:15:7
+   |
+15 | const ATTEMPT: Duration = Duration::from_secs(45);
+   |       ^^^^^^^
+
+warning: struct `Settings` is never constructed
+  --> crates/buzz-hostd/src/registration_refresh.rs:18:19
+   |
+18 | pub(super) struct Settings {
+   |                   ^^^^^^^^
+
+warning: method `connect` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:26:14
+   |
+25 | impl Settings {
+   | ------------- method in this implementation
+26 |     async fn connect(&self) -> Result<NostrWsConnection> {
+   |              ^^^^^^^
+
+warning: function `run` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:36:21
+   |
+36 | pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()> {
+   |                     ^^^
+
+warning: function `retry_delay` is never used
+  --> crates/buzz-hostd/src/registration_refresh.rs:96:4
+   |
+96 | fn retry_delay(failures: u32) -> Duration {
+   |    ^^^^^^^^^^^
+
+warning: function `generation` is never used
+   --> crates/buzz-hostd/src/registration_refresh.rs:101:10
+    |
+101 | async fn generation(dir: &Path, g: &str, settings: &Settings) -> Result<()> {
+    |          ^^^^^^^^^^
+
+warning: function `connected` is never used
+   --> crates/buzz-hostd/src/registration_refresh.rs:150:10
+    |
+150 | async fn connected(
+    |          ^^^^^^^^^
+
+warning: `buzz-hostd` (bin "buzz-hostd") generated 10 warnings
+    Finished `dev` profile [unoptimized] target(s) in 3.22s

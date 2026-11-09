@@ -1,0 +1,2 @@
+   Compiling buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Finished `dev` profile [unoptimized] target(s) in 2.66s

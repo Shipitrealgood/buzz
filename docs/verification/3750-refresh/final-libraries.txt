@@ -1,0 +1,89 @@
+   Compiling buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Finished `test` profile [unoptimized] target(s) in 3.11s
+     Running unittests src/lib.rs (target/debug/deps/buzz_hostd-d91ad9147a68746d)
+
+running 9 tests
+test store::tests::restart_restores_exact_ack_and_local_tombstone ... ok
+test registration::tests::expired_rebooted_or_rollback_offer_never_first_consumes ... ok
+test registration::tests::exact_retry_and_revocation_outbox_survive_restart ... ok
+test tests::staged_instance_cannot_select_root_program_provider_or_foreign_catalog ... ok
+test registration::tests::wrong_proof_attempts_are_distinct_and_bounded ... ok
+test store::tests::wrong_proof_replay_spends_one_attempt_reboot_invalidates_offer ... ok
+test store::tests::old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_cursor ... ok
+test registration::tests::generation_outbox_is_not_starved_by_older_restrictive_work ... ok
+test store::tests::request_tests::create_commit_and_unpair_in_both_orders ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running unittests src/bin/buzz-host-activate.rs (target/debug/deps/buzz_host_activate-b5d8648d440a0f68)
+
+running 3 tests
+test tests::authenticates_connecting_uid_not_inode_group ... ok
+test tests::rejects_overridden_or_preexisting_foreign_instance ... ok
+test tests::counts_all_irreversible_reservations_at_the_root_boundary ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/buzz-host-runtime.rs (target/debug/deps/buzz_host_runtime-d055a8ca1db33dc8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/buzz_hostd-40b3ee669c527a75)
+
+running 12 tests
+test registration_refresh::tests::failure_retry_is_jittered_and_capped ... ok
+registration unavailable; exact retry retained
+registration unavailable; exact retry retained
+REFRESH_FAIRNESS old_write_failed=true new_offer_subscribed=true
+test registration_refresh::tests::failed_old_generation_does_not_block_new_offer ... ok
+test store::tests::old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_cursor ... ok
+test store::tests::restart_restores_exact_ack_and_local_tombstone ... ok
+test store::tests::wrong_proof_replay_spends_one_attempt_reboot_invalidates_offer ... ok
+test registration_refresh::tests::untrusted_and_wrong_scope_notifications_fail_closed ... ok
+test store::tests::request_tests::create_commit_and_unpair_in_both_orders ... ok
+REFRESH_INTERLEAVE hint_during_binding_page=retained second_snapshot=true
+test registration_refresh::tests::hint_during_snapshot_is_not_discarded ... ok
+REFRESH_LOCAL new_generation=observed revoked_pending=delivered retired_socket=closed auth=2
+test registration_refresh::tests::local_new_generation_and_offline_revoke_progress_without_reauth ... ok
+REFRESH_HINTS changes=20 coalesced_refresh=1 missed_revocation=backstop auth=1
+test registration_refresh::tests::verified_bursts_coalesce_and_missed_notice_recovers_on_backstop ... ok
+REFRESH_RETRY auth=2 lost_ok=1 exact_retry=true writes_before_reads=true
+test registration_refresh::tests::disconnected_exact_restrictive_write_retries_before_live_read ... ok
+REFRESH_IDLE seconds=12 auth=1 live=1 finite_pages=2 pongs=12 open=1
+test registration_refresh::tests::idle_retains_auth_and_snapshot_and_services_heartbeat ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.18s
+
+     Running unittests src/lib.rs (target/debug/deps/buzz_paired_owner-41e2141d484dd9ca)
+
+running 14 tests
+test ready::tests::read_back_requires_agent_signature_correct_owner_and_requested_policy ... ok
+test registry::registration_adapter_tests::invitation_validation_and_exact_retry_keep_registration_separate ... ok
+test tests::repeated_tap_is_idempotent_after_ipc_loss_and_process_restart ... ok
+test http::session_tests::switch_between_host_pages_stops_second_authenticated_read ... ok
+test tests::corrected_invitation_can_enroll_same_generation_and_exact_retry_survives_restart ... ok
+test http::session_tests::lock_between_candidate_queries_stops_second_authenticated_read ... ok
+test tests::enroll_inventory_revocation_and_restart ... ok
+test tests::status_replies_never_create_signing_authority ... ok
+test tests::short_signed_inventory_cannot_grant_a_minute_of_display_freshness ... ok
+test tests::retry_rotation_delivers_ninth_pending_revocation_across_restart ... ok
+test tests::directory_retains_history_gap_across_worker_success_failure_and_verified_recovery ... ok
+test tests::only_initiating_tap_can_automate_credentials_after_exact_commit ... ok
+test tests::verified_precommit_closure_retires_an_undelivered_outbox_item ... ok
+test tests::fresh_complete_replacement_challenge_recovers_an_expired_unaccepted_confirm ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.05s
+
+     Running unittests src/lib.rs (target/debug/deps/buzz_ws_client-de391b6b1a15eaf0)
+
+running 5 tests
+test connection::tests::auth_challenge_timeout_meets_floor ... ok
+test connection::tests::auth_ok_timeout_meets_floor ... ok
+test connection::tests::publish_ok_timeout_meets_floor ... ok
+test connection::tests::connect_with_headers_sends_headers_on_upgrade ... ok
+test connection::tests::changed_session_after_challenge_cannot_send_auth ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+

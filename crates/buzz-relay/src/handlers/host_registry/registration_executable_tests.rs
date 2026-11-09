@@ -175,10 +175,56 @@ async fn executable_registration_restart_recovery_revoke_and_native_scope_fence(
     let second = pass().output().await.unwrap();
     assert!(!second.status.success());
     assert!(String::from_utf8_lossy(&second.stderr).contains("another host controller"));
-    controller.kill().await.unwrap();
-    controller.wait().await.unwrap();
+    let host_key = host.public_key().unwrap();
+    let ids = || {
+        f.state
+            .conn_manager
+            .connection_ids_for_pubkey_in_community(community, host_key.as_bytes())
+    };
+    // Old successful five-second polling leaves no idle authenticated socket.
+    let retained = ids();
+    assert_eq!(
+        retained.len(),
+        1,
+        "idle registration must retain its authenticated connection"
+    );
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    assert_eq!(ids(), retained, "idle registration reauthenticated");
+    let query = device
+        .registry_status_query(origin, &owner, &scope)
+        .unwrap();
+    registry.publish(&owner, query).await.unwrap();
+    let status_count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND operation='status'")
+            .bind(community.as_uuid()).bind(hex::decode(&scope.generation).unwrap())
+            .fetch_one(f.state.db.pool()).await.unwrap()
+    };
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while status_count().await != 1 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("verified live notice must refresh before the 60-second backstop");
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    assert_eq!(
+        status_count().await,
+        1,
+        "self-notification amplified status writes"
+    );
+    assert_eq!(ids(), retained);
     let revoke = device.unpair_registry(origin, &owner, &scope).unwrap();
     registry.publish(&owner, revoke).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while host.state(&scope.generation).unwrap() != "dead" {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("live revocation must refresh before the backstop");
+    println!("REFRESH_EXECUTABLE retained_connection=true idle_seconds=6 status_reply=1 self_amplification=0 notification_revoke=true");
+    controller.kill().await.unwrap();
+    controller.wait().await.unwrap();
     let result = pass().output().await.unwrap();
     assert!(
         result.status.success(),

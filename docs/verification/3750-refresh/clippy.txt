@@ -1,0 +1,96 @@
+    Checking buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Checking buzz-ws-client v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-ws-client)
+    Checking buzz-sdk v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-sdk)
+    Checking buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+warning: this function has too many arguments (9/7)
+   --> crates/buzz-hostd/src/request.rs:207:1
+    |
+207 | / pub fn handle(
+208 | |     tx: &Transaction<'_>,
+209 | |     keys: &Keys,
+210 | |     scope: &Scope,
+...   |
+216 | |     clock: &Clock,
+217 | | ) -> Result<()> {
+    | |_______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#too_many_arguments
+    = note: `#[warn(clippy::too_many_arguments)]` on by default
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:181:41
+    |
+181 |         super::unit::quiesce(store, &q, &scope).await?;
+    |                                         ^^^^^^ help: change this to: `scope`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+    = note: `#[warn(clippy::needless_borrow)]` on by default
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:188:19
+    |
+188 |     q.finish(&tx, &keys, &scope, "failed", &code, &Clock::read()?)?;
+    |                   ^^^^^ help: change this to: `keys`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/onboard.rs:188:26
+    |
+188 |     q.finish(&tx, &keys, &scope, "failed", &code, &Clock::read()?)?;
+    |                          ^^^^^^ help: change this to: `scope`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+warning: this function has too many arguments (8/7)
+   --> crates/buzz-hostd/src/transport.rs:201:1
+    |
+201 | / async fn grant(
+202 | |     store: &mut Store,
+203 | |     net: &Http,
+204 | |     cat: &Catalog,
+...   |
+209 | |     cursor: Option<String>,
+210 | | ) -> Result<()> {
+    | |_______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#too_many_arguments
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/transport.rs:255:33
+    |
+255 |             let _ = store.claim(&g, &packet, &Clock::read()?);
+    |                                 ^^ help: change this to: `g`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/buzz-hostd/src/transport.rs:280:45
+    |
+280 |             if let Err(err) = store.receive(&g, &packet, cat, revision, &Clock::read()?) {
+    |                                             ^^ help: change this to: `g`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_borrow
+
+warning: `buzz-hostd` (lib test) generated 7 warnings (7 duplicates)
+warning: `buzz-hostd` (lib) generated 7 warnings (run `cargo clippy --fix --lib -p buzz-hostd -- --no-deps` to apply 5 suggestions)
+warning: redundant reference in `writeln!` argument
+  --> crates/buzz-hostd/src/registration_cli.rs:58:54
+   |
+58 |             writeln!(std::io::stdout().lock(), "{}", &*invitation)?;
+   |                                                      ^^^^^^^^^^^^ help: remove the redundant `&`: `*invitation`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#useless_borrows_in_formatting
+   = note: `#[warn(clippy::useless_borrows_in_formatting)]` on by default
+
+warning: redundant reference in `writeln!` argument
+  --> crates/buzz-hostd/src/main.rs:82:54
+   |
+82 |             writeln!(std::io::stdout().lock(), "{}", &*value)?;
+   |                                                      ^^^^^^^ help: remove the redundant `&`: `*value`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#useless_borrows_in_formatting
+
+warning: `buzz-hostd` (bin "buzz-hostd") generated 9 warnings (7 duplicates) (run `cargo clippy --fix --bin "buzz-hostd" -p buzz-hostd -- --no-deps` to apply 2 suggestions)
+warning: `buzz-hostd` (bin "buzz-hostd" test) generated 9 warnings (9 duplicates)
+    Finished `dev` profile [unoptimized] target(s) in 5.55s
