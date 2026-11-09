@@ -402,6 +402,9 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: &AppState,
 ) -> Result<CreateManagedAgentResponse, String> {
+    if input.destination.is_some() {
+        return Err("Registered-host creation is not available yet.".into());
+    }
     let name = input.name.trim().to_string();
     let requested_persona_id = input
         .persona_id

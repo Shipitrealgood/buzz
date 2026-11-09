@@ -223,6 +223,10 @@ export function usePersonaActions() {
             ? (backendIntent ?? null)
             : null;
 
+        if (backendIntent?.type === "registered-host") {
+          throw new Error("Registered-host creation is not available yet.");
+        }
+
         const avatarUrl = await resolveManagedAgentAvatarUrl(
           input.avatarUrl,
           undefined,

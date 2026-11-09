@@ -881,3 +881,66 @@ fn create_with_effort_in_confined_child(home: &std::path::Path) {
             .starts_with("nsec1"));
     }
 }
+
+#[tokio::test]
+async fn registered_host_create_is_rejected_before_store_keys_or_publication() {
+    use tauri::Manager;
+    let data = tempfile::tempdir().unwrap();
+    let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+    let app_data = data.path().join("untouched");
+    context.config_mut().identifier = app_data.to_str().unwrap().to_owned();
+    let state = crate::app_state::build_app_state();
+    // Poison the first side-effect lock: removal/movement of the host guard
+    // fails deterministically without allowing key creation or external IO.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = state.managed_agents_store_lock.lock().unwrap();
+        panic!("fixture poison");
+    }));
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(context)
+        .unwrap();
+    let state = app.state::<AppState>();
+    let scope = serde_json::json!({
+        "community": "https://fixture.test", "generation": "ab".repeat(32),
+        "owner": Keys::generate().public_key().to_hex(),
+        "host": Keys::generate().public_key().to_hex(),
+    });
+    for backend in [
+        serde_json::json!({"type":"local"}),
+        serde_json::json!({"type":"provider", "id":"fixture", "config":{}}),
+    ] {
+        let input: CreateManagedAgentRequest = serde_json::from_value(serde_json::json!({
+            "name":"Fixture", "destination":{"type":"registered-host", "scope":scope}, "backend":backend
+        })).unwrap();
+        let result = create_managed_agent_in(input, app.handle().clone(), &state).await;
+        assert!(
+            matches!(result, Err(ref e) if e == "Registered-host creation is not available yet.")
+        );
+        assert!(
+            !app_data.exists(),
+            "must not persist identity, intent, or record"
+        );
+    }
+    for destination in [
+        serde_json::json!({"type":"local"}),
+        serde_json::json!({"type":"registered-host"}),
+        serde_json::json!({"type":"registered-host","scope":scope,"command":"sh"}),
+    ] {
+        assert!(serde_json::from_value::<CreateManagedAgentRequest>(
+            serde_json::json!({"name":"Fixture","destination":destination})
+        )
+        .is_err());
+    }
+    // Legacy absent destination continues to the existing create validation.
+    for backend in [
+        serde_json::json!({"type":"local"}),
+        serde_json::json!({"type":"provider", "id":"fixture", "config":{}}),
+    ] {
+        let input: CreateManagedAgentRequest =
+            serde_json::from_value(serde_json::json!({"name":"", "backend":backend})).unwrap();
+        let result = create_managed_agent_in(input, app.handle().clone(), &state).await;
+        assert!(matches!(result, Err(ref e) if !e.contains("Registered-host")));
+        assert!(!app_data.exists());
+    }
+}

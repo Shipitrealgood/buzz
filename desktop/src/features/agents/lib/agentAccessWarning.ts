@@ -40,11 +40,8 @@ export function runLocationForRunOn(
  *
  * An unknown run location falls back to the same "your computer" wording as
  * `local` rather than hedging with "computer or server". A remote host is only
- * reachable when a `buzz-backend-*` provider binary is installed — without one
- * `WhereToRunSection`'s "Run on" selector never renders and every agent is
- * local — so hedging would name a concept most owners have never been shown.
- * When it *is* remote the owner picked that host from the selector
- * deliberately, so naming a server is meaningful there.
+ * named only after the owner selects a provider or registered host in Run on.
+ * Registered-host creation is still blocked by the destination scaffold.
  */
 export function agentAccessWarningText(
   mode: RespondToMode,

@@ -767,6 +767,9 @@ export async function listManagedAgents(): Promise<ManagedAgent[]> {
   );
 }
 export async function createManagedAgent(input: CreateManagedAgentInput) {
+  if (input.destination != null) {
+    throw new Error("Registered-host creation is not available yet.");
+  }
   const response = await invokeTauri<RawCreateManagedAgentResponse>(
     "create_managed_agent",
     {

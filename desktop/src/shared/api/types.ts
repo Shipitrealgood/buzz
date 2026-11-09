@@ -393,7 +393,14 @@ export type RelayMeshConfig = {
   modelRef: string;
 };
 
+/** Create-only destination. Registration alone never grants deployment capability. */
+export type RegisteredHostDestination = {
+  type: "registered-host";
+  scope: { community: string; owner: string; host: string; generation: string };
+};
+
 export type CreateManagedAgentInput = {
+  destination?: RegisteredHostDestination;
   name: string;
   personaId?: string;
   /** Team this instance was deployed from; controls runtime team instructions. */

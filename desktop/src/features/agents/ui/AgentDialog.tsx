@@ -183,6 +183,7 @@ function AgentCreateDialogRouter({
         onDirtyChange={onDirtyChange}
         onOpenChange={onOpenChange}
         onSubmit={async (input, { effortOptions }) => {
+          if (!canSubmitWhereToRun(runDraft)) return;
           const submitted = await onSubmitDefinition(
             input,
             "definition_start",

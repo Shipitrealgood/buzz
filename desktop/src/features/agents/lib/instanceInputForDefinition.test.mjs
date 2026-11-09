@@ -337,3 +337,20 @@ test("item-13: no runtimes available — refuses with actionable error", () => {
     "empty runtime list must throw, not silently return null",
   );
 });
+
+test("registered-host destination refuses before avatar upload or local/provider mapping", async () => {
+  let uploads = 0;
+  await assert.rejects(
+    buildInstanceInputForDefinition(
+      persona({ avatarUrl: "data:image/png;base64,aGVsbG8=" }),
+      gooseRuntime,
+      async () => {
+        uploads++;
+        return "https://fixture.test/avatar";
+      },
+      { type: "registered-host", scope: {} },
+    ),
+    /Registered-host creation is not available/,
+  );
+  assert.equal(uploads, 0);
+});

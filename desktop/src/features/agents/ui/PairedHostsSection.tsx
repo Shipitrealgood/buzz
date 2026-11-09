@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -8,30 +7,9 @@ import { canonicalNpub, truncateNpub } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 
-export type HostRequest = {
-  request_id: string;
-  name: string;
-  runtime: string;
-  state: string;
-  agent: string | null;
-  steps: string[];
-  issue: string | null;
-  evidence_incomplete: boolean;
-};
-export type Session = { expectedRelay: string; expectedOwner: string };
-export type Host = {
-  scope: { community: string; generation: string; owner: string; host: string };
-  state: string;
-  label: string | null;
-  runtimes: string[];
-  requests: HostRequest[];
-  fresh: boolean;
-  inventory_id: string | null;
-  fresh_for_ms: number;
-  catalog_revision: string | null;
-  capacity: number | null;
-};
-type Directory = { supported: boolean; available: boolean; hosts: Host[] };
+import { useHostDirectory } from "../lib/hostDirectory";
+import type { Host, Session } from "../lib/hostDirectory";
+export type { Host, Session, HostRequest } from "../lib/hostDirectory";
 
 function message(error: unknown) {
   return error instanceof Error
@@ -256,20 +234,7 @@ function HostRow({
 }
 
 function HostDirectory({ session }: { session: Session }) {
-  const directory = useQuery({
-    queryKey: ["paired-hosts", session.expectedRelay, session.expectedOwner],
-    queryFn: () => invokeTauri<Directory>("paired_host_list", session),
-    refetchOnWindowFocus: true,
-    retry: false,
-    staleTime: 15_000,
-    refetchInterval: ({ state }) =>
-      state.data?.hosts.some(
-        (host) =>
-          host.state === "pair-pending" || host.state === "unpair-pending",
-      )
-        ? 5000
-        : 60_000,
-  });
+  const directory = useHostDirectory(session);
   const reload = () => {
     void directory.refetch();
   };

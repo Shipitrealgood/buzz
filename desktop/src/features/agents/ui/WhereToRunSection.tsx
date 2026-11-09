@@ -2,6 +2,26 @@ import { AlertTriangle } from "lucide-react";
 import * as React from "react";
 
 import { useBackendProvidersQuery } from "@/features/agents/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useIdentityQuery } from "@/shared/api/hooks";
+import type { BackendProviderCandidate } from "@/shared/api/types";
+import { useHostDirectory, type Session } from "../lib/hostDirectory";
+import {
+  hostBelongsToSession,
+  hostDestination,
+  hostDestinationValue,
+  hostRegistrationStatus,
+} from "../lib/hostDestination";
+import { isWindowsPlatform } from "@/shared/lib/platform";
+import { truncateNpub } from "@/shared/lib/pubkey";
+import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/shared/ui/dialog";
+import { MyHosts } from "./PairedHostsSection";
 import { probeBackendProvider } from "@/shared/api/tauri";
 
 import { ProviderConfigFields } from "./ProviderConfigFields";
@@ -12,29 +32,65 @@ import {
   type WhereToRunDraft,
 } from "./whereToRunIntent";
 
-/** Optional remote-backend selector. Buzz shared compute is an LLM provider, not a run destination. */
-export function WhereToRunSection({
-  draft,
-  isPending,
-  onDraftChange,
-}: {
+type WhereToRunProps = {
   draft: WhereToRunDraft;
   isPending: boolean;
   onDraftChange: (next: WhereToRunDraft) => void;
-}) {
+};
+
+/** Shared local/provider/registered-host destination selector. */
+export function WhereToRunSection(props: WhereToRunProps) {
   const backendProviders = useBackendProvidersQuery().data ?? [];
-  const [probeError, setProbeError] = React.useState<string | null>(null);
-  const runOnOptions = React.useMemo(
-    () => [
-      { label: "This computer", value: "local" },
-      ...backendProviders.map((provider) => ({
-        label: provider.id,
-        value: provider.id,
-      })),
-    ],
-    [backendProviders],
+  const relay = useCommunities().activeCommunity?.relayUrl;
+  const owner = useIdentityQuery().data?.pubkey;
+  const session =
+    isWindowsPlatform() && relay && owner
+      ? { expectedRelay: relay, expectedOwner: owner }
+      : null;
+  if (!isWindowsPlatform() && backendProviders.length === 0) return null;
+  return (
+    <WhereToRunFields
+      {...props}
+      backendProviders={backendProviders}
+      session={session}
+    />
   );
-  const isProviderMode = draft.runOn !== "local";
+}
+
+/** Query and rendering seam shared by the actual Add Agent flow and UI tests. */
+export function WhereToRunFields({
+  draft,
+  isPending,
+  onDraftChange,
+  backendProviders,
+  session,
+}: WhereToRunProps & {
+  backendProviders: BackendProviderCandidate[];
+  session: Session | null;
+}) {
+  const directory = useHostDirectory(session);
+  const [showHosts, setShowHosts] = React.useState(false);
+  const hosts = (directory.data?.hosts ?? []).filter(
+    (host) => session && hostBelongsToSession(host, session),
+  );
+  const isHostMode =
+    Boolean(draft.destination) || draft.runOn.startsWith("host:");
+  const selectedHost = hosts.find(
+    (host) => hostDestinationValue(host) === draft.runOn,
+  );
+  const [probeError, setProbeError] = React.useState<string | null>(null);
+  const runOnOptions = [
+    { label: "This computer", value: "local" },
+    ...backendProviders.map((provider) => ({
+      label: provider.id,
+      value: provider.id,
+    })),
+    ...hosts.map((host) => ({
+      label: `${host.label ?? "Linux host"} · ${truncateNpub(host.scope.host)} · ${hostRegistrationStatus(host)}`,
+      value: hostDestinationValue(host),
+    })),
+  ];
+  const isProviderMode = !isHostMode && draft.runOn !== "local";
   const selectedBackendProvider = React.useMemo(
     () =>
       backendProviders.find((provider) => provider.id === draft.runOn) ?? null,
@@ -83,8 +139,6 @@ export function WhereToRunSection({
     };
   }, [selectedBinaryPath, draft.probedProvider]);
 
-  if (backendProviders.length === 0) return null;
-
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
@@ -94,17 +148,75 @@ export function WhereToRunSection({
         <PersonaDropdownField
           disabled={isPending}
           id="agent-run-on"
-          onValueChange={(runOn) =>
+          onValueChange={(runOn) => {
+            const host = hosts.find(
+              (item) => hostDestinationValue(item) === runOn,
+            );
             onDraftChange({
               ...emptyWhereToRunDraft,
               runOn,
-            })
-          }
+              ...(host && { destination: hostDestination(host) }),
+            });
+          }}
           options={runOnOptions}
           placeholder="Choose where to run"
           value={draft.runOn}
         />
       </div>
+
+      {isWindowsPlatform() && (
+        <div className="space-y-2 text-sm text-muted-foreground">
+          {!session ? (
+            <p>
+              Select a community and unlock your identity to see registered
+              hosts.
+            </p>
+          ) : directory.isPending ? (
+            <p>Checking host registrations…</p>
+          ) : directory.error || !directory.data?.available ? (
+            <p>
+              Host registrations unavailable. Saved information may be out of
+              date.
+            </p>
+          ) : !directory.data.supported ? (
+            <p>Host registration is not supported by this community.</p>
+          ) : !hosts.length ? (
+            <p>No registered hosts.</p>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isPending || !session}
+            onClick={() => setShowHosts(true)}
+          >
+            Add Host
+          </Button>
+          {isHostMode ? (
+            <p role="status">
+              {selectedHost
+                ? hostRegistrationStatus(selectedHost)
+                : "Selected host is unavailable in this workspace."}{" "}
+              Registered-host creation is not available yet. Models will remain
+              pending until the new agent signs in.
+            </p>
+          ) : null}
+        </div>
+      )}
+      <Dialog open={showHosts} onOpenChange={setShowHosts}>
+        <DialogContent onSubmit={(event) => event.stopPropagation()}>
+          <DialogTitle>Add Host</DialogTitle>
+          <DialogDescription>
+            Register a host using its private invitation.
+          </DialogDescription>
+          {session ? (
+            <MyHosts
+              key={session.expectedRelay + session.expectedOwner}
+              session={session}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {isProviderMode && selectedBackendProvider ? (
         <div className="space-y-4">

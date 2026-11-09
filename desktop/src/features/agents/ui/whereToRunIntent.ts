@@ -1,10 +1,14 @@
 import type { BackendIntent } from "../lib/instanceInputForDefinition";
-import type { BackendProviderProbeResult } from "@/shared/api/types";
+import type {
+  RegisteredHostDestination,
+  BackendProviderProbeResult,
+} from "@/shared/api/types";
 import { coerceConfigValues } from "./ProviderConfigFields";
 
 /** Draft state of the optional remote-backend selector. */
 export type WhereToRunDraft = {
   runOn: "local" | string;
+  destination?: RegisteredHostDestination;
   providerConfig: Record<string, string>;
   probedProvider: BackendProviderProbeResult | null;
 };
@@ -27,6 +31,7 @@ export function applyProbeResult(
   current: WhereToRunDraft,
   result: BackendProviderProbeResult,
 ): WhereToRunDraft {
+  if (current.destination) return current;
   const defaults: Record<string, string> = {};
   const properties =
     (result.config_schema as Record<string, unknown> | undefined)?.properties ??
@@ -45,6 +50,7 @@ export function applyProbeResult(
 }
 
 export function providerConfigComplete(draft: WhereToRunDraft): boolean {
+  if (draft.destination || draft.runOn.startsWith("host:")) return false;
   if (draft.runOn === "local") return true;
   if (!draft.probedProvider) return false;
   const schema = draft.probedProvider.config_schema as
@@ -63,6 +69,10 @@ export function canSubmitWhereToRun(draft: WhereToRunDraft): boolean {
 export function resolveBackendIntent(
   draft: WhereToRunDraft,
 ): BackendIntent | null {
+  if (draft.destination) return draft.destination;
+  if (draft.runOn.startsWith("host:")) {
+    throw new Error("Registered-host selection is no longer available.");
+  }
   if (draft.runOn === "local") return null;
   return {
     type: "provider",

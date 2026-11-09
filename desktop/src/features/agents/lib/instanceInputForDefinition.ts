@@ -3,6 +3,7 @@ import type {
   AcpRuntimeCatalogEntry,
   AgentPersona,
   CreateManagedAgentInput,
+  RegisteredHostDestination,
 } from "@/shared/api/types";
 import {
   getDefaultPersonaRuntime,
@@ -82,11 +83,13 @@ export function resolveStartRuntimeForDefinition(
  *   is true because the preset commands deliberately override the
  *   definition's runtime preference.
  */
-export type BackendIntent = {
-  type: "provider";
-  id: string;
-  config: Record<string, unknown>;
-};
+export type BackendIntent =
+  | RegisteredHostDestination
+  | {
+      type: "provider";
+      id: string;
+      config: Record<string, unknown>;
+    };
 
 /**
  * The single definition→instance mapping (Phase 1B.3.5 rows 2–4). Every
@@ -114,6 +117,9 @@ export async function buildInstanceInputForDefinition(
   backendIntent?: BackendIntent,
   effortLevel?: string | null,
 ): Promise<CreateManagedAgentInput> {
+  if (backendIntent?.type === "registered-host") {
+    throw new Error("Registered-host creation is not available yet.");
+  }
   const avatarUrl = await resolveManagedAgentAvatarUrl(
     persona.avatarUrl,
     upload,

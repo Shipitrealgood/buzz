@@ -146,6 +146,9 @@ pub struct UpdatePersonaRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateManagedAgentRequest {
+    /// Create-only registered-host destination; rejected before side effects until deployment ships.
+    #[serde(default)]
+    pub destination: Option<buzz_core_pkg::host_deployment::Destination>,
     pub name: String,
     #[serde(default)]
     pub persona_id: Option<String>,

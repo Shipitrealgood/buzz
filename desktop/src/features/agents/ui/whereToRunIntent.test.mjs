@@ -129,3 +129,33 @@ test("probe resolution preserves unrelated draft fields", () => {
     "kubernetes",
   );
 });
+
+test("host destination always blocks even with complete provider/capability data", () => {
+  const destination = {
+    type: "registered-host",
+    scope: {
+      community: "https://fixture.test",
+      owner: "a",
+      host: "b",
+      generation: "c",
+    },
+  };
+  for (const runOn of ["local", "blox", "host:forged"]) {
+    const draft = providerDraft({
+      runOn,
+      destination,
+      deployment: { supported: true },
+    });
+    assert.equal(canSubmitWhereToRun(draft), false);
+    assert.deepEqual(resolveBackendIntent(draft), destination);
+    assert.equal(applyProbeResult(draft, probeWithDefaults), draft);
+  }
+  assert.equal(
+    canSubmitWhereToRun(providerDraft({ runOn: "host:forged" })),
+    false,
+  );
+  assert.throws(
+    () => resolveBackendIntent(providerDraft({ runOn: "host:forged" })),
+    /no longer available/,
+  );
+});

@@ -306,3 +306,92 @@ test("other platforms keep the stock Agents surface without registration IPC", a
   await expect(page.getByRole("region", { name: "My hosts" })).toHaveCount(0);
   expect(await calls(page)).toEqual([]);
 });
+
+async function openOrdinaryCreate(page: Page) {
+  await page.getByTestId("new-agent-card").click();
+  await page.locator("#persona-display-name").fill("Hosted fixture");
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  await expect(page.locator("#agent-run-on")).toBeVisible();
+}
+
+test("ordinary Add Agent distinguishes registered hosts and refuses submission even with legacy capability data", async ({
+  page,
+}) => {
+  await open(page);
+  await openOrdinaryCreate(page);
+  await page.locator("#agent-run-on").press("Enter");
+  const hosts = page.getByRole("menuitemradio", { name: /Workshop/ });
+  await expect(hosts).toHaveCount(2);
+  const labels = await hosts.allTextContents();
+  expect(labels[0]).not.toEqual(labels[1]);
+  await hosts.nth(1).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Registered-host creation" }),
+  ).toContainText("Models will remain pending");
+  await expect(
+    page.getByRole("button", { name: "Add agent", exact: true }),
+  ).toBeDisabled();
+  // Bypass the disabled-button affordance: actual form submission must still
+  // stop before persona publication, key creation or provider deployment.
+  await page
+    .locator("#persona-display-name")
+    .evaluate((input) =>
+      input
+        .closest("form")
+        ?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        ),
+    );
+  await page.waitForTimeout(100);
+  const effects = await page.evaluate(
+    () =>
+      window.__BUZZ_E2E_COMMAND_LOG__?.filter(({ command }) =>
+        /^(create_persona|create_managed_agent|deploy_to_provider|probe_backend_provider|paired_host_create)$/.test(
+          command,
+        ),
+      ) ?? [],
+  );
+  expect(effects).toEqual([]);
+  expect(
+    (await calls(page)).every((c) => c.command === "paired_host_list"),
+  ).toBe(true);
+  await page.locator("#agent-run-on").press("Enter");
+  await page
+    .getByRole("menuitemradio", { name: "This computer", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Registered-host creation" }),
+  ).toHaveCount(0);
+});
+
+test("ordinary Add Agent keeps Add Host discoverable in an empty directory", async ({
+  page,
+}) => {
+  await open(page, { empty: true });
+  await openOrdinaryCreate(page);
+  const form = page
+    .locator("#persona-display-name")
+    .locator("xpath=ancestor::form");
+  await expect(form).toContainText("No registered hosts.");
+  await form.getByRole("button", { name: "Add Host", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add Host", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Add Host", exact: true }).click();
+  await expect(dialog.getByLabel("Private host invitation")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(await calls(page, "paired_host_pair")).toEqual([]);
+  await dialog.getByRole("button", { name: "Add Host", exact: true }).click();
+  await dialog
+    .getByLabel("Private host invitation")
+    .fill("expired-fixture-input");
+  await dialog.getByRole("button", { name: "Submit invitation" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Invitation expired");
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMAND_LOG__?.filter(({ command }) =>
+          /^(create_persona|create_managed_agent)$/.test(command),
+        ) ?? [],
+    ),
+  ).toEqual([]);
+});
