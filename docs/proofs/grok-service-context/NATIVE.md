@@ -8,12 +8,12 @@ No provider sign-in, native Grok, real relay or model request is authorized.
 ## Exact prepared inputs
 
 - Archive: `/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/native-offline-proof.tar`
-- SHA-256: `29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2`
-- Archive bytes: 236933120; unpacked file bytes: 236279594.
+- SHA-256: `d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64`
+- Archive bytes: 236933120; unpacked file bytes: 236279806.
 - Manifest entries: 336. All hashes checked after packaging.
 - Bootstrap: `/home/bryce/services/buzz-agents/releases/3719-3722-native-proof/bootstrap-native.py`
 - Bootstrap SHA-256: `66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707`.
-- Code source starts at `0a54e180cbdb0b95b51e5cf3a9785e43ba98aeab`; candidate
+- M-1 repair source starts at `947378553964dfdb0f3f6a44e813defea9b7de14`; candidate
   commit is recorded in the operations receipt. Earlier offline acceptance was
   at `3e9f6dac0cc712d1871518dff6cd19c2247ab8b5`.
 
@@ -30,7 +30,7 @@ Run only after the conductor's independent re-gate and explicit user approval:
 sudo -- /usr/bin/python3 -I -S -c 'import hashlib,sys; data=open(sys.argv[1],"rb").read(); assert hashlib.sha256(data).hexdigest()=="66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707", "bootstrap hash mismatch"; exec(compile(data, "<verified-native-bootstrap>", "exec"))' \
   /home/bryce/services/buzz-agents/releases/3719-3722-native-proof/bootstrap-native.py \
   /home/bryce/services/buzz-agents/releases/3719-3722-native-proof/native-offline-proof.tar \
-  29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2
+  d57e80a2ae3fef6dcc81c350daff05080b57676855cb50787911008a37f0fc64
 ```
 
 The literal root bootstrap reads and verifies its own supplied bytes before
@@ -113,3 +113,18 @@ verified-byte handoff; `context.py`'s separate native ownership policy; and the
 shared builder's unchanged namespace regression. No online-policy implementation
 or application changes are included. The next step is independent review of
 this delta, then approval of the command above.
+
+## M-1 repair and superseded candidate
+
+The archive `29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2` and its prior approval command are superseded.
+The unchanged bootstrap's archive-hash predicate rejects that old hash against
+the replacement bytes before native execution. The command above pins only the
+new candidate; native execution remains **NOT RUN**.
+
+The actual native descriptor writer now chmods the trusted generated
+`/proof/probes.json` to 0444 before startup. The no-root regression invokes that
+same helper under umask077, verifies JSON content and exact read-only mode, and
+shows that suppressing chmod makes its permission assertion fail. Targeted test,
+AST, unchanged dry-run plan, archive/source comparisons and all manifest hashes
+pass. Shared namespace/context code is unchanged by this repair, so its accepted
+regression was not repeated.

@@ -85,6 +85,13 @@ def bundle():
                           'native': 'NOT RUN'}, indent=2))
 
 
+def write_probes(root, probes):
+    """Publish trusted synthetic metadata readable, but not writable, by DynamicUser."""
+    descriptor = root / 'proof/probes.json'
+    descriptor.write_text(json.dumps(probes))
+    descriptor.chmod(0o444)
+
+
 def native():
     base = HERE
     name = base.name
@@ -133,7 +140,7 @@ def native():
     try:
         probes, listeners = proof.prepare_probes(base)
         probes['uid_policy'] = 'service-owner'
-        (base / 'rootfs/proof/probes.json').write_text(json.dumps(probes))
+        write_probes(base / 'rootfs', probes)
         # Synthetic public canaries are readable to the service UID outside its rootfs.
         base.chmod(0o711)
         for directory in (base / 'rootfs').rglob('*'):
