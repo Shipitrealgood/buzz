@@ -92,5 +92,6 @@ pub fn resolve_ttl(event: &nostr::Event, ephemeral_ttl_override: Option<i32>) ->
 /// NIP-AR artifact lifecycle.
 pub mod artifact;
 
+pub(crate) mod host_deployment;
 /// Root-WebSocket private host registration fork adapter.
 pub(crate) mod host_registry;

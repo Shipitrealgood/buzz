@@ -71,7 +71,9 @@ NGINX
     --mount "type=bind,src=$lane/target/3720-tls,dst=/proof-tls,readonly" \
     --entrypoint nginx nginx:stable-bookworm -c /proof-tls/nginx.conf -g 'daemon off;'
   ;;
-run)
+run|run-migration)
+  mode=desired
+  [[ "$1" != run-migration ]] || mode=migration
   : "${2:?supply exact compiled test binary relative to lane}"
   shift; binary="$1"; shift
   [[ "$binary" == target/* && -x "$lane/$binary" ]] || { echo 'unsafe test binary' >&2; exit 1; }
@@ -84,10 +86,12 @@ run)
   cleanup() { docker exec "$pg" dropdb -U buzz3720 --if-exists --force "$database"; }
   trap cleanup EXIT
   docker exec "$pg" createdb -U buzz3720 --template=template0 "$database"
-  docker exec -w /proof-schema "$pg" psql -U buzz3720 -d "$database" -v ON_ERROR_STOP=1 -f schema.sql > "$lane/target/3720-schema-$database.log" 2>&1
+  if [[ "$mode" == desired ]]; then
+    docker exec -w /proof-schema "$pg" psql -U buzz3720 -d "$database" -v ON_ERROR_STOP=1 -f schema.sql > "$lane/target/3720-schema-$database.log" 2>&1
+  fi
   docker exec -u "$(id -u):$(id -g)" \
     -e "BUZZ_TEST_DATABASE_URL=postgres://buzz3720:synthetic3720@127.0.0.1:5432/$database" \
-    -e BUZZ_TEST_SCHEMA_MODE=desired -e REDIS_URL=redis://127.0.0.1:6379/0 \
+    -e "BUZZ_TEST_SCHEMA_MODE=$mode" -e REDIS_URL=redis://127.0.0.1:6379/0 \
     -e TMPDIR=/tmp -e BUZZ_3720_ISOLATED_FIXTURE=1 \
     "$runner" "$lane/$binary" "$@"
   ;;
@@ -100,5 +104,5 @@ down)
   done
   rm -f -- "$lane/target/3720-tls/ca.key" "$lane/target/3720-tls/server.key" "$lane/target/3720-tls/server.csr" "$lane/target/3720-tls/ca.srl"
   ;;
-*) echo 'usage: 3720-registration-proof.sh up|tls|run target/debug/deps/TEST [ARGS...]|down' >&2; exit 1;;
+*) echo 'usage: 3720-registration-proof.sh up|tls|run|run-migration target/debug/deps/TEST [ARGS...]|down' >&2; exit 1;;
 esac

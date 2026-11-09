@@ -1910,7 +1910,10 @@ pub(crate) fn is_author_only_event(event: &nostr::Event, requester_pubkey_bytes:
 /// (NIP-98 `/query`, `/count`, FTS search) — instead of inlining the three
 /// individual predicates at each site.
 pub(crate) fn event_visible_to_reader(event: &nostr::Event, requester_pubkey_bytes: &[u8]) -> bool {
-    if u32::from(event.kind.as_u16()) == buzz_core::kind::KIND_HOST_REGISTRY_V2 {
+    if matches!(
+        u32::from(event.kind.as_u16()),
+        buzz_core::kind::KIND_HOST_REGISTRY_V2 | buzz_core::kind::KIND_HOST_DEPLOYMENT_V1
+    ) {
         return false;
     }
     if is_author_only_event(event, requester_pubkey_bytes) {

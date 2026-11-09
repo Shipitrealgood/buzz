@@ -43,6 +43,9 @@ pub struct RelayInfo {
     /// Explicit private fork protocol; stock relays do not implement it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host_registry: Option<serde_json::Value>,
+    /// Independently enabled private deployment protocol.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_deployment: Option<serde_json::Value>,
     /// NIP-AR artifact query transport and enforced resource limits.
     pub artifacts: serde_json::Value,
     /// Relay operator's public key (hex), if published.
@@ -290,6 +293,7 @@ impl RelayInfo {
             read_state_snapshot: None,
             paired_hosts_v1: None,
             host_registry: None,
+            host_deployment: None,
             buzz_v1: None,
             artifacts: serde_json::json!({
                 "version": 1, "revision_kind": 45010, "removal_kind": 45011,
@@ -414,6 +418,11 @@ pub(crate) async fn nip11_document(state: &crate::state::AppState, raw_host: &st
             info.pubkey = Some(state.relay_keypair.public_key().to_hex());
             info.host_registry = Some(
                 serde_json::json!({"versions":[2],"kind":43103,"admission":"host-scoped","reads":"req-v2"}),
+            );
+        }
+        if state.config.serves_host_deployment() {
+            info.host_deployment = Some(
+                serde_json::json!({"versions":[1],"kind":43104,"admission":"host-scoped","reads":"req-v1"}),
             );
         }
         if state.config.serves_paired_hosts() {

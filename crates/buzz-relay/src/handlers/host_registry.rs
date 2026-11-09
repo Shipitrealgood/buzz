@@ -18,7 +18,7 @@ const DENIED: &str = "restricted: host registry request denied";
 #[derive(Debug)]
 pub(crate) struct Connection {
     generation: Mutex<Option<[u8; 32]>>,
-    ordinary: Arc<Semaphore>,
+    pub(crate) ordinary: Arc<Semaphore>,
     recovery: Arc<Semaphore>,
 }
 impl Default for Connection {
@@ -284,7 +284,7 @@ fn actor(c: &ConnectionState) -> Result<nostr::PublicKey, ()> {
 fn origin(c: &ConnectionState) -> String {
     format!("https://{}", c.tenant.host())
 }
-async fn budget(
+pub(crate) async fn budget(
     c: &ConnectionState,
     s: &AppState,
     who: nostr::PublicKey,

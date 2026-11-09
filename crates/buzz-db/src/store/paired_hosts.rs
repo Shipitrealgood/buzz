@@ -6,6 +6,7 @@ use buzz_core::CommunityId;
 use serde_json::{json, Value};
 use sqlx::Row;
 
+mod deployment;
 mod phases;
 mod registry;
 pub use registry::{RegistryPage, RegistryRead, RegistrySession};

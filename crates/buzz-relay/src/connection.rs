@@ -1330,6 +1330,9 @@ async fn handle_text_message(text: String, conn: Arc<ConnectionState>, state: Ar
         return;
     }
 
+    if handlers::host_deployment::dispatch(&text, Arc::clone(&conn), Arc::clone(&state)).await {
+        return;
+    }
     if handlers::host_registry::dispatch(&text, Arc::clone(&conn), Arc::clone(&state)).await {
         return;
     }

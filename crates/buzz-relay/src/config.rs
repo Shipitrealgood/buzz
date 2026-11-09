@@ -191,6 +191,8 @@ pub struct Config {
     pub paired_hosts_enabled: bool,
     /// Opt-in private host registry fork protocol v2.
     pub host_registry_enabled: bool,
+    /// Opt-in private deployment extension; registration alone never enables it.
+    pub host_deployment_enabled: bool,
     /// Author-time unread tracking duration, independent of NIP-RS retention.
     pub buzz_v1_retention_seconds: u32,
     /// Comma-separated list of allowed CORS origins.
@@ -670,6 +672,11 @@ impl Config {
         self.host_registry_enabled
             && !self.nip_fi.mode.restricts()
             && self.relay_url.trim_start().starts_with("wss://")
+    }
+
+    /// Deployment shares registration admission and is independently disabled by default.
+    pub(crate) fn serves_host_deployment(&self) -> bool {
+        self.host_deployment_enabled && self.serves_host_registry()
     }
 
     /// Loads configuration from environment variables, falling back to development defaults.
@@ -1461,6 +1468,8 @@ impl Config {
             buzz_v1_enabled,
             paired_hosts_enabled: std::env::var("BUZZ_PAIRED_HOSTS_V1").as_deref() == Ok("true"),
             host_registry_enabled: std::env::var("BUZZ_HOST_REGISTRY_V2").as_deref() == Ok("true"),
+            host_deployment_enabled: std::env::var("BUZZ_HOST_DEPLOYMENT_V1").as_deref()
+                == Ok("true"),
             buzz_v1_retention_seconds,
             cors_origins,
             relay_private_key,

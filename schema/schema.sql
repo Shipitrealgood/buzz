@@ -220,3 +220,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 \i seeds/storage_accounting_snapshots.sql
 
 \i tables/public/nip_fi_profile_heads.sql
+
+\i tables/public/paired_agent_placements.sql
+\i tables/public/paired_agent_operations.sql
+\i tables/public/paired_host_deployment_status.sql

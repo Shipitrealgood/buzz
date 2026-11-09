@@ -79,6 +79,9 @@ pub const RELAY_ADMIN_TABLES: &[(&str, &str)] = &[
 /// blocks deletion until this manifest is intentionally updated.
 pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_agent_operations",
+    "paired_agent_placements",
+    "paired_host_deployment_status",
     "paired_host_requests",
     "paired_host_bindings",
     "paired_host_events",
@@ -134,6 +137,9 @@ const EXCLUDED_SCOPED_TABLES: &[&str] = &[
 /// Foreign-key-safe child-before-parent order for the PostgreSQL purge.
 pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_agent_operations",
+    "paired_agent_placements",
+    "paired_host_deployment_status",
     "paired_host_requests",
     "paired_host_bindings",
     "paired_host_events",
@@ -4579,6 +4585,15 @@ mod postgres_tests {
         sqlx::query("INSERT INTO paired_host_events(community_id,generation,owner_key,host_key,event_id,operation,expires_at,event_json,route_json) VALUES($1,$2,$2,$3,$2,'pair-claim',1,'{}','{}')").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
         sqlx::query("INSERT INTO paired_host_bindings(community_id,generation,owner_key,host_key,claim_id,ack_id,state) VALUES($1,$2,$2,$3,$2,$2,'active')").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
         sqlx::query("INSERT INTO paired_host_requests(community_id,generation,owner_key,host_key,request_id,intent_id,head_phase,intent_expiry) VALUES($1,$2,$2,$3,$2,$2,'create',1)").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        sqlx::query("INSERT INTO paired_agent_placements VALUES($1,$2,$2,$3,$2,1,'unit','pending','operation',NULL)").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        sqlx::query("INSERT INTO paired_agent_operations(community_id,owner_pubkey,operation_id,agent_pubkey,host_pubkey,generation,action,expected_revision,expires_at,content_sha256,event_json,state) VALUES($1,$2,'operation',$2,$3,$2,'deploy',0,1,'hash','{}','pending')").bind(t.as_uuid()).bind(&[1u8;32][..]).bind(&[2u8;32][..]).execute(tx.conn()).await.unwrap();
+        sqlx::query("INSERT INTO paired_host_deployment_status VALUES($1,$2,$2,$3,1,'{}')")
+            .bind(t.as_uuid())
+            .bind(&[1u8; 32][..])
+            .bind(&[2u8; 32][..])
+            .execute(tx.conn())
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         store.approve(request.id, "approver", None).await.unwrap();
         let claim = store
@@ -4605,6 +4620,33 @@ mod postgres_tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DbError::AccessDenied(ref msg) if msg.contains("write-fenced")));
+        let owner = nostr::Keys::generate();
+        let host = nostr::Keys::generate();
+        let n = nostr::Timestamp::now().as_secs();
+        let scope = buzz_core::paired_message::Scope {
+            community: "https://fixture.test".into(),
+            owner: owner.public_key(),
+            host: host.public_key(),
+            generation: "aa".repeat(32),
+        };
+        let status = buzz_core::host_deployment::Status {
+            scope,
+            availability: buzz_core::host_deployment::Availability::Current,
+            capability: buzz_core::host_deployment::Capability::Unsupported {},
+            expires_at: n + 60,
+        };
+        let event = buzz_core::host_deployment::wire::status(&host, &status, n).unwrap();
+        let err = db
+            .post_host_deployment(
+                t,
+                "https://fixture.test",
+                host.public_key(),
+                &serde_json::to_vec(&event).unwrap(),
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DbError::AccessDenied(ref msg) if msg.contains("write-fenced")));
         let generation = store.fence(&claim.lease).await.unwrap();
         let token = LeaseToken {
             fence_generation: Some(generation),
@@ -4624,6 +4666,9 @@ mod postgres_tests {
             "paired_host_events",
             "paired_host_bindings",
             "paired_host_requests",
+            "paired_agent_operations",
+            "paired_agent_placements",
+            "paired_host_deployment_status",
         ] {
             assert_eq!(deleted.get(table), Some(&1));
         }

@@ -34,9 +34,10 @@ mod thread_window;
 fn private_registry_filter(raw: &[Value]) -> bool {
     raw.iter().any(|f| {
         f.get("host_registry").is_some()
-            || f.get("kinds")
-                .and_then(Value::as_array)
-                .is_some_and(|k| k.contains(&serde_json::json!(43103)))
+            || f.get("host_deployment").is_some()
+            || f.get("kinds").and_then(Value::as_array).is_some_and(|k| {
+                k.contains(&serde_json::json!(43103)) || k.contains(&serde_json::json!(43104))
+            })
     })
 }
 

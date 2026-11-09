@@ -142,12 +142,14 @@ async fn check_fanout_access(
     matches: Vec<(crate::subscription::ConnId, crate::subscription::SubId)>,
     threaded: Option<&crate::state::ThreadedChannelVisibility>,
 ) -> FanoutAccess {
-    let matches =
-        if u32::from(stored_event.event.kind.as_u16()) == buzz_core::kind::KIND_HOST_REGISTRY_V2 {
-            Vec::new()
-        } else {
-            matches
-        };
+    let matches = if matches!(
+        u32::from(stored_event.event.kind.as_u16()),
+        buzz_core::kind::KIND_HOST_REGISTRY_V2 | buzz_core::kind::KIND_HOST_DEPLOYMENT_V1
+    ) {
+        Vec::new()
+    } else {
+        matches
+    };
     let verified = |allowed| FanoutAccess {
         allowed,
         unverified: Vec::new(),

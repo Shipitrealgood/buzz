@@ -375,3 +375,9 @@ impl ProtectedCreateIntent {
 
 #[cfg(test)]
 mod tests;
+
+/// Authenticated private relay transport, separate from registration v2.
+pub mod wire;
+
+#[cfg(test)]
+mod wire_tests;

@@ -2560,6 +2560,11 @@ async fn ingest_event_inner(
         )));
     }
 
+    if kind_u32 == buzz_core::kind::KIND_HOST_DEPLOYMENT_V1 {
+        return Err(IngestError::Rejected(
+            "restricted: private host deployment".into(),
+        ));
+    }
     if buzz_core::kind::is_relay_only_kind(kind_u32) {
         return Err(IngestError::Rejected("restricted: relay-only kind".into()));
     }
