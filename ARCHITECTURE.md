@@ -272,7 +272,9 @@ On disconnect (any cause):
 
 ## 4. Event Pipeline
 
-When the relay receives `["EVENT", <event>]`, the handler in `handlers/event.rs` runs this pipeline in order:
+For ordinary events, the handler in `handlers/event.rs` runs this pipeline when
+the relay receives `["EVENT", <event>]`. This fork's private host-registration
+events use the separate path described in [Host registration](#10-fork-extension-host-registration).
 
 ```
 1. AUTH CHECK        — AuthState::Authenticated? MessagesWrite scope?
@@ -982,3 +984,70 @@ These are verified gaps in the current implementation — not design aspirations
 | 4 | **Huddle recording/tracks not built** | Voice, room lifecycle, and join/leave/end events are wired (see Huddle Audio above). Recording and per-track publishing have reserved kinds but no producer yet. |
 | 5 | **Approval gates not wired end-to-end** | The executor returns `StepResult::Suspended` and the relay has grant/deny API endpoints with DB CRUD, but the engine intercepts before creating `WaitingApproval` rows — runs that hit an approval gate are marked as Failed (🚧 WF-08). |
 | 6 | **Workflow actions partially stubbed** | The `send_dm` and `set_channel_topic` workflow actions are in the schema but return `NotImplemented` — a run that reaches one fails at execution (🚧 WF-07). |
+
+## 10. Fork Extension: Host Registration
+
+This fork adds relay-authoritative host registration using signed events of
+kind **43103**, version 2 (`BUZZ_HOST_REGISTRY_V2`). This is a Buzz fork extension,
+not a published Nostr NIP or a capability of an unchanged upstream relay.
+See the [registration contract](docs/specs/3720-host-registration-event-proof.md)
+for wire formats, state transitions, bounds and recovery requirements.
+
+### Transport, identity and permissions
+
+Windows and `buzz-hostd` connect to the existing root WebSocket listener. They
+reuse NIP-42 challenge/signature verification, the host-derived community
+boundary, shared WebSocket client and AUTH/EVENT/REQ framing. Hostd is a client
+controller on the host machine, not a separate relay.
+
+The owner uses their existing Buzz identity to sign a `pair-claim`; its invitation
+proof is encrypted to the host. Hostd verifies that proof and signs a `pair-ack`
+with its own persistent key. The relay commits the binding through the paired
+transactional writer, enforcing owner eligibility and at most one non-dead
+binding per host within a community. Clients verify the signed claim and
+acknowledgement rather than accepting a binding summary as proof of consent.
+The owner's private key stays with the owner client; the host key stays on the
+host. Agent identities remain separate.
+
+Host authentication adds a signed `host-registry` tag binding the session to a
+registration generation. The relay clears ordinary scopes and restricts the
+connection to the corresponding registration operations. Pairing does not make
+hostd an ordinary community member or grant it the owner's chat/admin rights.
+Writes and protected reads recheck current participant, generation and community
+permissions; knowing an event ID is not authority to read it.
+
+### Private storage and recovery
+
+The [registration handler](crates/buzz-relay/src/handlers/host_registry.rs)
+intercepts this kind before the generic event pipeline. Signed transcripts and
+binding state live in `paired_host_events` and `paired_host_bindings`, not the
+generic `events` table. They do not enter ordinary chat fanout, search, workflow
+triggers or the generic hash-chain audit log. This is an intentional exception
+to the ordinary channel-membership access model: registration is governed by
+owner/host permissions, with NIP-44 encrypted payloads. Routing metadata remains
+visible to the relay, which is trusted to enforce access and maintain current
+binding state.
+
+Authenticated REQs use protected registry views, scoped cursors and relay-signed
+encrypted replies. Live notifications are invalidation hints; clients refetch
+authorized state and verify peer evidence. Relay state is authoritative; local
+journals retain exact retries and cached evidence. Generic HTTP bridge queries
+and submissions do not support this contract. NIP-98 authentication alone does
+not supply the host-scoped session or private read permissions. V2 has no legacy
+`/api/paired-hosts/v1` fallback.
+
+### Current scope and refresh limitation
+
+`buzz-hostd registration run` handles registration only. It does not invoke the
+provisioning poller, runtime catalog or privileged service helper, and does not
+adopt existing agents. Agent creation, subscription login and process lifecycle
+require their own execution and authorization integration.
+
+The current [controller loop](crates/buzz-hostd/src/registration_cli.rs) reconnects,
+authenticates and reconciles each eligible generation, then sleeps five seconds
+after a successful cycle, including for idle active bindings. Failures use
+bounded backoff. Although the relay supports live invalidations and a periodic
+recheck, the controller does not yet retain that subscription between cycles.
+Moving to a persistent connection must preserve missed-notification recovery,
+current-authorization checks and exact journal retries; simply reducing check
+frequency is not an equivalent implementation.
