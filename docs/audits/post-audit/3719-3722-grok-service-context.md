@@ -1,6 +1,6 @@
 # #3719/#3722 Grok service-context preparation — independent post-audit
 
-2026-11-09. **Merge-safe for the finite offline preparation only.** C=0/H=0/M=0/L=0; no new merge blockers. This verdict does not accept native service isolation, online egress or subscription readiness. Those declared, unrun prerequisites remain with #3719/#3721/#3722.
+2026-11-09. **Current verdict: rework before requesting native-command approval.** C=0/H=0/M=1/L=0; M-1 below blocks the prepared native command. The original namespace preparation remains accepted. Native service isolation, online egress and subscription readiness remain unrun prerequisites with #3719/#3721/#3722.
 
 Reviewer: `/root/grok_service_context_review`, independent `codex-chuck`. Requested dispatch configuration: `gpt-6-astra`, high. Actual served model/reasoning routing is not independently exposed. Rework rounds: 0.
 
@@ -35,3 +35,35 @@ No source-mutation controls or additional verification campaign were run. Output
 Recommended routing: accept the finite preparation and retain #3719/#3721/#3722 open. Next, specify the small native staging adaptation on a separately approved disposable systemd environment and the concrete selective-egress decision/fixture; neither is a ready-to-run approval bundle today. Preserve main's ACP and runtime metadata reuse. Seek the required concrete live/provider approval only after those prerequisites are reviewable; do not infer it from this report. No new framework, remote login UI or extra provider experiment is requested. The root conductor owns dispositions and any subsequent dispatch.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=62fe54c5bf323504e641dd24ec2acb59471a22ef..3e9f6dac0cc712d1871518dff6cd19c2247ab8b5 findings=C=0/H=0/M=0/L=0 rework_rounds=0
+
+## Native preparation re-gate, round 1
+
+Reviewed only the continuation `0a54e180cbdb0b95b51e5cf3a9785e43ba98aeab..bcd16de77bc06a8c4cbaca94f77afc2a43f1e0d3` in the same clean worktree after exclusive executor handoff. Requested Astra/high remains separate from unknown actual runtime routing. The question is whether the pinned command is ready to request user approval, not whether a native service has passed. The conductor explicitly accepted per-start DynamicUser ownership/persistence rather than a stable numeric native UID, and the nonroot bundle/hash-verified root bootstrap design. No root bootstrap or native manager action was executed.
+
+### M-1 (Medium, high confidence) — generated probe descriptor is unreadable to DynamicUser — fix in lane
+
+**Read and inferred from the exact pinned execution path:** [bootstrap-native.py:29](../../proofs/grok-service-context/bootstrap-native.py:29) sets umask 077, and its child inherits that mask. After extracting and chmodding the bundle, [native-proof.py:136](../../proofs/grok-service-context/native-proof.py:136) creates `rootfs/proof/probes.json` with `write_text`, without changing its mode. **Measured archive inspection:** this path is absent from the prepared archive. Thus it is a newly created root-owned mode-0600 file, while the unit runs with `DynamicUser=yes`. On the first `native-suite` start, the `write` child reaches [context.py:73](../../proofs/grok-service-context/context.py:73), attempts `read_text`, and fails with PermissionError before testing the boundaries. `native-suite` then rejects its nonzero exit. The namespace regression cannot catch this: its creator and subprocess use the same UID.
+
+Fix the generated synthetic descriptor to mode 0444 (or equivalent root-owned, non-writable, service-readable mode) before service start. Retain root ownership and the closed root; do not relax credential modes or the whole staging boundary. Rebuild the pinned archive and update its literal hash/receipt/approval command. Add a narrow preparation assertion showing the native generated descriptor is readable under the intended other-UID permissions, without running a root/native service here.
+
+| Finding | Disposition and next action |
+|---|---|
+| M-1 | **fix in lane**, explicitly accepted by the conductor during review. Same executor owns descriptor permissions, narrow proof and refreshed bundle pins; same reviewer rechecks the exact repair. Do not offer the current command for user approval. |
+
+### Remaining finite obligations
+
+**Read, with no additional finding:** the literal `-I -S` command hashes the exact bootstrap bytes before compiling them. The bootstrap hashes the same bounded in-memory archive bytes later passed to tar extraction; standard data filtering plus rejection of links/special entries precedes root-owned staging. No root `ldd` or import from the operator workspace occurs in this prescribed path ([bootstrap](../../proofs/grok-service-context/bootstrap-native.py:19), [NATIVE.md](../../proofs/grok-service-context/NATIVE.md:29)). Staged path ownership/mode validation precedes the shared fixture import; static bundle hash covers the source and manifest. This is trusted pinned-artifact execution, not acceptance of arbitrary archives.
+
+Dry-run and invalid/unprivileged actions return before manager access. Transient names and state paths derive from the exclusive random staging name; collision guards precede start. The rootfs and DynamicUser state are distinct. Provider modes remain disabled, `PrivateNetwork=yes` remains unconditional, and the state ownership exception is native-only. No installed unit, daemon-reload or existing-agent mutation is in the command.
+
+Traced first start/restart/failure and cleanup in [native-proof.py:126](../../proofs/grok-service-context/native-proof.py:126): synchronous oneshot start/restart, `RemainAfterExit=yes` retain the successful unit for inspection; no `--collect`/failed-unit collection override is supplied, so the intentional failed unit is retained for its exit-status checks. Receipt start counts and fixed exit 70 are required. Cleanup checks the unique Description before stop, checks the captured expected cgroup path for population before deleting state, and restricts the private StateDirectory mapping. Ownership/stop/cgroup uncertainty raises and preserves staging. These are source assessments; actual manager, UID mapping and cleanup remain untested. Space/memory limits and partial-failure preservation are disclosed in NATIVE.md. The command is still an older ACP artifact gate, never current-source or provider readiness.
+
+### Verification receipts and handoff
+
+**Measured:** exactly one full namespace regression after the builder refactor, exit 0, empty stderr; nine check entries and model payload match the updated committed receipt. Fresh receipt `/tmp/buzz-service-regate.ztLOrb/receipt.json`, SHA-256 `e1f70d5a39f65536ec23f47dcee47f980024ceda87233dd107771f81e8c08a3f`. All 333 manifest paths and 332 hashes match; only the fresh dynamic probes hash differs. No fixture roots remained. Earlier embedded falsification controls and namespace cancellation coverage carry forward through this run.
+
+**Measured:** archive SHA-256 `29f3007ab42a8cc19e610a8c071967a00dbe2e3f5c9a2314f1bda502145612e2`; bootstrap SHA-256 `66deaeb67d2897cb6107b5eae83644afb8845c7472219d3b9df1d4eab8172707`; all 336 manifest hashes and staged/source adapter/script/unit equality passed. Python AST parsing passed. Default plan equals `native-plan.json`; wrong confirmation and conflicting actions exit 2; nonroot `--run` exits 1 before manager access. Revised uninstalled-unit `systemd-analyze verify` exits 0 with no output. Diff whitespace check passed. No archive extraction as root, native manager execution, online traffic, provider invocation, source mutation or broader testing occurred.
+
+Return to the conductor for the single fix-in-lane repair. Native execution, exact current-source build, online policy/authentication and the original product gates remain **NOT RUN**. This first native-preparation review is complete; no further verification expansion is proposed.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=0a54e180cbdb0b95b51e5cf3a9785e43ba98aeab..bcd16de77bc06a8c4cbaca94f77afc2a43f1e0d3 findings=C=0/H=0/M=1/L=0 rework_rounds=1
