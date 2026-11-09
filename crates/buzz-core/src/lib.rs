@@ -93,3 +93,6 @@ pub mod artifact_sync;
 
 /// Private root-WebSocket host registration fork protocol.
 pub mod host_registry;
+
+/// Registered-host deployment data contract (execution remains disabled).
+pub mod host_deployment;
