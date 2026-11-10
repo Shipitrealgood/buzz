@@ -31,6 +31,7 @@ fn create_commit_and_unpair_in_both_orders() {
         };
 
         let mut cat = Catalog {
+            local: None,
             community: Some(o.community.clone()),
             source: None,
             label: "Shared label".into(),

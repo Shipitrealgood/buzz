@@ -85,6 +85,7 @@ fn restart_restores_exact_ack_and_local_tombstone() {
         host: o.host,
     };
     let cat = Catalog {
+        local: None,
         community: Some(o.community.clone()),
         source: None,
         label: "Shared".into(),
@@ -242,6 +243,7 @@ async fn old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_curso
         )
     }));
     let cat = Catalog {
+        local: None,
         source: None,
         community: Some(new.community),
         label: "Twin".into(),

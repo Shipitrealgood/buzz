@@ -11,95 +11,11 @@ use buzz_core::{
 use buzz_ws_client::NostrWsConnection;
 use nostr::{Event, PublicKey};
 use rusqlite::{params, OptionalExtension};
-use std::{
-    fs,
-    io::Write,
-    os::unix::fs::{FileTypeExt, MetadataExt},
-    path::{Path, PathBuf},
-    time::Duration,
-};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::time::Duration;
 
-/// Fixed helper adapter. Production uses only `installed`; integration can supply
-/// a disposable installation of the same socket/helper implementation.
-#[derive(Clone)]
-pub struct Helper {
-    staging: PathBuf,
-    socket: PathBuf,
-}
+/// Local fixed user-service adapter; the ordinary deployment route has no root fallback.
+pub use crate::user_service::UserService as Helper;
 impl Helper {
-    /// Refuse the shipped registration-only sandbox before any helper effect.
-    pub fn installed(state_dir: &Path) -> Result<Self> {
-        ensure!(state_dir == Path::new("/var/lib/buzz-hostd"), "deployment installation incompatible: existing host journal must be mounted at /var/lib/buzz-hostd; registration-only sandbox has no execution boundary");
-        let socket = Path::new("/run/buzz-hostd-activate.sock");
-        let m = fs::symlink_metadata(socket)?;
-        ensure!(
-            m.uid() == 0
-                && m.gid() == rustix::process::getegid().as_raw()
-                && m.mode() & 0o777 == 0o660,
-            "fixed helper socket owner/group/mode mismatch"
-        );
-        crate::trusted(Path::new(crate::OPERATOR_CATALOG))?;
-        Self::at(state_dir, socket)
-    }
-    /// Bind an existing private staging directory and Unix helper socket.
-    /// The production executable never accepts overrides for either path.
-    pub fn at(staging: &Path, socket: &Path) -> Result<Self> {
-        let dir = fs::symlink_metadata(staging)?;
-        ensure!(
-            staging.is_absolute()
-                && staging.canonicalize()? == staging
-                && dir.is_dir()
-                && dir.uid() == rustix::process::geteuid().as_raw()
-                && dir.mode() & 0o077 == 0,
-            "unsafe deployment staging"
-        );
-        ensure!(
-            fs::symlink_metadata(socket)?.file_type().is_socket(),
-            "deployment installation incompatible: fixed helper socket unavailable"
-        );
-        Ok(Self {
-            staging: staging.into(),
-            socket: socket.into(),
-        })
-    }
-    fn stage(&self, value: &Instance) -> Result<()> {
-        let mut temp = tempfile::NamedTempFile::new_in(&self.staging)?;
-        serde_json::to_writer(&mut temp, value)?;
-        temp.flush()?;
-        temp.as_file().sync_all()?;
-        temp.persist(self.staging.join(format!("{}.cred", value.unit_id)))?;
-        fs::File::open(&self.staging)?.sync_all()?;
-        Ok(())
-    }
-    async fn action(&self, verb: &str, unit: &str) -> Result<String> {
-        self.request(verb, unit, None).await
-    }
-    async fn request(&self, verb: &str, unit: &str, nonce: Option<&str>) -> Result<String> {
-        ensure!(
-            matches!(
-                verb,
-                "prepare" | "start" | "cleanup" | "models" | "observe" | "cancel"
-            ) && crate::id(unit)
-                && nonce.is_none_or(crate::id)
-                && (matches!(verb, "observe" | "cancel") == nonce.is_some()),
-            "invalid fixed helper action"
-        );
-        tokio::time::timeout(Duration::from_secs(90), async {
-            let mut socket = tokio::net::UnixStream::connect(&self.socket).await?;
-            let request = match nonce {
-                Some(n) => format!("{verb} {unit} {n}"),
-                None => format!("{verb} {unit}"),
-            };
-            socket.write_all(request.as_bytes()).await?;
-            socket.shutdown().await?;
-            let mut output = Vec::new();
-            socket.take(65537).read_to_end(&mut output).await?;
-            ensure!(output.len() <= 65536, "oversized helper response");
-            Ok::<_, anyhow::Error>(String::from_utf8(output)?)
-        })
-        .await?
-    }
     async fn discover(
         &self,
         i: &Instance,
@@ -165,15 +81,8 @@ impl Helper {
         }
         Ok(o)
     }
-    fn remove_staged(&self, unit: &str) -> Result<()> {
-        let path = self.staging.join(format!("{unit}.cred"));
-        if path.try_exists()? {
-            fs::remove_file(path)?;
-            fs::File::open(&self.staging)?.sync_all()?;
-        }
-        Ok(())
-    }
 }
+
 impl Host {
     fn deployment_schema(&self) -> Result<()> {
         self.store.0.execute_batch("CREATE TABLE IF NOT EXISTS deployment_units(agent TEXT PRIMARY KEY,generation TEXT NOT NULL,unit_id TEXT NOT NULL,operation TEXT NOT NULL,event TEXT NOT NULL,revision INTEGER NOT NULL,cleanup INTEGER NOT NULL DEFAULT 0,cleaned INTEGER NOT NULL DEFAULT 0,result TEXT,issue TEXT); CREATE TABLE IF NOT EXISTS deployment_attempts(nonce TEXT PRIMARY KEY,operation TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deployment_status(generation TEXT PRIMARY KEY,event TEXT NOT NULL)")?;
@@ -396,8 +305,8 @@ impl Host {
             .iter()
             .filter(|(_, r)| {
                 r.credential_profile == "none"
-                    && r.harness.verify().is_ok()
-                    && r.adapter.verify().is_ok()
+                    && r.harness.available().is_ok()
+                    && r.adapter.available().is_ok()
             })
             .map(|(id, _)| id.clone())
             .collect();

@@ -1,4 +1,4 @@
-//! Types shared by the isolated paired host, its narrowly scoped installer and agent launcher.
+//! Types shared by trusted-account deployment and the legacy paired-host launcher.
 #![forbid(unsafe_code)]
 use anyhow::{ensure, Result};
 use buzz_core::paired_message::{display_name, runtime_id, Policy, Scope};
@@ -17,10 +17,23 @@ use std::{
 #[serde(deny_unknown_fields)]
 pub struct Executable {
     pub path: PathBuf,
+    #[serde(default)]
     pub sha256: String,
 }
 
 impl Executable {
+    /// Check an operator-resolved local executable without root ownership or hashes.
+    pub fn available(&self) -> Result<()> {
+        let m = fs::metadata(&self.path)?;
+        ensure!(
+            self.path.is_absolute()
+                && m.is_file()
+                && m.mode() & 0o111 != 0
+                && m.mode() & 0o6000 == 0,
+            "local executable unavailable"
+        );
+        Ok(())
+    }
     pub fn verify(&self) -> Result<()> {
         let path = &self.path;
         // All path components must be root-owned and non-writable to agents.
@@ -73,6 +86,9 @@ pub struct Runtime {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Catalog {
+    /// Trusted account execution configuration; required by the new deployment route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<user_service::LocalContext>,
     #[serde(default)]
     pub community: Option<String>,
     #[serde(skip)]
@@ -339,6 +355,7 @@ mod tests {
             sha256: "dd".repeat(32),
         };
         let cat = Catalog {
+            local: None,
             community: Some("https://demo.test".into()),
             source: None,
             label: "local".into(),
@@ -438,3 +455,6 @@ pub mod runtime_context;
 
 /// Same-unit fixed action transactions; no second controller.
 pub mod service_actions;
+
+/// Fixed trusted-account user services for registered-host deployment.
+pub mod user_service;

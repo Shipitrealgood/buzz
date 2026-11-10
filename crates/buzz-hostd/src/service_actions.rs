@@ -469,4 +469,4 @@ pub fn apply(
 
 #[cfg(test)]
 #[path = "service_actions_tests.rs"]
-mod tests;
+pub(crate) mod tests;

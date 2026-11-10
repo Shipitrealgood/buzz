@@ -42,7 +42,7 @@ pub enum Command {
         /// One bounded pass, useful for operator checks and disposable fixtures.
         #[arg(long)]
         once: bool,
-        /// Enable private deployment only in a compatible fixed helper installation.
+        /// Enable private deployment only in a configured trusted account.
         #[arg(long)]
         deployment: bool,
     },
@@ -87,7 +87,6 @@ pub async fn execute(dir: &Path, command: Command) -> Result<()> {
             ensure!(relay.to_hex() == relay_key, "invalid relay public key");
             if deployment {
                 buzz_hostd::deployment::Helper::installed(dir)?;
-                buzz_hostd::Catalog::read(Path::new(buzz_hostd::OPERATOR_CATALOG))?;
             }
             let _lock = controller_lock(dir)?;
             let connector = connector(ca_cert.as_deref())?;

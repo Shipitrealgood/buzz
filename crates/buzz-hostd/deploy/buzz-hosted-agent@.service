@@ -1,0 +1,20 @@
+[Unit]
+Description=Buzz hosted agent %i
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=75s
+TimeoutStopSec=5s
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no
+UMask=0077
+StandardOutput=null
+StandardError=null
+LimitCORE=0
+MemoryMax=1G
+TasksMax=128
+CPUQuota=100%
+# The locally generated instance drop-in supplies the fixed runtime entrypoint
+# and credential files. HOME, tools and workspace come from local configuration.

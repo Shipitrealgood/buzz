@@ -179,7 +179,7 @@ async fn generation(dir: &Path, g: &str, settings: &Settings) -> Result<()> {
             } else {
                 BACKSTOP
             };
-            let result = connected(&mut host, &mut ws, g, settings, backstop, COALESCE).await;
+            let result = connected(&mut host, &mut ws, g, settings, backstop, COALESCE, dir).await;
             if result.is_ok() {
                 return Ok(());
             }
@@ -203,6 +203,7 @@ async fn connected(
     settings: &Settings,
     backstop: Duration,
     coalesce: Duration,
+    dir: &Path,
 ) -> Result<()> {
     let mut refresh = true;
     let mut next_refresh = Instant::now();
@@ -241,7 +242,7 @@ async fn connected(
             })
             .await??;
             if settings.deployment {
-                deployment(host, ws, g, settings, Path::new("/var/lib/buzz-hostd")).await?;
+                deployment(host, ws, g, settings, dir).await?;
             }
             next_refresh = Instant::now() + coalesce;
             next_backstop = Instant::now() + backstop;
@@ -273,7 +274,7 @@ async fn deployment(
         return Ok(());
     }
     let helper = buzz_hostd::deployment::Helper::installed(dir)?;
-    let (catalog, revision) = buzz_hostd::Catalog::read(Path::new(buzz_hostd::OPERATOR_CATALOG))?;
+    let (catalog, revision) = helper.catalog()?;
     host.reconcile_deployments(ws, settings.relay, g, &catalog, &revision, &helper)
         .await
 }

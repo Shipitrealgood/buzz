@@ -1,4 +1,4 @@
-//! The three fixed modes share one systemd-owned persistent context.
+//! Fixed runtime modes share the selected local account or legacy systemd context.
 use crate::{Catalog, Instance, Prepared};
 use anyhow::{anyhow, ensure, Result};
 use buzz_core::host_deployment::observation::{LoginState, Models, UnavailableReason};
@@ -21,7 +21,7 @@ pub enum Mode {
     Login,
     Models,
 }
-/// Root-generated immutable systemd execution credential.
+/// Controller-generated immutable systemd execution credential.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Execution {
@@ -36,7 +36,7 @@ pub struct Execution {
     pub mode: Mode,
 }
 impl Execution {
-    /// Bind the fixed action to the root-owned prepared instance.
+    /// Bind the fixed action to the recorded prepared instance.
     pub fn new(i: &Instance, mode: Mode, now: u64) -> Result<Self> {
         let d = i
             .deployment
@@ -84,16 +84,22 @@ impl Execution {
         format!(".buzz-action-{}", self.nonce)
     }
 }
-/// The only shipped policy is offline. This is configuration, not isolation attestation.
+/// Legacy offline policy and the trusted-account route, still gated on S2 readiness.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NetworkPolicy {
     Disabled,
+    /// Normal trusted-account networking; conversation still awaits S2 readiness.
+    TrustedAccount,
 }
 impl NetworkPolicy {
     /// The installed conversation entrypoint requires reviewed online networking.
     pub fn require_conversation(self) -> Result<()> {
         ensure!(self != Self::Disabled, "network-disabled");
+        ensure!(
+            self != Self::TrustedAccount,
+            "current readiness unavailable"
+        );
         Ok(())
     }
 }
@@ -110,8 +116,10 @@ pub struct ActionResult {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub login_output: String,
 }
-/// Paths come exclusively from the installed unit's systemd environment.
+/// Paths come from the fixed unit or operator-configured trusted account.
 pub struct Context {
+    /// Present only for the ordinary trusted-account route.
+    pub account: Option<crate::user_service::LocalContext>,
     pub home: PathBuf,
     pub runtime: PathBuf,
     pub notify: std::ffi::OsString,
@@ -131,6 +139,7 @@ impl Context {
             "wrong systemd context"
         );
         Ok(Self {
+            account: None,
             home,
             runtime,
             notify: env::var_os("NOTIFY_SOCKET")
@@ -139,6 +148,9 @@ impl Context {
     }
     /// The common environment is intentionally independent of inherited provider variables.
     pub fn environment(&self) -> BTreeMap<String, String> {
+        if let Some(account) = &self.account {
+            return account.environment();
+        }
         [
             ("HOME", self.home.clone()),
             ("GROK_HOME", self.home.join(".grok")),
@@ -157,7 +169,11 @@ impl Context {
         let mut c = Command::new(program);
         c.env_clear()
             .envs(self.environment())
-            .current_dir(&self.home)
+            .current_dir(
+                self.account
+                    .as_ref()
+                    .map_or(self.home.as_path(), |a| a.workspace.as_path()),
+            )
             .stdin(Stdio::null())
             .kill_on_drop(true);
         c
@@ -167,7 +183,9 @@ fn publish(dir: &Path, result: &ActionResult) -> Result<()> {
     let mut f = tempfile::NamedTempFile::new_in(dir)?;
     serde_json::to_writer(&mut f, result)?;
     f.flush()?;
+    f.as_file().sync_all()?;
     f.persist(dir.join(result.execution.filename()))?;
+    fs::File::open(dir)?.sync_all()?;
     Ok(())
 }
 fn notify(path: &std::ffi::OsStr) -> Result<()> {
@@ -200,6 +218,10 @@ pub async fn finite(
         "provider environment forbidden"
     );
     let rt = &catalog.runtimes[&i.runtime_id];
+    ensure!(
+        context.account.is_none() || execution.mode == Mode::Models,
+        "native login is external"
+    );
     ensure!(execution.mode != Mode::Conversation, "finite mode required");
     let mut command = match execution.mode {
         Mode::Login => {
@@ -235,10 +257,17 @@ pub async fn finite(
         },
         login_output: String::new(),
     };
+    command.process_group(0);
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    let _group = ProcessGroup(
+        rustix::process::Pid::from_raw(
+            child.id().ok_or_else(|| anyhow!("missing child ID"))? as i32
+        )
+        .ok_or_else(|| anyhow!("invalid child ID"))?,
+    );
     let mut stdout = child
         .stdout
         .take()
@@ -285,7 +314,7 @@ pub async fn finite(
     }
     let success = failure.is_none() && status.is_some_and(|s| s.success());
     result.finished = true;
-    result.observed_at = nostr::Timestamp::now().as_secs();
+    result.observed_at = nostr::Timestamp::now().as_secs().min(execution.deadline);
     result.login_output.clear();
     if execution.mode == Mode::Login {
         result.login_at = Some(result.observed_at);
@@ -337,9 +366,12 @@ pub async fn finite(
             }
         };
     }
+    // Terminate descendants before publishing the terminal receipt; systemd also
+    // confirms the service cgroup is empty before observe exposes this result.
+    drop(_group);
     publish(&context.home, &result)?;
     let live = context.runtime.join(execution.filename());
-    if live.try_exists()? {
+    if context.runtime != context.home && live.try_exists()? {
         fs::remove_file(live)?;
     }
     // systemd KillMode=control-group reaps any descendants when this main process exits.
@@ -426,4 +458,65 @@ pub async fn run() -> Result<()> {
         );
     use std::os::unix::process::CommandExt;
     Err(command.as_std_mut().exec().into())
+}
+
+// The runtime service owns the whole process group even when the direct child exits early.
+struct ProcessGroup(rustix::process::Pid);
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        let _ = rustix::process::kill_process_group(self.0, rustix::process::Signal::KILL);
+    }
+}
+
+/// Fixed user-service entry; argv and environment come only from local configuration.
+pub async fn run_user(state: &Path, unit: &str) -> Result<()> {
+    let service = crate::user_service::UserService::installed(state)?;
+    ensure!(crate::id(unit), "invalid unit ID");
+    let dir = state.join("hosted").join(unit);
+    crate::user_service::directory(&dir)?;
+    ensure!(
+        !state
+            .join("hosted")
+            .join(format!("{unit}.closed"))
+            .try_exists()?,
+        "unit fenced"
+    );
+    let creds = PathBuf::from(
+        env::var_os("CREDENTIALS_DIRECTORY").ok_or_else(|| anyhow!("credentials missing"))?,
+    );
+    // systemd credential copies can be read-only (0400), and are owned by this user.
+    let prepared: Prepared = serde_json::from_slice(&crate::user_service::private_file(
+        &creds.join("instance"),
+        131072,
+    )?)?;
+    let execution: Execution = serde_json::from_slice(&crate::user_service::private_file(
+        &creds.join("execution"),
+        4096,
+    )?)?;
+    let (catalog, revision) = service.catalog()?;
+    prepared.instance.validate(&catalog, &revision)?;
+    ensure!(
+        prepared.instance.unit_id == unit && execution.mode == Mode::Models,
+        "conversation unavailable until current readiness is implemented"
+    );
+    execution.validate(&prepared.instance, nostr::Timestamp::now().as_secs())?;
+    let rt = &catalog.runtimes[&prepared.instance.runtime_id];
+    rt.harness.available()?;
+    rt.adapter.available()?;
+    let context = Context {
+        account: catalog.local.clone(),
+        home: dir.clone(),
+        runtime: dir,
+        notify: env::var_os("NOTIFY_SOCKET").ok_or_else(|| anyhow!("notify socket missing"))?,
+    };
+    ensure!(catalog.current(&revision)?, "local configuration changed");
+    finite(
+        &context,
+        &prepared,
+        &catalog,
+        &execution,
+        NetworkPolicy::TrustedAccount,
+    )
+    .await?;
+    Ok(())
 }

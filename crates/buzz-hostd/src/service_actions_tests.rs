@@ -15,7 +15,7 @@ fn output(text: String) -> Output {
         stderr: vec![],
     }
 }
-fn fixture() -> (tempfile::TempDir, Layout, Prepared, crate::Catalog, Context) {
+pub(crate) fn fixture() -> (tempfile::TempDir, Layout, Prepared, crate::Catalog, Context) {
     let dir = tempfile::tempdir().unwrap();
     for name in ["staging", "private", "state", "runtime", "units"] {
         fs::create_dir(dir.path().join(name)).unwrap();
@@ -51,6 +51,7 @@ fn fixture() -> (tempfile::TempDir, Layout, Prepared, crate::Catalog, Context) {
         sha256: "00".repeat(32),
     };
     let cat = crate::Catalog {
+        local: None,
         community: Some(scope.community.clone()),
         source: None,
         label: "fixture".into(),
@@ -109,6 +110,7 @@ fn fixture() -> (tempfile::TempDir, Layout, Prepared, crate::Catalog, Context) {
     save(&layout, &unit, "cred", &prepared).unwrap();
     conversation(&layout, &prepared.instance).unwrap();
     let context = Context {
+        account: None,
         home: layout.state_root.join(format!("buzz-agent-{unit}")),
         runtime: layout.runtime_root.join(format!("buzz-agent-{unit}")),
         notify: dir.path().join("notify").into_os_string(),

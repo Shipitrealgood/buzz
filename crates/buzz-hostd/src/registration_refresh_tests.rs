@@ -292,6 +292,7 @@ async fn verified_bursts_coalesce_and_missed_notice_recovers_on_backstop() {
         &f.settings,
         Duration::from_secs(2),
         Duration::from_millis(250),
+        _dir.path(),
     );
     let (_, result) = tokio::join!(driver, session);
     result.unwrap();
@@ -317,7 +318,15 @@ async fn untrusted_and_wrong_scope_notifications_fail_closed() {
         };
         let (_, result) = tokio::join!(
             driver,
-            connected(&mut host, &mut ws, &g, &f.settings, BACKSTOP, COALESCE)
+            connected(
+                &mut host,
+                &mut ws,
+                &g,
+                &f.settings,
+                BACKSTOP,
+                COALESCE,
+                _dir.path()
+            )
         );
         assert!(result.is_err(), "{command}");
         assert_eq!(host.state(&g).unwrap(), "active");
@@ -348,7 +357,7 @@ async fn hint_during_snapshot_is_not_discarded() {
         .unwrap();
     f.counts.during_read.store(true, Ordering::SeqCst);
     tokio::select! {
-        result=connected(&mut host,&mut ws,&g,&f.settings,BACKSTOP,Duration::from_millis(100)) => panic!("{result:?}"),
+        result=connected(&mut host,&mut ws,&g,&f.settings,BACKSTOP,Duration::from_millis(100),_dir.path()) => panic!("{result:?}"),
         _=wait_for(||f.counts.pages.load(Ordering::SeqCst)==4)=>{}
     }
     assert_eq!(f.counts.auth.load(Ordering::SeqCst), 1);
@@ -376,7 +385,6 @@ async fn failed_old_generation_does_not_block_new_offer() {
 
 #[tokio::test]
 async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotation() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let f = Fixture::new().await;
     let (dir, mut h, first) = host(true);
     h.deployment_cleanup_generations(&f.settings.community)
@@ -444,39 +452,77 @@ async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotatio
             );
         }
     }
-    let socket = dir.path().join("cleanup-proof.sock");
-    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    let helper = buzz_hostd::deployment::Helper::at(dir.path(), &socket).unwrap();
-    let seen = Arc::new(Mutex::new(BTreeSet::new()));
-    let received = seen.clone();
-    let release = Arc::new(tokio::sync::Notify::new());
-    let resume = release.clone();
-    let server = tokio::spawn(async move {
-        let mut tasks = JoinSet::new();
-        loop {
-            tokio::select! {
-                stream=listener.accept()=>{
-                    let (mut stream,_)=stream.unwrap();
-                    let (seen,resume,slow)=(received.clone(),resume.clone(),slow_unit.clone());
-                    tasks.spawn(async move {
-                        let mut raw=Vec::new(); stream.read_to_end(&mut raw).await.unwrap();
-                        let raw=String::from_utf8(raw).unwrap();
-                        seen.lock().unwrap().insert(raw.clone());
-                        if raw==format!("cleanup {slow}") { resume.notified().await; }
-                        let _=stream.write_all(b"failed\n").await;
-                    });
-                },
-                _=tasks.join_next(),if !tasks.is_empty()=>{}
-            }
-        }
-    });
+    let log = dir.path().join("manager.log");
+    let release = dir.path().join("release");
+    let manager = dir.path().join("fake-systemctl");
+    std::fs::write(&manager, format!(r#"#!/usr/bin/python3
+import sys,time,pathlib
+root=pathlib.Path(__file__).parent
+unit=sys.argv[-1]
+if 'show' in sys.argv:
+    with open(root/'manager.log','a') as f: f.write(unit+'\n')
+    if unit=='buzz-hosted-agent@{slow_unit}.service':
+        while not (root/'release').exists(): time.sleep(.02)
+    print('LoadState=loaded\nFragmentPath='+str(root/'buzz-hosted-agent@.service')+'\nDropInPaths=\nActiveState=inactive\nMainPID=0\nControlPID=0\nTasksCurrent=0')
+else: sys.exit(1)
+"#)).unwrap();
+    std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let local = json!({"home":dir.path(),"workspace":dir.path(),"tool_path":"/usr/bin:/bin","unit_dir":dir.path(),"launcher":"/usr/bin/true","systemctl":manager});
+    let config = json!({"local":local,"community":f.settings.community,"label":"fixture","capacity":1,"relay_key":f.settings.relay.to_hex(),"runtimes":{"native/test":{"harness":{"path":"/usr/bin/true"},"adapter":{"path":"/usr/bin/true"},"args":[],"credential_profile":"none"}}});
+    std::fs::write(
+        dir.path().join("deployment.json"),
+        serde_json::to_vec(&config).unwrap(),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        dir.path().join("deployment.json"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let helper = buzz_hostd::deployment::Helper::installed(dir.path()).unwrap();
+    // Persist the same per-unit local context used by real cleanup, without starting anything.
+    let mut stmt = db
+        .prepare("SELECT unit_id,generation FROM deployment_units")
+        .unwrap();
+    for row in stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .unwrap()
+    {
+        let (id, g) = row.unwrap();
+        let owner: String = db
+            .query_row("SELECT owner FROM grants WHERE g=?", [&g], |r| r.get(0))
+            .unwrap();
+        let unit = buzz_hostd::unit_id(
+            &Scope {
+                community: f.settings.community.clone(),
+                host: h.public_key().unwrap(),
+                owner: PublicKey::from_hex(&owner).unwrap(),
+                generation: g,
+            },
+            &id,
+        );
+        let path = dir.path().join("hosted").join(unit);
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(path.join("context"), serde_json::to_vec(&local).unwrap()).unwrap();
+        std::fs::set_permissions(path.join("context"), std::fs::Permissions::from_mode(0o600))
+            .unwrap();
+    }
+    let seen = || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>()
+            .len()
+    };
     let driver = async {
-        wait_for(|| seen.lock().unwrap().len() >= 4).await;
+        wait_for(|| seen() >= 4).await;
         // Add a new invitation while one helper request is deliberately held.
         offer(&mut h, false);
         wait_for(|| f.counts.auth.load(Ordering::SeqCst) > 0).await;
         tokio::time::timeout(Duration::from_secs(20), async {
-            while seen.lock().unwrap().len() < 40 {
+            while seen() < 40 {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         })
@@ -491,6 +537,17 @@ async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotatio
             .unwrap(),
             40
         );
+        // Arrival at the fake manager precedes its reply and the durable retry write.
+        wait_for(|| {
+            db.query_row(
+                "SELECT count(*) FROM deployment_units WHERE issue IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap()
+                >= 39
+        })
+        .await;
         assert!(
             db.query_row(
                 "SELECT count(*) FROM deployment_units WHERE issue IS NOT NULL",
@@ -500,14 +557,12 @@ async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotatio
             .unwrap()
                 >= 39
         );
-        release.notify_waiters();
+        std::fs::write(&release, b"go").unwrap();
     };
     tokio::select! {
         result=run_with_helper(dir.path(),f.settings.clone(),false,Some(helper))=>panic!("cleanup stopped controller: {result:?}"),
         _=driver=>{}
     }
-    server.abort();
-    let _ = server.await;
     // Restart enumeration continues from its durable generation cursor.
     drop(h);
     let reopened = Host::at(dir.path(), false).unwrap();
