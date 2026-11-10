@@ -234,7 +234,7 @@ jobs:
       - *derive-canary-version
       - *patch-canary-version
 
-      # Match the Tauri Windows CI prerequisites. These directory tests do
+      # Match the Tauri Windows CI prerequisites. These isolated tests do
       # not execute sidecars, and packaging builds the real ones on its runner.
       - name: Create Windows sidecar placeholders
         shell: bash
@@ -244,12 +244,20 @@ jobs:
             touch "desktop/src-tauri/binaries/${bin}-${TARGET}.exe"
           done
 
+      - name: Initialize native test receipt
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/windows-native-tests"
+          printf 'Source: %s\nRun: %s/%s/actions/runs/%s\nTarget: %s\n' \
+            "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$TARGET" \
+            > "$RUNNER_TEMP/windows-native-tests/source.txt"
+
       - name: Verify paired-host owner on Windows
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked --target "$TARGET" -p buzz-paired-owner --lib | tee "$RUNNER_TEMP/paired-owner-tests.log"
-          grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/paired-owner-tests.log"
+          cargo test --locked --target "$TARGET" -p buzz-paired-owner --lib | tee "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
+          grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
 
       - name: Verify signed directory conversion and loopback discovery
         shell: bash
@@ -257,11 +265,36 @@ jobs:
         run: |
           set -euo pipefail
           for suite in nostr_convert:: commands::agent_discovery::relay_directory:: commands::paired_hosts::; do
-            cargo test --locked --target "$TARGET" --lib "$suite" | tee "$RUNNER_TEMP/discovery-tests.log"
-            grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/discovery-tests.log"
+            log="$RUNNER_TEMP/windows-native-tests/${suite//:/_}.log"
+            cargo test --locked --target "$TARGET" --lib "$suite" | tee "$log"
+            grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$log"
+          done
+
+      - name: Verify exact hosted native cases
+        shell: bash
+        working-directory: desktop/src-tauri
+        run: |
+          set -euo pipefail
+          for case in \
+            commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence \
+            managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary; do
+            log="$RUNNER_TEMP/windows-native-tests/${case##*::}.log"
+            cargo test --locked --target "$TARGET" --lib "$case" -- --exact | tee "$log"
+            grep -Fx "test $case ... ok" "$log"
+            grep -Eq '^test result: ok\. 1 passed; 0 failed; 0 ignored;' "$log"
           done
 
       - name: Verify isolated Windows paired-host SQLite permissions
         if: ${{ !cancelled() }}
         shell: powershell
-        run: ./crates/buzz-paired-owner/windows/test-journal-acl.ps1
+        run: |
+          ./crates/buzz-paired-owner/windows/test-journal-acl.ps1 | Tee-Object -FilePath "$env:RUNNER_TEMP/windows-native-tests/journal-acl.log"
+
+      - name: Upload Windows native test receipts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: buzz-windows-native-tests-${{ github.sha }}
+          path: ${{ runner.temp }}/windows-native-tests
+          if-no-files-found: error
+          retention-days: 7
