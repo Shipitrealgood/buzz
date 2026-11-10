@@ -74,9 +74,11 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
         .and_then(|e| e["id"].as_str())
         .unwrap_or_default()
         .to_owned();
-    let deny = || {
+    let deny = || async {
         if event {
             c.send(RelayMessage::ok(&id, false, DENIED));
+        } else if verb == "REQ" {
+            super::close::refuse(&sub, DENIED, &c, &s).await;
         } else {
             c.send(RelayMessage::closed(&sub, DENIED));
         }
@@ -87,15 +89,15 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
         || (event && parts.len() != 2)
         || (read && (parts.len() != 3 || sub.is_empty() || sub.len() > 256))
     {
-        deny();
+        deny().await;
         return true;
     }
     let Ok(permit) = c.registry.ordinary.clone().try_acquire_owned() else {
-        deny();
+        deny().await;
         return true;
     };
     let Ok(global) = s.handler_semaphore.clone().try_acquire_owned() else {
-        deny();
+        deny().await;
         return true;
     };
     let raw = if event {

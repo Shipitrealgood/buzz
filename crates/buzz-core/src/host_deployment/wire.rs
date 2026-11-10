@@ -14,6 +14,16 @@ pub const MAX_FRAME: usize = 60 * 1024;
 pub const MAX_EVENT: usize = 32 * 1024;
 /// Maximum lifetime of one immediately consumed execution permit.
 pub const PERMIT_SECONDS: u64 = 10;
+/// Reserved restrictive-operation namespace; ordinary Deploy IDs must exclude it.
+pub const CLEANUP_OPERATION_PREFIX: &str = "c1ea0001";
+fn validate_command_id(a: &Authority, created: u64) -> Result<()> {
+    if a.operation_id.starts_with(CLEANUP_OPERATION_PREFIX)
+        && (a.action != Action::Cleanup || a.operation_id != cleanup_operation_id(a, created)?)
+    {
+        return Err(Error);
+    }
+    Ok(())
+}
 
 /// Signed routing metadata. Content remains encrypted to the other participant.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -154,6 +164,7 @@ pub fn sign_command(
         created,
         ciphertext,
     )?;
+    validate_command_id(authority, created)?;
     if keys.public_key() != authority.scope.owner {
         return Err(Error);
     }
@@ -168,6 +179,24 @@ pub fn sign_command(
         MAX_EVENT,
     )
 }
+/// Content-bound restrictive ID. Retained envelopes still require exact byte replay;
+/// after supersession this ID cannot be reused with fresh authority/revision.
+pub fn cleanup_operation_id(authority: &Authority, created: u64) -> Result<String> {
+    if authority.action != Action::Cleanup {
+        return Err(Error);
+    }
+    let mut canonical = authority.clone();
+    canonical.operation_id.clear();
+    let bytes = serde_json::to_vec(&(
+        "buzz-host-cleanup-replacement-v1",
+        canonical,
+        created,
+        KIND_HOST_DEPLOYMENT_V1,
+    ))
+    .map_err(|_| Error)?;
+    let digest = hex::encode(Sha256::digest(bytes));
+    Ok(format!("{CLEANUP_OPERATION_PREFIX}{}", &digest[..56]))
+}
 /// Encrypt a resolved native command once; caller journals before effects.
 pub fn seal_command(
     keys: &Keys,
@@ -178,6 +207,9 @@ pub fn seal_command(
     command.validate(&authority)?;
     let content = encrypted(keys, authority.scope.host, command)?;
     authority.content_sha256 = hex::encode(Sha256::digest(content.as_bytes()));
+    if authority.action == Action::Cleanup {
+        authority.operation_id = cleanup_operation_id(&authority, now)?;
+    }
     let event = sign_command(keys, &authority, content.as_bytes(), now)?;
     Ok((authority, event))
 }
@@ -195,12 +227,15 @@ pub fn verify(raw: &[u8], origin: &str, signer: PublicKey) -> Result<(Event, Hea
         return Err(Error);
     }
     match &h {
-        Header::Command { authority } => authority.validate(
-            h.scope(),
-            authority.expected_revision,
-            e.created_at.as_secs(),
-            e.content.as_bytes(),
-        )?,
+        Header::Command { authority } => {
+            authority.validate(
+                h.scope(),
+                authority.expected_revision,
+                e.created_at.as_secs(),
+                e.content.as_bytes(),
+            )?;
+            validate_command_id(authority, e.created_at.as_secs())?;
+        }
         Header::Status { expires_at, .. }
             if *expires_at <= e.created_at.as_secs()
                 || expires_at.saturating_sub(e.created_at.as_secs()) > 120 =>
@@ -340,7 +375,7 @@ pub struct Query {
     pub view: String,
     /// Fresh unpredictable one-attempt challenge.
     pub nonce: String,
-    /// Exact operation for operation/permit reads.
+    /// Exact operation for operation/permit; optional exclusive rotation point for pending.
     pub operation_id: Option<String>,
 }
 impl Query {
@@ -353,7 +388,9 @@ impl Query {
                 self.view.as_str(),
                 "status" | "pending" | "operation" | "permit" | "live"
             )
-            || matches!(self.view.as_str(), "operation" | "permit") != self.operation_id.is_some()
+            || (matches!(self.view.as_str(), "operation" | "permit") && self.operation_id.is_none())
+            || (!matches!(self.view.as_str(), "operation" | "permit" | "pending")
+                && self.operation_id.is_some())
             || self
                 .operation_id
                 .as_deref()

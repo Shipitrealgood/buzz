@@ -105,14 +105,31 @@ impl Db {
                             && p.get::<Vec<u8>, _>("host_pubkey") == host
                             && p.get::<Vec<u8>, _>("generation") == g
                             && p.get::<i64, _>("revision") == a.expected_revision as i64
-                            && p.get::<Option<String>, _>("cleanup_operation_id").is_none(),
+                            && (a.action == Action::Cleanup
+                                || p.get::<Option<String>, _>("cleanup_operation_id").is_none()),
                     )?;
                 } else {
                     require(a.action == Action::Deploy && a.expected_revision == 0)?;
                 }
-                let room: bool = sqlx::query_scalar("SELECT count(*)<4096 AND count(*) FILTER(WHERE owner_pubkey=$2)<1024 FROM paired_agent_operations WHERE community_id=$1")
-                    .bind(t).bind(owner).fetch_one(tx.conn()).await?;
-                require(room)?;
+                if a.action == Action::Deploy {
+                    let room: bool = sqlx::query_scalar("SELECT count(*)<4096 AND count(*) FILTER(WHERE owner_pubkey=$2)<1024 FROM paired_agent_operations WHERE community_id=$1 AND action='deploy'")
+                        .bind(t).bind(owner).fetch_one(tx.conn()).await?;
+                    require(room)?;
+                } else if let Some(anchor) = p
+                    .as_ref()
+                    .and_then(|p| p.get::<Option<String>, _>("cleanup_operation_id"))
+                {
+                    require(
+                        a.operation_id
+                            == wire::cleanup_operation_id(a, event.created_at.as_secs())
+                                .map_err(|_| denied())?,
+                    )?;
+                    // Exactly one immutable anchor and one current replacement per
+                    // existing placement. Retired replacement envelopes are no
+                    // longer retrievable; their old revision cannot execute again.
+                    sqlx::query("DELETE FROM paired_agent_operations WHERE community_id=$1 AND agent_pubkey=$2 AND action='cleanup' AND operation_id<>$3")
+                        .bind(t).bind(a.agent.as_bytes().as_slice()).bind(anchor).execute(tx.conn()).await?;
+                }
                 let state = if a.action == Action::Cleanup {
                     "cleanup-pending"
                 } else {
@@ -121,7 +138,7 @@ impl Db {
                 let cleanup = (a.action == Action::Cleanup).then_some(&a.operation_id);
                 sqlx::query("INSERT INTO paired_agent_operations(community_id,owner_pubkey,operation_id,agent_pubkey,host_pubkey,generation,action,expected_revision,expires_at,content_sha256,event_json,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")
                     .bind(t).bind(owner).bind(&a.operation_id).bind(a.agent.as_bytes().as_slice()).bind(host).bind(&g[..]).bind(action(a.action)).bind(a.expected_revision as i64).bind(a.expires_at as i64).bind(&a.content_sha256).bind(raw).bind(state).execute(tx.conn()).await?;
-                sqlx::query("INSERT INTO paired_agent_placements VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(community_id,agent_pubkey) DO UPDATE SET revision=excluded.revision,state=excluded.state,last_operation_id=excluded.last_operation_id,cleanup_operation_id=excluded.cleanup_operation_id")
+                sqlx::query("INSERT INTO paired_agent_placements VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(community_id,agent_pubkey) DO UPDATE SET revision=excluded.revision,state=excluded.state,last_operation_id=excluded.last_operation_id,cleanup_operation_id=COALESCE(paired_agent_placements.cleanup_operation_id,excluded.cleanup_operation_id)")
                     .bind(t).bind(a.agent.as_bytes().as_slice()).bind(owner).bind(host).bind(&g[..]).bind(a.expected_revision as i64 + 1).bind(&a.operation_id).bind(state).bind(&a.operation_id).bind(cleanup).execute(tx.conn()).await?;
             }
             wire::Header::Result { result } => {
@@ -186,14 +203,23 @@ impl Db {
                 json!({"event":e})
             }
             "pending" | "live" => {
-                let rows: Vec<String> = sqlx::query_scalar("SELECT o.operation_id FROM paired_agent_operations o JOIN paired_agent_placements p ON p.community_id=o.community_id AND p.agent_pubkey=o.agent_pubkey AND p.last_operation_id=o.operation_id WHERE o.community_id=$1 AND o.owner_pubkey=$2 AND o.host_pubkey=$3 AND o.generation=$4 AND o.state IN ('pending','failed','cleanup-pending') AND (o.expires_at>$5 OR o.state IN ('pending','cleanup-pending')) ORDER BY o.operation_id LIMIT 33")
-                    .bind(t).bind(owner).bind(host).bind(&g[..]).bind(now).fetch_all(tx.conn()).await?;
+                let rows: Vec<String> = sqlx::query_scalar("SELECT o.operation_id FROM paired_agent_operations o JOIN paired_agent_placements p ON p.community_id=o.community_id AND p.agent_pubkey=o.agent_pubkey AND p.last_operation_id=o.operation_id WHERE o.community_id=$1 AND o.owner_pubkey=$2 AND o.host_pubkey=$3 AND o.generation=$4 AND o.state IN ('pending','failed','cleanup-pending') AND (o.expires_at>$5 OR o.state IN ('pending','cleanup-pending')) ORDER BY (o.operation_id <= $6),o.operation_id LIMIT 33")
+                    .bind(t).bind(owner).bind(host).bind(&g[..]).bind(now).bind(q.operation_id.as_deref().unwrap_or("")).fetch_all(tx.conn()).await?;
                 json!({"operations":rows.iter().take(32).collect::<Vec<_>>(),"more":rows.len()>32})
             }
             "operation" | "permit" => {
                 let op = q.operation_id.as_deref().ok_or_else(denied)?;
                 let r = sqlx::query("SELECT o.event_json,o.result_json,o.state,o.expires_at,o.permit_nonce,p.unit_id,p.revision,p.last_operation_id,p.cleanup_operation_id FROM paired_agent_operations o JOIN paired_agent_placements p ON p.community_id=o.community_id AND p.agent_pubkey=o.agent_pubkey WHERE o.community_id=$1 AND o.owner_pubkey=$2 AND o.host_pubkey=$3 AND o.generation=$4 AND o.operation_id=$5")
-                    .bind(t).bind(owner).bind(host).bind(&g[..]).bind(op).fetch_optional(tx.conn()).await?.ok_or_else(denied)?;
+                    .bind(t).bind(owner).bind(host).bind(&g[..]).bind(op).fetch_optional(tx.conn()).await?;
+                let Some(r) = r else {
+                    require(q.view == "operation")?;
+                    tx.commit().await?;
+                    return Ok(wire::Reply {
+                        query: q.clone(),
+                        expires_at: now as u64 + wire::PERMIT_SECONDS,
+                        data: json!({"state":"missing-or-superseded","event":null,"result":null}),
+                    });
+                };
                 if q.view == "permit" {
                     require(
                         reader == scope.host

@@ -179,3 +179,48 @@ fn bounded_operation_with_receipt_fits_encrypted_query_and_rejects_padded_result
     )
     .is_err());
 }
+
+#[test]
+fn cleanup_namespace_cannot_be_reused_for_deploy_or_foreign_cleanup() {
+    let (owner, _, a) = input();
+    let (a, e) = seal_command(&owner, a, &Command::Cleanup {}, 100).unwrap();
+    assert!(a.operation_id.starts_with(CLEANUP_OPERATION_PREFIX));
+    assert_eq!(a.operation_id.len(), 64);
+    for case in ["deploy", "foreign-agent", "revision", "expiry", "created"] {
+        let mut changed = a.clone();
+        let mut created = 100;
+        match case {
+            "deploy" => changed.action = Action::Deploy,
+            "foreign-agent" => changed.agent = Keys::generate().public_key(),
+            "revision" => changed.expected_revision += 1,
+            "expiry" => changed.expires_at += 1,
+            "created" => created += 1,
+            _ => unreachable!(),
+        }
+        let header = serde_json::to_string(&Header::Command { authority: changed }).unwrap();
+        let forged = nostr::EventBuilder::new(e.kind, e.content.clone())
+            .tags([
+                nostr::Tag::parse(["deployment", &header]).unwrap(),
+                nostr::Tag::parse(["p", &a.scope.host.to_hex()]).unwrap(),
+            ])
+            .custom_created_at(nostr::Timestamp::from(created))
+            .sign_with_keys(&owner)
+            .unwrap();
+        forged.verify().unwrap();
+        assert!(
+            verify(
+                &serde_json::to_vec(&forged).unwrap(),
+                &a.scope.community,
+                owner.public_key()
+            )
+            .is_err(),
+            "{case}"
+        );
+    }
+    let mut normal = a.clone();
+    normal.operation_id = "ab".repeat(32);
+    for action in [Action::Deploy, Action::Cleanup] {
+        normal.action = action;
+        assert!(sign_command(&owner, &normal, e.content.as_bytes(), 100).is_ok());
+    }
+}

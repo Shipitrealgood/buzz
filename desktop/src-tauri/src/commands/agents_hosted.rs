@@ -144,6 +144,11 @@ pub(crate) async fn create<R: tauri::Runtime>(
     if std::env::var("BUZZ_NATIVE_HOST_DEPLOYMENT_V1").as_deref() != Ok("1") {
         return Err("Native host deployment disabled".into());
     }
+    if !buzz_core_pkg::host_registry::identifier(&operation)
+        || operation.starts_with(d::wire::CLEANUP_OPERATION_PREFIX)
+    {
+        return Err("Invalid Deploy operation ID: cleanup namespace is reserved".into());
+    }
     let session = Session::capture(state, &scope.community, &scope.owner.to_hex())
         .await
         .map_err(|e| e.to_string())?;

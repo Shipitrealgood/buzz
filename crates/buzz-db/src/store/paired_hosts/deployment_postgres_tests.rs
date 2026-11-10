@@ -391,3 +391,253 @@ async fn migration_schema_deployment_82_preserves_registration_and_matches_desir
         );
     }
 }
+
+fn unchecked_command(owner: &Keys, a: &Authority, content: &str, created: u64) -> Event {
+    nostr::EventBuilder::new(nostr::Kind::Custom(43104), content)
+        .tags([
+            nostr::Tag::parse([
+                "deployment",
+                &serde_json::to_string(&wire::Header::Command {
+                    authority: a.clone(),
+                })
+                .unwrap(),
+            ])
+            .unwrap(),
+            nostr::Tag::parse(["p", &a.scope.host.to_hex()]).unwrap(),
+        ])
+        .custom_created_at(nostr::Timestamp::from(created))
+        .sign_with_keys(owner)
+        .unwrap()
+}
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn cleanup_reserved_capacity_and_bounded_replacements_preserve_anchor() {
+    use buzz_core::host_deployment::{Command, DeploymentResult};
+    let db = Db::from_pool(
+        sqlx::PgPool::connect(&crate::test_support::database_url())
+            .await
+            .unwrap(),
+    );
+    for community_quota in [false, true] {
+        let name = format!("cleanup-quota-{}.test", uuid::Uuid::new_v4());
+        let c = db.ensure_configured_community(&name).await.unwrap().id;
+        let origin = format!("https://{name}");
+        let (owner, host) = (Keys::generate(), Keys::generate());
+        let (scope, _) = enroll(&db, c, &owner, &host, &origin).await;
+        let agent = Keys::generate().public_key();
+        let (mut authority, first) =
+            command(&owner, &scope, agent, &"01".repeat(32), 0, Action::Deploy);
+        db.post_host_deployment(
+            c,
+            &origin,
+            owner.public_key(),
+            &serde_json::to_vec(&first).unwrap(),
+            false,
+        )
+        .await
+        .unwrap();
+        let foreign_agent = Keys::generate().public_key();
+        let (_, foreign) = command(
+            &owner,
+            &scope,
+            foreign_agent,
+            &"04".repeat(32),
+            0,
+            Action::Deploy,
+        );
+        db.post_host_deployment(
+            c,
+            &origin,
+            owner.public_key(),
+            &serde_json::to_vec(&foreign).unwrap(),
+            false,
+        )
+        .await
+        .unwrap();
+        // Seed only quota history, not live authority. Multiple former owners fill
+        // community history; the current owner remains below its own limit.
+        let count = if community_quota { 4094 } else { 1022 };
+        sqlx::query("INSERT INTO paired_agent_operations SELECT community_id,CASE WHEN $3 THEN decode(repeat(md5((n/1024)::text),2),'hex') ELSE owner_pubkey END,lpad(to_hex(n),64,'0'),agent_pubkey,host_pubkey,generation,action,expected_revision,expires_at,content_sha256,event_json,state,result_json,permit_nonce,permit_expires_at FROM paired_agent_operations CROSS JOIN generate_series(1,$2) n WHERE community_id=$1 AND operation_id=$4")
+            .bind(c.as_uuid()).bind(count).bind(community_quota).bind(&authority.operation_id).execute(db.pool()).await.unwrap();
+        let (_, blocked) = command(
+            &owner,
+            &scope,
+            Keys::generate().public_key(),
+            &"02".repeat(32),
+            0,
+            Action::Deploy,
+        );
+        assert!(db
+            .post_host_deployment(
+                c,
+                &origin,
+                owner.public_key(),
+                &serde_json::to_vec(&blocked).unwrap(),
+                false
+            )
+            .await
+            .is_err());
+        authority.action = Action::Cleanup;
+        let mut anchor = String::new();
+        let mut previous: Option<(Authority, Event)> = None;
+        for revision in 1..=6 {
+            authority.expected_revision = revision;
+            let now = nostr::Timestamp::now().as_secs();
+            let (a, e) =
+                wire::seal_command(&owner, authority.clone(), &Command::Cleanup {}, now).unwrap();
+            let raw = serde_json::to_string(&e).unwrap();
+            db.post_host_deployment(c, &origin, owner.public_key(), raw.as_bytes(), false)
+                .await
+                .unwrap();
+            db.post_host_deployment(c, &origin, owner.public_key(), raw.as_bytes(), false)
+                .await
+                .unwrap();
+            assert!(
+                db.post_host_deployment(
+                    c,
+                    &origin,
+                    owner.public_key(),
+                    format!(" {raw}").as_bytes(),
+                    false
+                )
+                .await
+                .is_err(),
+                "retained event bytes are immutable"
+            );
+            let changed_time = unchecked_command(&owner, &a, &e.content, now - 1);
+            assert!(db
+                .post_host_deployment(
+                    c,
+                    &origin,
+                    owner.public_key(),
+                    &serde_json::to_vec(&changed_time).unwrap(),
+                    false
+                )
+                .await
+                .is_err());
+            if revision == 1 {
+                anchor = raw.clone();
+            }
+            if revision > 2 {
+                let (old_a, old_e) = previous.as_ref().unwrap();
+                assert!(
+                    db.post_host_deployment(
+                        c,
+                        &origin,
+                        owner.public_key(),
+                        &serde_json::to_vec(old_e).unwrap(),
+                        false
+                    )
+                    .await
+                    .is_err(),
+                    "retired replay is stale"
+                );
+                let mut changed = old_a.clone();
+                changed.expected_revision = revision + 1;
+                let changed = unchecked_command(&owner, &changed, &old_e.content, now);
+                assert!(
+                    db.post_host_deployment(
+                        c,
+                        &origin,
+                        owner.public_key(),
+                        &serde_json::to_vec(&changed).unwrap(),
+                        false
+                    )
+                    .await
+                    .is_err(),
+                    "retired ID cannot receive fresh authority"
+                );
+                // Retired IDs cannot cross into opaque Deploy/first-Cleanup IDs,
+                // including another fresh placement (which has no fence yet).
+                for action in [Action::Deploy, Action::Cleanup] {
+                    let mut reused = old_a.clone();
+                    reused.agent = foreign_agent;
+                    reused.action = action;
+                    reused.expected_revision = 1;
+                    let reused = unchecked_command(&owner, &reused, &old_e.content, now);
+                    assert!(db
+                        .post_host_deployment(
+                            c,
+                            &origin,
+                            owner.public_key(),
+                            &serde_json::to_vec(&reused).unwrap(),
+                            false
+                        )
+                        .await
+                        .is_err());
+                }
+                let q = wire::Query {
+                    v: 1,
+                    scope: scope.clone(),
+                    view: "operation".into(),
+                    nonce: "ab".repeat(32),
+                    operation_id: Some(old_a.operation_id.clone()),
+                };
+                let missing = db
+                    .read_host_deployment(c, owner.public_key(), None, false, &q)
+                    .await
+                    .unwrap();
+                assert_eq!(missing.data["state"], "missing-or-superseded");
+                assert!(missing.data["event"].is_null() && missing.data["result"].is_null());
+            }
+            let retained: Vec<String> = sqlx::query_scalar("SELECT event_json FROM paired_agent_operations WHERE community_id=$1 AND action='cleanup'").bind(c.as_uuid()).fetch_all(db.pool()).await.unwrap();
+            assert_eq!(retained.len(), if revision == 1 { 1 } else { 2 });
+            assert!(retained.contains(&anchor) && retained.contains(&raw));
+            let placement = sqlx::query("SELECT unit_id,cleanup_operation_id FROM paired_agent_placements WHERE community_id=$1 AND agent_pubkey=$2").bind(c.as_uuid()).bind(agent.as_bytes().as_slice()).fetch_one(db.pool()).await.unwrap();
+            assert_eq!(placement.get::<String, _>("unit_id"), "01".repeat(32));
+            let anchor_event: Event = serde_json::from_str(&anchor).unwrap();
+            let (
+                _,
+                wire::Header::Command {
+                    authority: anchor_a,
+                },
+            ) = wire::verify(anchor.as_bytes(), &origin, owner.public_key()).unwrap()
+            else {
+                panic!()
+            };
+            assert_eq!(
+                placement.get::<String, _>("cleanup_operation_id"),
+                anchor_a.operation_id
+            );
+            assert_eq!(anchor_event.pubkey, owner.public_key());
+            let (_, resurrect) = command(
+                &owner,
+                &scope,
+                agent,
+                &"03".repeat(32),
+                revision + 1,
+                Action::Deploy,
+            );
+            assert!(db
+                .post_host_deployment(
+                    c,
+                    &origin,
+                    owner.public_key(),
+                    &serde_json::to_vec(&resurrect).unwrap(),
+                    false
+                )
+                .await
+                .is_err());
+            let result = wire::result(
+                &host,
+                &DeploymentResult {
+                    request: a.clone(),
+                    outcome: Outcome::Cleaned,
+                    applied_revision: Some(revision + 1),
+                },
+                now,
+            )
+            .unwrap();
+            db.post_host_deployment(
+                c,
+                &origin,
+                host.public_key(),
+                &serde_json::to_vec(&result).unwrap(),
+                false,
+            )
+            .await
+            .unwrap();
+            previous = Some((a, e));
+        }
+    }
+}

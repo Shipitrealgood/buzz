@@ -148,3 +148,45 @@ root/peer authentication and fixed production paths. Today's registration-only
 service installation fails the execution precondition. Slice3 owns compatible
 service/account/mount integration; native Windows and actual systemd acceptance
 remain separate gates. No installed service or provider was changed.
+
+## Slice 2 review repair: restrictive retention and progress
+
+Conductor-approved refinement, 2026-11-10 (#3738/#3739, H-1/H-2/M-1/M-2):
+ordinary Deploy history remains capped at 1,024 operations per owner/community
+and 4,096 per community. Each existing placement separately reserves at most two
+Cleanup rows: its immutable first cleanup anchor and one current replacement.
+A new currently authorized, unexpired Cleanup at the exact placement revision
+may replace that second row transactionally. `cleanup_operation_id` remains the
+first anchor permanently; unit/agent identity and the Deploy fence never change.
+No schema, migration, extra table, digest chain or retention service is added.
+
+Replacement IDs use the reserved `c1ea0001` prefix plus 56 hex digits of SHA-256
+(224-bit binding) over a domain-separated canonical serialization of Authority
+with operation_id empty, event created_at, and kind43104. Deploy rejects that
+namespace; every Cleanup using it must validate its binding, including a first
+cleanup on another placement. The extension is unshipped/default-off; this does
+not change registration IDs. Native create rejects an explicitly supplied reserved
+Deploy ID before signer capture/materialization. There is no production allocator
+yet; the later caller must exclude this prefix when allocating new Deploy IDs. Authority
+includes version, exact community/owner/host/generation, agent, Cleanup action,
+expected revision, expiry and ciphertext commitment; recipient is the scope host.
+Retained rows still compare the entire original event bytes, including signature
+and tag spelling. Retired replacements lose relay retrieval of their original
+bytes/outcomes and envelope-conflict diagnostics; their caller must retain that
+envelope if history is needed. An operation read returns explicit
+`missing-or-superseded`, never a receipt or success. Old revisions cannot be
+readmitted or executed; changing authority/time under a retired ID fails its
+semantic binding. This is deliberately not a claim to remember forgotten bytes.
+The original anchor remains retrievable exactly. Host storage stays one row per
+agent; Cleanup adds no consumed-permit nonce history or owner create intents.
+
+Pending reads use an optional operation_id as an exclusive rotation point and
+wrap over bounded pages. Host pass and offline cleanup cursors persist before
+attempts in namespaced entries of the existing work_cursor journal. The central
+registration controller runs at most four independent cleanup generation tasks;
+helper failure remains actionable per item and does not terminate discovery.
+This improves progress, not authority: an expired first-receipt command never
+invokes the helper, and only a previously persisted explicit cleanup intent may
+retry offline. Denied management REQs retire an existing same-ID holder through
+the established lifecycle lock before CLOSED; EVENT and COUNT keep their prior
+response behavior.

@@ -22,6 +22,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Fixed helper adapter. Production uses only `installed`; integration can supply
 /// a disposable installation of the same socket/helper implementation.
+#[derive(Clone)]
 pub struct Helper {
     staging: PathBuf,
     socket: PathBuf,
@@ -91,6 +92,21 @@ impl Helper {
 impl Host {
     fn deployment_schema(&self) -> Result<()> {
         self.store.0.execute_batch("CREATE TABLE IF NOT EXISTS deployment_units(agent TEXT PRIMARY KEY,generation TEXT NOT NULL,unit_id TEXT NOT NULL,operation TEXT NOT NULL,event TEXT NOT NULL,revision INTEGER NOT NULL,cleanup INTEGER NOT NULL DEFAULT 0,cleaned INTEGER NOT NULL DEFAULT 0,result TEXT,issue TEXT); CREATE TABLE IF NOT EXISTS deployment_attempts(nonce TEXT PRIMARY KEY,operation TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deployment_status(generation TEXT PRIMARY KEY,event TEXT NOT NULL)")?;
+        Ok(())
+    }
+    fn deployment_cursor(&self, key: &str) -> Result<String> {
+        Ok(self
+            .store
+            .0
+            .query_row("SELECT r FROM work_cursor WHERE g=?", [key], |r| r.get(0))
+            .optional()?
+            .unwrap_or_default())
+    }
+    fn advance_deployment_cursor(&self, key: &str, value: &str) -> Result<()> {
+        self.store.0.execute(
+            "INSERT INTO work_cursor VALUES(?,?) ON CONFLICT(g) DO UPDATE SET r=excluded.r",
+            params![key, value],
+        )?;
         Ok(())
     }
     fn deployment_scope(&self, g: &str) -> Result<Scope> {
@@ -243,12 +259,23 @@ impl Host {
             ws.send_event(event).await?.accepted,
             "deployment status denied"
         );
+        let cursor_key = format!("deployment-pending:{g}");
+        let cursor = self.deployment_cursor(&cursor_key)?;
         let pending = self
-            .deployment_query(ws, relay, &scope, "pending", None)
+            .deployment_query(
+                ws,
+                relay,
+                &scope,
+                "pending",
+                (!cursor.is_empty()).then_some(cursor.as_str()),
+            )
             .await?;
         let operations: Vec<String> = serde_json::from_value(pending.data["operations"].clone())?;
         ensure!(operations.len() <= 32, "oversized work batch");
         for op in operations.iter().take(8) {
+            // Advance durably before awaits: a failed request or process restart
+            // cannot pin the next finite pass to the same failing prefix.
+            self.advance_deployment_cursor(&cursor_key, op)?;
             let row = self
                 .deployment_query(ws, relay, &scope, "operation", Some(op))
                 .await?;
@@ -417,23 +444,31 @@ impl Host {
     /// Revocation alone does not terminate an already-running agent.
     pub async fn cleanup_deployments(&mut self, g: &str, helper: &Helper) -> Result<()> {
         self.deployment_schema()?;
+        let cursor_key = format!("deployment-cleanup:{g}");
+        let cursor = self.deployment_cursor(&cursor_key)?;
         let units: Vec<String> = self
             .store
             .0
-            .prepare("SELECT unit_id FROM deployment_units WHERE generation=? AND cleanup=1 AND cleaned=0 LIMIT 8")?
-            .query_map([g], |r| r.get(0))?
+            .prepare("SELECT unit_id FROM deployment_units WHERE generation=? AND cleanup=1 AND cleaned=0 ORDER BY (unit_id <= ?2),unit_id LIMIT 8")?
+            .query_map(params![g, cursor], |r| r.get(0))?
             .collect::<std::result::Result<_, _>>()?;
         let scope = self.deployment_scope(g)?;
+        self.advance_deployment_cursor(&format!("deployment-generations:{}", scope.community), g)?;
         for id in units {
+            self.advance_deployment_cursor(&cursor_key, &id)?;
             let unit = crate::unit_id(&scope, &id);
-            ensure!(
-                helper.action("cleanup", &unit).await? == "cleaned\n",
-                "local restrictive cleanup pending"
-            );
-            helper.remove_staged(&unit)?;
+            let result = async {
+                ensure!(
+                    helper.action("cleanup", &unit).await? == "cleaned\n",
+                    "local restrictive cleanup pending"
+                );
+                helper.remove_staged(&unit)
+            }
+            .await;
+            // A failed helper attempt remains durable and does not skip later units.
             self.store.0.execute(
-                "UPDATE deployment_units SET cleaned=1,issue=NULL WHERE generation=? AND unit_id=?",
-                params![g, id],
+                "UPDATE deployment_units SET cleaned=?,issue=? WHERE generation=? AND unit_id=?",
+                params![result.is_ok(), result.err().map(|e| e.to_string()), g, id],
             )?;
         }
         Ok(())
@@ -444,11 +479,18 @@ impl Host {
         community: &str,
         helper: &Helper,
     ) -> Result<()> {
-        self.deployment_schema()?;
-        let generations:Vec<String>=self.store.0.prepare("SELECT DISTINCT d.generation FROM deployment_units d JOIN grants g ON g.g=d.generation WHERE g.c=? AND d.cleanup=1 AND d.cleaned=0 LIMIT 32")?.query_map([community],|r|r.get(0))?.collect::<std::result::Result<_,_>>()?;
-        for g in generations {
+        for g in self.deployment_cleanup_generations(community)? {
             self.cleanup_deployments(&g, helper).await?;
         }
         Ok(())
+    }
+    /// Rotate a bounded set of restrictive generation jobs independently of AUTH.
+    /// Cursor shares the existing journal, using a namespace outside grant IDs.
+    pub fn deployment_cleanup_generations(&self, community: &str) -> Result<Vec<String>> {
+        self.deployment_schema()?;
+        let key = format!("deployment-generations:{community}");
+        let cursor = self.deployment_cursor(&key)?;
+        let generations: Vec<String> = self.store.0.prepare("SELECT DISTINCT d.generation FROM deployment_units d JOIN grants g ON g.g=d.generation WHERE g.c=?1 AND d.cleanup=1 AND d.cleaned=0 ORDER BY (d.generation <= ?2),d.generation LIMIT 4")?.query_map(params![community,cursor],|r|r.get(0))?.collect::<std::result::Result<_,_>>()?;
+        Ok(generations)
     }
 }

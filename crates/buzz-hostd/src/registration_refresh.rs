@@ -36,14 +36,20 @@ impl Settings {
 }
 
 pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()> {
+    let helper = settings
+        .deployment
+        .then(|| buzz_hostd::deployment::Helper::installed(dir))
+        .transpose()?;
+    run_with_helper(dir, settings, once, helper).await
+}
+
+async fn run_with_helper(
+    dir: &Path,
+    settings: Settings,
+    once: bool,
+    helper: Option<buzz_hostd::deployment::Helper>,
+) -> Result<()> {
     let mut host = Host::at(dir, false)?;
-    if settings.deployment {
-        host.retry_deployment_cleanup(
-            &settings.community,
-            &buzz_hostd::deployment::Helper::installed(dir)?,
-        )
-        .await?;
-    }
     if once {
         let mut failed = false;
         for g in host.work(&settings.community, &RegistrationClock::read()?)? {
@@ -65,6 +71,11 @@ pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()
             .await;
             failed |= !matches!(result, Ok(Ok(())));
         }
+        // One-shot registration discovery precedes bounded restrictive retries.
+        if let Some(helper) = &helper {
+            host.retry_deployment_cleanup(&settings.community, helper)
+                .await?;
+        }
         ensure!(
             !failed,
             "registration reconciliation incomplete; exact retry remains in journal"
@@ -76,6 +87,8 @@ pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()
     LocalSet::new().run_until(async {
         let mut tasks = JoinSet::new();
         let mut running = BTreeSet::new();
+        let mut cleanups: JoinSet<(String, Result<()>)> = JoinSet::new();
+        let mut cleaning = BTreeSet::new();
         let mut check = tokio::time::interval(LOCAL_CHECK);
         check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -86,9 +99,22 @@ pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()
                     running.remove(&g);
                     result?;
                 }
+                result = cleanups.join_next(), if !cleanups.is_empty() => {
+                    let (g, result) = result.ok_or_else(|| anyhow::anyhow!("missing cleanup task"))??;
+                    cleaning.remove(&g);
+                    if result.is_err() { eprintln!("restrictive cleanup pending; journal retained"); }
+                }
                 _ = check.tick() => {
-                    if settings.deployment {
-                        host.retry_deployment_cleanup(&settings.community, &buzz_hostd::deployment::Helper::installed(dir)?).await?;
+                    if let Some(helper) = &helper {
+                        for g in host.deployment_cleanup_generations(&settings.community)? {
+                            if cleaning.len() < 4 && cleaning.insert(g.clone()) {
+                                let (dir, helper) = (dir.to_owned(), helper.clone());
+                                cleanups.spawn_local(async move {
+                                    let result = async { Host::at(&dir, false)?.cleanup_deployments(&g, &helper).await }.await;
+                                    (g, result)
+                                });
+                            }
+                        }
                     }
                     for g in host.work(&settings.community, &RegistrationClock::read()?)? {
                         // Retired invitations may still be in a bounded network

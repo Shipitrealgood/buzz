@@ -373,3 +373,126 @@ async fn failed_old_generation_does_not_block_new_offer() {
     };
     tokio::select! {result=run(dir.path(),f.settings.clone(),false)=>panic!("{result:?}"),_=driver=>{}}
 }
+
+#[tokio::test]
+async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotation() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let f = Fixture::new().await;
+    let (dir, mut h, first) = host(true);
+    h.deployment_cleanup_generations(&f.settings.community)
+        .unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("host.sqlite")).unwrap();
+    // Existing journal entries for forty retired generations, each with an
+    // explicit persisted cleanup. No network grant is manufactured by cleanup.
+    let mut generations = vec![first];
+    for i in 0..40 {
+        if i > 0 {
+            generations.push(offer(&mut h, true));
+        }
+        h.revoke(&generations[i], &RegistrationClock::read().unwrap())
+            .unwrap();
+        for event in h.pending().unwrap() {
+            h.delivered(&event.id.to_hex()).unwrap();
+        }
+    }
+    generations.sort();
+    let mut slow_unit = String::new();
+    for (i, g) in generations.iter().enumerate() {
+        let id = format!("{i:064x}");
+        db.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,'persisted-test-cleanup',1,1)", rusqlite::params![id,g,id,id]).unwrap();
+        if i == 0 {
+            let owner: String = db
+                .query_row("SELECT owner FROM grants WHERE g=?", [g], |r| r.get(0))
+                .unwrap();
+            slow_unit = buzz_hostd::unit_id(
+                &Scope {
+                    community: f.settings.community.clone(),
+                    owner: PublicKey::from_hex(&owner).unwrap(),
+                    host: h.public_key().unwrap(),
+                    generation: g.clone(),
+                },
+                &id,
+            );
+        }
+    }
+    let socket = dir.path().join("cleanup-proof.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let helper = buzz_hostd::deployment::Helper::at(dir.path(), &socket).unwrap();
+    let seen = Arc::new(Mutex::new(BTreeSet::new()));
+    let received = seen.clone();
+    let release = Arc::new(tokio::sync::Notify::new());
+    let resume = release.clone();
+    let server = tokio::spawn(async move {
+        let mut tasks = JoinSet::new();
+        loop {
+            tokio::select! {
+                stream=listener.accept()=>{
+                    let (mut stream,_)=stream.unwrap();
+                    let (seen,resume,slow)=(received.clone(),resume.clone(),slow_unit.clone());
+                    tasks.spawn(async move {
+                        let mut raw=Vec::new(); stream.read_to_end(&mut raw).await.unwrap();
+                        let raw=String::from_utf8(raw).unwrap();
+                        seen.lock().unwrap().insert(raw.clone());
+                        if raw==format!("cleanup {slow}") { resume.notified().await; }
+                        let _=stream.write_all(b"failed\n").await;
+                    });
+                },
+                _=tasks.join_next(),if !tasks.is_empty()=>{}
+            }
+        }
+    });
+    let driver = async {
+        wait_for(|| seen.lock().unwrap().len() >= 4).await;
+        // Add a new invitation while one helper request is deliberately held.
+        offer(&mut h, false);
+        wait_for(|| f.counts.auth.load(Ordering::SeqCst) > 0).await;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            while seen.lock().unwrap().len() < 40 {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM deployment_units WHERE cleanup=1 AND cleaned=0",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            40
+        );
+        assert!(
+            db.query_row(
+                "SELECT count(*) FROM deployment_units WHERE issue IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap()
+                >= 39
+        );
+        release.notify_waiters();
+    };
+    tokio::select! {
+        result=run_with_helper(dir.path(),f.settings.clone(),false,Some(helper))=>panic!("cleanup stopped controller: {result:?}"),
+        _=driver=>{}
+    }
+    server.abort();
+    let _ = server.await;
+    // Restart enumeration continues from its durable generation cursor.
+    drop(h);
+    let reopened = Host::at(dir.path(), false).unwrap();
+    let next = reopened
+        .deployment_cleanup_generations(&f.settings.community)
+        .unwrap();
+    assert_eq!(next.len(), 4);
+    let cursor: String = db
+        .query_row(
+            "SELECT r FROM work_cursor WHERE g=?",
+            [format!("deployment-generations:{}", f.settings.community)],
+            |r| r.get(0),
+        )
+        .unwrap();
+    generations.sort_by_key(|g| (g.as_str() <= cursor.as_str(), g.clone()));
+    assert_eq!(next, generations[..4]);
+}

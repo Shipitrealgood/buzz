@@ -1,5 +1,122 @@
 mod external_infra_deployment_tests {
     use super::*;
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn deployment_denied_same_id_retires_holder_and_topic() {
+        for case in [
+            "disabled",
+            "malformed",
+            "multifilter",
+            "ordinary-capacity",
+            "global-capacity",
+        ] {
+            let f = Fixture::with_deployment(case != "disabled").await;
+            let owner = Keys::generate();
+            f.member(&owner).await;
+            let mut tc = test_connection(&f, &owner);
+            let q = registry::query("live", None, None).unwrap();
+            dispatch(
+                &request_frame(&owner, "same", &q).to_string(),
+                tc.conn.clone(),
+                f.state.clone(),
+            )
+            .await;
+            let previous = owner_barrier(&tc.conn, "same", None).await;
+            loop {
+                let frame = tokio::time::timeout(Duration::from_secs(3), tc.send_rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                if let axum::extract::ws::Message::Text(raw) = frame {
+                    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                    assert_ne!(v[0], "CLOSED");
+                    if v[0] == "EOSE" {
+                        break;
+                    }
+                }
+            }
+            assert_eq!(
+                f.state
+                    .pubsub
+                    .topic_refcount(&tc.conn.tenant, buzz_pubsub::EventTopic::Global)
+                    .await,
+                1
+            );
+            let ordinary = (case == "ordinary-capacity").then(|| {
+                tc.conn
+                    .registry
+                    .ordinary
+                    .clone()
+                    .try_acquire_many_owned(tc.conn.registry.ordinary.available_permits() as u32)
+                    .unwrap()
+            });
+            let global = (case == "global-capacity").then(|| {
+                f.state
+                    .handler_semaphore
+                    .clone()
+                    .try_acquire_many_owned(f.state.handler_semaphore.available_permits() as u32)
+                    .unwrap()
+            });
+            let mut frame = json!(["REQ", "same", {"kinds":[43104], "host_deployment":{}}]);
+            if case == "multifilter" {
+                frame.as_array_mut().unwrap().push(json!({}));
+            }
+            assert!(
+                crate::handlers::host_deployment::dispatch(
+                    &frame.to_string(),
+                    tc.conn.clone(),
+                    f.state.clone()
+                )
+                .await
+            );
+            let frame = tokio::time::timeout(Duration::from_secs(3), tc.send_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let axum::extract::ws::Message::Text(raw) = frame else {
+                panic!("missing CLOSED")
+            };
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&raw).unwrap()[0],
+                "CLOSED"
+            );
+            assert!(tc.conn.subscriptions.lock().await.is_empty());
+            assert!(f
+                .state
+                .sub_registry
+                .get_filters(tc.conn.conn_id, "same")
+                .is_none());
+            assert_eq!(
+                f.state
+                    .pubsub
+                    .topic_refcount(&tc.conn.tenant, buzz_pubsub::EventTopic::Global)
+                    .await,
+                0
+            );
+            // The displaced live worker cannot enqueue a late frame after CLOSED.
+            let late = EventBuilder::new(nostr::Kind::TextNote, "late holder")
+                .sign_with_keys(&owner)
+                .unwrap();
+            assert!(
+                !crate::handlers::close::send_if_owner(
+                    "same",
+                    previous,
+                    crate::protocol::RelayMessage::event("same", &late),
+                    &tc.conn
+                )
+                .await
+            );
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), tc.send_rx.recv())
+                    .await
+                    .is_err()
+            );
+            drop((ordinary, global));
+            tc.conn.cancel.cancel();
+            crate::handlers::close::release_connection_subscriptions(&tc.conn, &f.state).await;
+            f.stop().await;
+        }
+    }
     // Included in the existing external_infra_tests fixture; no alternate relay.
     struct ExecutionInstallation {
         root: tempfile::TempDir,
@@ -7,6 +124,7 @@ mod external_infra_deployment_tests {
         catalog: buzz_hostd::Catalog,
         revision: String,
         effects: Arc<std::sync::Mutex<(usize, bool, bool)>>,
+        requests: Arc<std::sync::Mutex<Vec<String>>>,
         task: JoinHandle<()>,
     }
     impl ExecutionInstallation {
@@ -61,6 +179,8 @@ mod external_infra_deployment_tests {
             };
             let effects = Arc::new(std::sync::Mutex::new((0, false, false)));
             let state = effects.clone();
+            let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let received = requests.clone();
             let task = tokio::spawn(async move {
                 loop {
                     let (mut socket, _) = listener.accept().await.unwrap();
@@ -71,6 +191,7 @@ mod external_infra_deployment_tests {
                         .await
                         .unwrap();
                     let request = String::from_utf8(request).unwrap();
+                    received.lock().unwrap().push(request.clone());
                     let reply = buzz_hostd::activation::apply(
                         &layout,
                         layout.root_uid,
@@ -120,6 +241,7 @@ mod external_infra_deployment_tests {
                 catalog,
                 revision,
                 effects,
+                requests,
                 task,
             }
         }
@@ -499,11 +621,140 @@ mod external_infra_deployment_tests {
         assert_eq!(installation.effects.lock().unwrap().0, effects);
         assert!(installation.effects.lock().unwrap().1);
         f.member(&owner).await;
-        // Explicit cleanup fences before helper failure; retry survives revocation.
+        // Forty retained failed cleanups precede useful work: exercise the actual
+        // relay page (32), host pass (8), helper and restart cursor together.
+        for n in 1..=40 {
+            let mut queued = authority.clone();
+            queued.agent = Keys::generate().public_key();
+            queued.operation_id = format!("e{n:063x}");
+            queued.content_sha256 = intent.protected.authority.content_sha256.clone();
+            let queued_event = wire::sign_command(
+                &owner,
+                &queued,
+                &intent.protected.ciphertext,
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            f.state
+                .db
+                .post_host_deployment(
+                    f.community,
+                    &f.origin(),
+                    owner.public_key(),
+                    &serde_json::to_vec(&queued_event).unwrap(),
+                    false,
+                )
+                .await
+                .unwrap();
+            queued.action = d::Action::Cleanup;
+            queued.expected_revision = 1;
+            let (mut a, encrypted) = wire::seal_command(
+                &owner,
+                queued,
+                &d::Command::Cleanup {},
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            a.operation_id = format!("{n:064x}"); // first anchor permits opaque IDs
+            let event = wire::sign_command(
+                &owner,
+                &a,
+                encrypted.content.as_bytes(),
+                encrypted.created_at.as_secs(),
+            )
+            .unwrap();
+            f.state
+                .db
+                .post_host_deployment(
+                    f.community,
+                    &f.origin(),
+                    owner.public_key(),
+                    &serde_json::to_vec(&event).unwrap(),
+                    false,
+                )
+                .await
+                .unwrap();
+        }
         let mut cleanup = authority.clone();
-        cleanup.operation_id = "cf".repeat(32);
         cleanup.action = d::Action::Cleanup;
         cleanup.expected_revision = 3;
+        cleanup.expires_at = nostr::Timestamp::now().as_secs() + 1;
+        let (mut expired_cleanup, encrypted) = wire::seal_command(
+            &owner,
+            cleanup.clone(),
+            &d::Command::Cleanup {},
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap();
+        expired_cleanup.operation_id = "ff".repeat(32);
+        let anchor = wire::sign_command(
+            &owner,
+            &expired_cleanup,
+            encrypted.content.as_bytes(),
+            encrypted.created_at.as_secs(),
+        )
+        .unwrap();
+        assert!(owner_ws.send_event(anchor).await.unwrap().accepted);
+        // Compare the exact admitted transport serialization, not a different
+        // local serde field ordering of the same signed event.
+        let anchor_raw: String = sqlx::query_scalar("SELECT event_json FROM paired_agent_operations WHERE community_id=$1 AND operation_id=$2")
+            .bind(f.community.as_uuid()).bind(&expired_cleanup.operation_id).fetch_one(f.state.db.pool()).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let initial_requests = installation.requests.lock().unwrap().len();
+        for pass in 0..6 {
+            host.reconcile_deployments(
+                &mut host_ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            if pass == 0 {
+                let attempts = installation.requests.lock().unwrap().len() - initial_requests;
+                assert!((7..=8).contains(&attempts), "finite first pass");
+                drop(host);
+                host = Host::at(host_dir.path(), false).unwrap();
+                assert_eq!(host.public_key().unwrap(), scope.host);
+            }
+        }
+        let attempted: std::collections::BTreeSet<_> = installation.requests.lock().unwrap()
+            [initial_requests..]
+            .iter()
+            .cloned()
+            .collect();
+        assert_eq!(
+            attempted.len(),
+            40,
+            "all retained failures beyond page32 were visited after reopen"
+        );
+        let expired_row = management
+            .query(
+                &|| Ok(owner.clone()),
+                &deployment_query(&scope, "operation", Some(&expired_cleanup.operation_id)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(expired_row.data["state"], "failed");
+        assert_eq!(expired_row.data["event"], anchor_raw);
+        assert!(
+            !installation
+                .requests
+                .lock()
+                .unwrap()
+                .contains(&format!("cleanup {unit}")),
+            "expired-before-receipt cleanup has no helper effect"
+        );
+        assert!(
+            installation.effects.lock().unwrap().1,
+            "expiry did not stop the running agent"
+        );
+        // Fresh current authorization recovers the fenced placement; previous
+        // bytes, original unit and imported key remain unchanged.
+        cleanup.expected_revision = 4;
+        cleanup.expires_at = nostr::Timestamp::now().as_secs() + 500;
         let (_, event) = wire::seal_command(
             &owner,
             cleanup,
@@ -513,23 +764,47 @@ mod external_infra_deployment_tests {
         .unwrap();
         assert!(owner_ws.send_event(event).await.unwrap().accepted);
         installation.effects.lock().unwrap().2 = true;
-        host.reconcile_deployments(
-            &mut host_ws,
-            f.state.relay_keypair.public_key(),
-            &scope.generation,
-            &installation.catalog,
-            &installation.revision,
-            &installation.helper,
-        )
-        .await
-        .unwrap();
-        assert!(cred.exists());
-        assert!(installation
+        let fence = installation
             .root
             .path()
             .join("private")
-            .join(format!("{unit}.closed"))
-            .exists());
+            .join(format!("{unit}.closed"));
+        for _ in 0..6 {
+            host.reconcile_deployments(
+                &mut host_ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            if fence.exists() {
+                break;
+            }
+        }
+        assert!(cred.exists());
+        assert!(
+            fence.exists(),
+            "fresh cleanup progressed beyond retained failures"
+        );
+        let before = installation.requests.lock().unwrap().len();
+        for _ in 0..6 {
+            host.cleanup_deployments(&scope.generation, &installation.helper)
+                .await
+                .unwrap();
+        }
+        let offline: std::collections::BTreeSet<_> = installation.requests.lock().unwrap()
+            [before..]
+            .iter()
+            .cloned()
+            .collect();
+        assert_eq!(
+            offline.len(),
+            41,
+            "offline cleanup rotates past eight failures too"
+        );
         host.revoke(&scope.generation, &clock()).unwrap();
         host.flush_pending(&mut host_ws, &scope.generation)
             .await
@@ -566,16 +841,33 @@ mod external_infra_deployment_tests {
             .is_err());
 
         installation.effects.lock().unwrap().2 = false;
-        host.retry_deployment_cleanup(&f.origin(), &installation.helper)
-            .await
-            .unwrap();
+        for _ in 0..6 {
+            host.retry_deployment_cleanup(&f.origin(), &installation.helper)
+                .await
+                .unwrap();
+        }
         assert!(!cred.exists());
         assert!(!host_dir.path().join(format!("{unit}.cred")).exists());
-        let before = installation.effects.lock().unwrap().0;
+        let before = installation
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| **r == format!("cleanup {unit}"))
+            .count();
         host.retry_deployment_cleanup(&f.origin(), &installation.helper)
             .await
             .unwrap();
-        assert_eq!(installation.effects.lock().unwrap().0, before);
+        assert_eq!(
+            installation
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| **r == format!("cleanup {unit}"))
+                .count(),
+            before
+        );
         assert!(host_dir.path().join("host.sqlite").exists());
         drop(generic);
         drop(live);
