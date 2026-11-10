@@ -1,5 +1,15 @@
 # #3719 / #3721 host online readiness — decision packet
 
+> **SUPERSEDED — 2026-11-10 trusted-host correction.** The operative plan is
+> [#3722 shared-account execution](3722-main-discovery-native-login.md). Bryce approved normal non-root
+> host account/HOME/native logins and networking, with distinct per-agent Buzz
+> identities/config/workspaces/service tracking. Earlier per-agent OS isolation,
+> private-root/provider-credential separation, root helper/catalog approval and
+> exact-DynamicUser native-login-entry requirements are superseded, **not passed**.
+> Retain owner authorization and journal/retry/cleanup; the root helper leaves the
+> ordinary new-deployment path. The text below is historical only. No live action
+> or existing-agent change is authorized.
+
 **Status:** USER SELECTED T — normal host networking, 2026-11-10; source implementation remains held for the Claude reuse assessment and conductor review.
 **Date:** 2026-11-10 UTC.
 **Source pin:** `f4b24f42c340dc55f081a8cfd95893fdf1ff098a`, branch `proof/3720-host-registration-events`, worktree `/home/bryce/services/buzz-wt-3720-host-registration`.

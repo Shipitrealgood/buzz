@@ -1,5 +1,15 @@
 # #3719 / #3721 online readiness — selected T handoff
 
+> **SUPERSEDED — 2026-11-10 trusted-host correction.** The operative plan is
+> [#3722 shared-account execution](../specs/3722-main-discovery-native-login.md). Bryce approved normal non-root
+> host account/HOME/native logins and networking, with distinct per-agent Buzz
+> identities/config/workspaces/service tracking. Earlier per-agent OS isolation,
+> private-root/provider-credential separation, root helper/catalog approval and
+> exact-DynamicUser native-login-entry requirements are superseded, **not passed**.
+> Retain owner authorization and journal/retry/cleanup; the root helper leaves the
+> ordinary new-deployment path. The text below is historical only. No live action
+> or existing-agent change is authorized.
+
 **Decision, 2026-11-10:** Bryce selected normal host networking (T), keeping existing
 per-agent protections and requesting the smallest disposable Grok change. First
 complete the Claude reuse assessment; conductor review precedes source execution.
