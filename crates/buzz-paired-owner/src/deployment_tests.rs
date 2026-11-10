@@ -640,6 +640,146 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     let serialized = serde_json::to_string(&read).unwrap();
     assert!(!serialized.contains("nsec1"));
     assert!(!serialized.contains("auth_tag"));
+    // Expired nonzero PendingLogin and Selected attempts preserve their
+    // protected snapshot/identity. Only an exact current predecessor proves
+    // where a fresh preparation may continue; local revision alone cannot.
+    for selected_model in [false, true] {
+        for scenario in [
+            "unknown",
+            "newer",
+            "lost-pending",
+            "lost-terminal",
+            "absent",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut journal = Device::at(&dir.path().join("follow-on.sqlite")).unwrap();
+            let root = seed_intent(
+                &mut journal,
+                &owner,
+                authority.clone(),
+                &command,
+                snapshot.clone(),
+            );
+            let root_receipt = wire::result_body(&host, &body_for(&root), now().unwrap()).unwrap();
+            let mut attempt_authority = authority.clone();
+            attempt_authority.operation_id = "da".repeat(32);
+            attempt_authority.expected_revision = 1;
+            attempt_authority.expires_at = now().unwrap() - 1;
+            let d::Command::Deploy {
+                mut config,
+                identity,
+            } = wire::restore_command(
+                &owner,
+                &root.protected.authority,
+                &root.protected.ciphertext,
+            )
+            .unwrap()
+            else {
+                panic!("fixture deploy")
+            };
+            let mut retained_snapshot = snapshot.clone();
+            if selected_model {
+                config.model = d::ModelSelection::Selected {
+                    id: "opaque/model:1".into(),
+                };
+                retained_snapshot["record"]["model"] = "opaque/model:1".into();
+            }
+            let attempt = seed_intent(
+                &mut journal,
+                &owner,
+                attempt_authority,
+                &d::Command::Deploy { config, identity },
+                retained_snapshot.clone(),
+            );
+            let predecessor = if scenario == "unknown" {
+                missing.clone()
+            } else {
+                serde_json::json!({"event":root.event,"result":serde_json::to_string(&root_receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":if scenario=="newer" {2} else {1}})
+            };
+            let attempted = match scenario {
+                "lost-pending" => {
+                    serde_json::json!({"event":attempt.event,"state":"pending","unit_id":"ef".repeat(32),"revision":2})
+                }
+                "lost-terminal" => {
+                    let receipt =
+                        wire::result_body(&host, &body_for(&attempt), now().unwrap()).unwrap();
+                    serde_json::json!({"event":attempt.event,"result":serde_json::to_string(&receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":2})
+                }
+                _ => missing.clone(),
+            };
+            *responses.lock().unwrap() = serde_json::json!({"by_operation":{
+                (root.protected.authority.operation_id.clone()):predecessor,
+                (attempt.protected.authority.operation_id.clone()):attempted
+            }});
+            let recovered = management
+                .continue_deployment(
+                    &mut journal,
+                    &signer,
+                    &attempt.protected.authority.operation_id,
+                    &status,
+                    d::ModelSelection::PendingLogin {},
+                    retained_snapshot.clone(),
+                )
+                .await;
+            if matches!(scenario, "unknown" | "newer" | "lost-pending") {
+                assert!(recovered.is_err(), "{scenario}");
+                assert_eq!(
+                    journal
+                        .deployment_intents(&scope.community, &owner)
+                        .unwrap()
+                        .len(),
+                    2
+                );
+                if scenario == "lost-pending" {
+                    assert_eq!(
+                        journal
+                            .deployment_intent(
+                                &scope.community,
+                                &owner,
+                                &attempt.protected.authority.operation_id
+                            )
+                            .unwrap()
+                            .unwrap()
+                            .phase,
+                        3
+                    );
+                }
+            } else {
+                let recovered = recovered.unwrap();
+                let revision = if scenario == "lost-terminal" { 2 } else { 1 };
+                assert_eq!(recovered.protected.authority.expected_revision, revision);
+                assert_eq!(recovered.protected.authority.agent, agent.public_key());
+                assert_eq!(
+                    journal
+                        .restore_materialization(&scope.community, &owner, &recovered)
+                        .unwrap(),
+                    retained_snapshot
+                );
+                assert!(
+                    wire::restore_command(
+                        &owner,
+                        &recovered.protected.authority,
+                        &recovered.protected.ciphertext
+                    )
+                    .unwrap()
+                        == command
+                );
+                let receipt =
+                    wire::result_body(&host, &body_for(&recovered), now().unwrap()).unwrap();
+                *responses.lock().unwrap() = serde_json::json!({"event":recovered.event,"result":serde_json::to_string(&receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":revision+1});
+                let observed = management
+                    .operation(
+                        &mut journal,
+                        &signer,
+                        &recovered.protected.authority.operation_id,
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(observed.unit.as_deref(), Some("ef".repeat(32).as_str()));
+                assert!(observed.current);
+            }
+        }
+    }
     // Expired commands remain recoverable. Admission, not wall-clock expiry,
     // determines whether a new initial operation is allowed.
     let expired_dir = tempfile::tempdir().unwrap();

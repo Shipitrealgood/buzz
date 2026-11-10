@@ -113,17 +113,56 @@ impl Management {
             evidence.revision.context("missing placement revision")?
         } else {
             ensure!(
-                a.expected_revision == 0
-                    && old.phase < 3
-                    && old.result.is_none()
-                    && now()? >= a.expires_at,
+                old.phase < 3 && old.result.is_none() && now()? >= a.expires_at,
                 "operation admission unresolved; retry exact intent"
             );
             ensure!(
                 matches!(model, ModelSelection::PendingLogin {}),
                 "refresh preparation first"
             );
-            0
+            if a.expected_revision == 0 {
+                0
+            } else {
+                // An absent expired follow-on does not erase the existing
+                // placement. Its predecessor's exact current read must prove
+                // the nonzero revision before a replacement can be retained.
+                let mut proven_revision = None;
+                for prior in device.deployment_intents(&self.community, &keys)? {
+                    let p = &prior.protected.authority;
+                    if p.scope != a.scope
+                        || p.agent != a.agent
+                        || p.expected_revision.checked_add(1) != Some(a.expected_revision)
+                    {
+                        continue;
+                    }
+                    let read = self.operation(device, signer, &p.operation_id).await?;
+                    if !read.admitted {
+                        continue;
+                    }
+                    ensure!(
+                        read.current && read.revision == Some(a.expected_revision),
+                        "placement conflict; predecessor is no longer current"
+                    );
+                    ensure!(
+                        matches!(read.state.as_str(), "needs-login" | "failed"),
+                        "predecessor is unresolved or no longer a setup"
+                    );
+                    let Command::Deploy {
+                        config: mut prior_config,
+                        identity: prior_identity,
+                    } = wire::restore_command(&keys, p, &prior.protected.ciphertext)?
+                    else {
+                        bail!("invalid setup predecessor");
+                    };
+                    prior_config.model = config.model.clone();
+                    ensure!(
+                        prior_identity == identity && prior_config == config,
+                        "setup predecessor identity or configuration changed"
+                    );
+                    proven_revision = read.revision;
+                }
+                proven_revision.context("current predecessor placement unavailable")?
+            }
         };
         status.permits(
             &a.scope,
