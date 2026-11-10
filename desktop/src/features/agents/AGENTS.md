@@ -375,7 +375,9 @@ silently to claim preparation.
 
 One native setup token belongs to one explicit draft. Both submit callers use a
 synchronous latch before avatar/definition effects and retain that definition
-for retries. Preparation uses the main native identity, attestation, record and
+for retries. A submitted retry keeps its exact installed ID and host scope;
+canonical harness equality cannot substitute a different visible choice.
+Preparation uses the main native identity, attestation, record and
 profile phases with the protected existing intent journal. Hosted IPC responses
 contain no key, auth tag, ciphertext or arbitrary recovery snapshot. Closing a
 prepared form keeps its identity; reopening lists the latest exact scoped intent

@@ -491,6 +491,40 @@ test("contextual hosted preparation keeps its identity through lost response and
   await expect(
     page.getByRole("button", { name: "Prepare agent", exact: true }),
   ).toBeEnabled();
+  // A lost response freezes the exact installed choice, not only its
+  // canonical preset. The alternate Grok ID must not silently replay native/grok.
+  await page
+    .getByRole("button", { name: "Agent harness", exact: true })
+    .click();
+  await page
+    .getByRole("menuitemradio", { name: /Grok Build · second\/grok/ })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Agent harness", exact: true }),
+  ).toContainText("second/grok");
+  await page
+    .getByRole("button", { name: "Prepare agent", exact: true })
+    .click();
+  await expect(
+    page.getByText("This setup is fixed to native/grok on its original host.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  const rejectedCalls = await page.evaluate(
+    () => window.__HOSTED_SETUP_FIXTURE__.calls,
+  );
+  expect(
+    rejectedCalls.filter((c) => c.command === "create_persona"),
+  ).toHaveLength(1);
+  expect(
+    rejectedCalls.filter((c) => c.command === "hosted_prepare"),
+  ).toHaveLength(1);
+  await page
+    .getByRole("button", { name: "Agent harness", exact: true })
+    .click();
+  await page
+    .getByRole("menuitemradio", { name: /Grok Build · native\/grok/ })
+    .click();
   await page
     .getByRole("button", { name: "Prepare agent", exact: true })
     .click();

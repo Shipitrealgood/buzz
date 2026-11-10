@@ -1,5 +1,6 @@
 import {
   prepareHostedAgent,
+  sameHostScope,
   type HostedSetup,
 } from "@/shared/api/hostedAgents";
 import type {
@@ -16,6 +17,7 @@ export type HostedDraft = {
   operation: string;
   isCurrent: () => boolean;
   runtime: string;
+  scope: RegisteredHostDestination["scope"];
   harness: AcpRuntime;
   definition?: AgentPersona;
   frozen?: string;
@@ -35,8 +37,19 @@ export async function prepareHostedDefinition(
       throw new Error("Host setup selection or workspace changed.");
   };
   check();
+  if (
+    input.runtime !== draft.runtime ||
+    !sameHostScope(destination.scope, draft.scope)
+  )
+    throw new Error(
+      "Restore the submitted host and installed harness to retry this setup.",
+    );
   const canonical = { ...input, runtime: draft.harness.id };
-  const frozen = JSON.stringify(canonical);
+  const frozen = JSON.stringify({
+    input: canonical,
+    runtime: input.runtime,
+    scope: destination.scope,
+  });
   if (draft.frozen && draft.frozen !== frozen)
     throw new Error(
       "This prepared draft is frozen. Continue its retained setup.",

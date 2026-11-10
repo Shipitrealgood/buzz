@@ -358,3 +358,47 @@ test("registered-host definition mapping uses canonical metadata and never reque
   assert.equal(input.startOnAppLaunch, false);
   assert.equal(input.personaId, persona().id);
 });
+
+test("hosted retry rejects exact installed-ID or scope changes before definition effects", async () => {
+  const { prepareHostedDefinition } = await import(
+    "./prepareHostedDefinition.ts"
+  );
+  const scope = {
+    community: "https://fixture.test",
+    owner: "owner",
+    host: "host",
+    generation: "generation",
+  };
+  const draft = {
+    operation: "retained-token",
+    runtime: "native/fixture",
+    scope,
+    harness: gooseRuntime,
+    isCurrent: () => true,
+    definition: { id: "retained-definition" },
+  };
+  let creates = 0;
+  for (const change of [
+    { runtime: "second/fixture", scope },
+    ...Object.keys(scope).map((key) => ({
+      runtime: draft.runtime,
+      scope: { ...scope, [key]: "changed" },
+    })),
+  ]) {
+    await assert.rejects(
+      prepareHostedDefinition(
+        { displayName: "Retained", runtime: change.runtime },
+        { type: "registered-host", scope: change.scope },
+        draft,
+        async () => {
+          creates++;
+          throw new Error("unexpected definition effect");
+        },
+      ),
+      /Restore the submitted host and installed harness/,
+    );
+  }
+  assert.equal(creates, 0);
+  assert.equal(draft.operation, "retained-token");
+  assert.equal(draft.definition.id, "retained-definition");
+});

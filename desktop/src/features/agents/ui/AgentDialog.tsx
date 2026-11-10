@@ -362,6 +362,16 @@ function AgentCreateDialogRouter({
           setSubmitError(null);
           try {
             let destination = backendIntent;
+            if (
+              draft.current?.frozen &&
+              (destination?.type !== "registered-host" ||
+                input.runtime !== draft.current.runtime ||
+                !sameHostScope(destination.scope, draft.current.scope))
+            ) {
+              throw new Error(
+                `This setup is fixed to ${draft.current.runtime} on its original host. Restore that selection to retry, or close and reopen Continue setup.`,
+              );
+            }
             if (destination?.type === "registered-host") {
               const chosen = catalog?.runtimes.find(
                 (item) => item.installedId === input.runtime,
@@ -377,6 +387,7 @@ function AgentCreateDialogRouter({
                 draft.current = {
                   operation: token,
                   runtime: chosen.installedId,
+                  scope: destination.scope,
                   harness: chosen.metadata as AcpRuntime,
                   isCurrent: () =>
                     current.current.alive &&
@@ -385,6 +396,7 @@ function AgentCreateDialogRouter({
                 };
               if (!draft.current.frozen) {
                 draft.current.runtime = chosen.installedId;
+                draft.current.scope = destination.scope;
                 draft.current.harness = chosen.metadata as AcpRuntime;
               }
               draft.current.isCurrent = () =>
