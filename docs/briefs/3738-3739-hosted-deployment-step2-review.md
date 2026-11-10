@@ -126,3 +126,23 @@ closure. Final affected regressions: 25 passed, zero failed/ignored.
 
 No new native acceptance is claimed, and previous native/environment gates remain.
 No additional mutation experiment or broad baseline suite is requested by default.
+
+## M3-only re-gate after the approved first-principles pause
+
+Base `7db9df3b50cfd119e9dd2355be29fecdc3af2333`; tested repair source
+`a59285d2d016e64484e53fa382177b7cf2d59132`; following handoff is documentation only.
+Original four findings remain closed. Re-gate only M3 and defects introduced by
+its delta. Review existing deployment.rs admission plus shared finish_deployment
+and offline receipt path; no coordinator, schema, protocol or relay-store change.
+
+The accepted first-principles rule is monotonic durable host and accepted relay
+state with eventual terminal delivery. A previously selected pending frame can
+arrive late and be rejected; do not reinstate the superseded zero-late-message
+requirement. Replacement receipts bind their own request; no old signature is
+relabeled. Exact tuple checks discard superseded completion writers.
+
+The receipt records the deterministic red-before failure and final 24 passing
+affected tests, including four held-response interleavings and restart/replay.
+Test-only rusqlite edge reuses the existing package for disposable journal reads.
+Production +105/-37, test code +370/-26, test config +3. All owned processes and
+proof resources are closed before handoff; native/platform gaps remain unrun.

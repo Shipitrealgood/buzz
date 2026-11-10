@@ -276,3 +276,67 @@ with their processes; there is no active build/test session. Prior stopped proof
 directories remain untouched. Ignored target/3738-repair-*.log files retain local
 build/test evidence. Next gate: the same independent reviewer re-gates the repaired
 findings and affected obligations at the clean committed handoff; no live action.
+
+## M3 only — shared monotonic cleanup completion (2026-11-10)
+
+Authorized checkpoint 1 of the reframed disposable Grok plan; no later checkpoint
+or live work. Resumed from clean `7db9df3b50cfd119e9dd2355be29fecdc3af2333`.
+Tested source: signed-off `a59285d2d016e64484e53fa382177b7cf2d59132`.
+Requested Astra/high; actual runtime model/effort metadata unavailable. Original
+H1/H2/M1/M2 closures and the historical review report are unchanged.
+
+One private transaction in existing hostd deployment.rs now selects/persists the
+result for both online and offline completion. It matches agent, generation,
+stable unit, operation and revision; superseded attempts cannot overwrite or
+publish a result. A winning terminal receipt is retained exactly, late failures
+cannot undo cleaned or restore issue, and current incomplete failures remain
+actionable. Admission preserves the cleaned observation and same-request result.
+A replacement of an already-cleaned request receives its own correctly bound
+receipt without repeating helper work. Offline success records a terminal receipt
+for online delivery/restart recovery. No schema, scheduling, helper, relay store,
+wire or runtime dependency change; no new coordinator or outbox.
+
+Publication acceptance follows the approved refinement: an already-selected
+pending frame may arrive late, but the existing relay terminal guard rejects
+regression. The test checks that rejection and eventual exact terminal delivery;
+it does not claim an impossible absence of late transport messages.
+
+The existing helper fixture now holds a response *after* actual activation work,
+so another attempt can finish first. The four table cases cover late offline and
+late online failure, each at the same and a superseded revision; all assert journal
+state/issue/receipt, reopen, no obsolete retry, exact reply-loss replay, and a fresh
+replacement receipt. Controller synthetic rows now contain signed cleanup commands
+because offline completion produces real receipts. A relay **dev-dependency edge**
+reuses hostd's already-pinned rusqlite 0.40 configuration to inspect disposable
+host.sqlite; no package/version or runtime dependency was added.
+
+### Finite measured gates
+
+Hermit with HERMIT_SELF_UPDATE=false; proof means scripts/3720-registration-proof.sh.
+The focused test is `deployment_cleanup_completion_is_monotonic_across_overlapping_writers`.
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p buzz-relay --lib --no-run` then proof `run target/debug/deps/buzz_relay-961a502ccefb2125 deployment_cleanup_completion_is_monotonic_across_overlapping_writers --ignored --test-threads=1` before production edits | RED as required: durable-state equality failed for offline_late=true/replacement=false; 0.47s |
+| `cargo test -p buzz-hostd -p buzz-relay --no-run` | rebuilt successfully |
+| Same focused proof command after repair | 1 passed, 1.96s; all four cases |
+| proof `run target/debug/deps/buzz_relay-961a502ccefb2125 external_infra_deployment_tests --ignored --test-threads=1` | final 4 passed, 14.20s |
+| proof `run target/debug/deps/buzz_hostd-c33faca283336bb7 registration_refresh::tests --test-threads=1` | 9 passed, 34.96s |
+| proof `run target/debug/deps/buzz_hostd-bd1729a8745cad5b --test-threads=1` | 11 passed, 1.49s |
+| `cargo clippy -p buzz-hostd --all-targets --no-deps` | completed; nine distinct warnings in unchanged request.rs/onboard.rs/transport.rs/registration_cli.rs/main.rs, none in changed host code |
+| `cargo fmt --all --check`; `rustfmt --check --edition 2021 crates/buzz-relay/src/handlers/host_registry/external_infra_deployment_tests.rs`; `git diff --check` | passed |
+
+Final affected set: **24 passed, 0 failed, 0 ignored**, counting the focused test
+once within the relay suite. No broad mutation campaign; red-before supplied the
+falsification. Core/schema/DB quota/native/broad suites were not rerun because their
+source was unchanged. Native Windows/main, actual systemd/provider and human
+acceptance remain unrun; known GObject/strict-Clippy/discovery gaps remain disclosed.
+Synthetic systemctl and controlled reply timing do not constitute service acceptance.
+
+Repair delta against 7db9df3b: production **+105/-37 (net68)**, all in deployment.rs;
+test code **+370/-26**, test dependency manifest/lock edges **+3/-0**. No adjacent
+cleanup. Local logs are target/3739-m3-{red-build,red,green-build,green,relay,controller,host-lib,clippy}.log.
+All commands completed; owned runner/Postgres/Redis were removed and no TLS proxy
+was started. Prior proof directories were untouched. Next gate: same independent
+reviewer, M3 and directly introduced defects only, at the clean documentation
+handoff after the tested source commit above. No activation or later work implied.
