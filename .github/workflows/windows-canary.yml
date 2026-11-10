@@ -259,6 +259,17 @@ jobs:
           cargo test --locked --target "$TARGET" -p buzz-paired-owner --lib | tee "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
           grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
 
+      # Main discovery extraction moved the portable metadata/classifier and
+      # Windows installer-string cases from Desktop into buzz-core.
+      - name: Verify shared main harness facts on Windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/windows-native-tests/shared-harness-tests.log"
+          cargo test --locked --target "$TARGET" -p buzz-core --lib harness:: | tee "$log"
+          grep -Eq '^test result: ok\. 9 passed; 0 failed; 0 ignored;' "$log"
+          test "$(grep -Ec '^test harness::.* \.\.\. ok$' "$log")" -eq 9
+
       - name: Verify signed directory conversion and loopback discovery
         shell: bash
         working-directory: desktop/src-tauri
