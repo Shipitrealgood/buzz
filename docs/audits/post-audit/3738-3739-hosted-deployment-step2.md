@@ -168,3 +168,43 @@ Prior first-review evidence is retained where source is unchanged: owner snapsho
 Repair-only gross delta independently measured: 13 files, +1,101/−64. Executor's classification reconciles to it: production +180/−42 (net138), tests +731/−21, docs +190/−1. No new dependencies/schema/framework. All owned test/build sessions finished; label-verified `down` removed exactly runner/Postgres/Redis; no TLS proxy was started. Source was clean before appending this report. No live systems, services, credentials, provider contact, source fixes, held mutations, merge/push/PR/deployment or taskctl writes. Release this worktree to the same executor for M-3, then re-gate only that fix and directly affected obligations.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=42c88aa8fe6e739e4eb0c966a7fc8106208bbce7..364c61a7b3fce9374d412e63dc41117769457733 findings=C=0/H=0/M=1/L=0 rework_rounds=1
+
+## M-3 bounded re-gate — 2026-11-10, round 2
+
+**Source verdict: accepted; M-3 resolved.** No new concrete source defects were found. Current open findings: C=0 / H=0 / M=0 / L=0. H-1/H-2/M-1/M-2 remain closed from round 1. This completes the dispatched source checkpoint, not the product or its later acceptance checkpoints. Merge/release-ready attestation remains withheld for the native/platform/human gates below.
+
+Reviewed `7db9df3b50cfd119e9dd2355be29fecdc3af2333..4185651aec0c6298d584d6a4e4a3357a246f3f77`; tested implementation `a59285d2d016e64484e53fa382177b7cf2d59132`, followed only by documentation. Scope was M-3 and defects introduced by its repair. Governing clarification: the ops repository's `docs/specs/2722-disposable-grok-pilot.md` and `docs/designs/3739-hosted-agent-simplification-review.md`, plus the appended source execution receipt and reviewer brief. The approved publication rule supersedes the historical report's absolute wording: a previously selected pending frame may arrive late; durable host state and accepted relay terminal state must not regress, and terminal delivery must recover. No outbox or new coordinator is required. Requested reviewer configuration: Astra/high; actual served model/effort metadata unavailable.
+
+### M-3 (Medium, high confidence) — closed
+
+Read and independently exercised the three writers and their callers:
+
+- Admission preserves `cleaned`, preserves a same-request receipt and clears obsolete issue/result only when appropriate (`crates/buzz-hostd/src/deployment.rs:366`, `:411`). A valid replacement for an already-cleaned stable unit skips helper work and creates a receipt bound to the replacement authority (`:415`). Existing stable-unit and permanent cleanup fences remain enforced (`:380`).
+- Online and offline completion now share `finish_deployment` (`:199`, callers `:488` and `:540`). Its immediate SQLite transaction (`store.rs:144`) selects and updates the exact agent/generation/unit/operation/revision tuple, with no await inside. Superseded completions return no receipt. Same-request terminal evidence wins over a later failure; `cleaned`, issue and signed receipt remain consistent. Incomplete current failures remain actionable. The offline selector verifies the signed command against its captured scope/agent/op/revision before helper use (`deployment.rs:503–525`).
+- Offline success persists a real signed terminal receipt. Reopen/retry uses the production exact-receipt path (`:389–406`); a later operation gets a newly signed, correctly bound receipt instead of relabeling the old signature. The unchanged relay guard rejects any different result after accepted terminal state (`crates/buzz-db/src/store/paired_hosts/deployment.rs:157–165`).
+
+The regression at `crates/buzz-relay/src/handlers/host_registry/external_infra_deployment_tests.rs:338` calls actual online/offline writers against the real disposable host journal and relay/Postgres. Its fixture holds the helper response **after** production activation logic executes (`:211–260`); systemctl remains synthetic. All four combinations of late online/offline failure and same/superseded revision passed. Assertions cover durable state/issue/receipt, actual signed evidence decrypted for the correct authority, reopen with no helper repeat, exact lost-reply replay, relay rejection of late pending, and a distinct correctly bound replacement receipt (`:491–598`). Controller fixture rows now contain signed cleanup commands, preserving their existing one-active-grant constraint.
+
+Executor red-before evidence was read in `target/3739-m3-red.log`: the named regression failed on the old production writer at same-revision late offline failure, leaving `cleaned=false` and a stale issue beside a Cleaned receipt. This is executor evidence, not an independently rerun mutation. Its failure matches the prior source finding; the current regression was independently green. No additional mutation or verification campaign was run.
+
+### Independent verification, limits and closure
+
+All commands used Hermit with `HERMIT_SELF_UPDATE=false`. `proof` below is the existing `scripts/3720-registration-proof.sh` network-none fixture with synthetic credentials and no public ports.
+
+| Command | Measured result |
+| --- | --- |
+| `cargo test -p buzz-hostd -p buzz-relay --no-run` | passed, current binaries rebuilt/verified |
+| proof `run target/debug/deps/buzz_relay-961a502ccefb2125 external_infra_deployment_tests --ignored --test-threads=1` | 4 passed, 0 failed/ignored; 14.50s |
+| proof `run target/debug/deps/buzz_hostd-c33faca283336bb7 registration_refresh::tests --test-threads=1` | 9 passed, 0 failed/ignored; 34.77s |
+| proof `run target/debug/deps/buzz_hostd-bd1729a8745cad5b --test-threads=1` | 11 passed, 0 failed/ignored; 1.89s |
+| `cargo fmt --all --check`; explicit `rustfmt --check --edition 2021` on the relay deployment test; `git diff --check` | passed |
+
+**24 passed, none failed or ignored.** Local logs: `target/3739-m3-review-{build,relay,controller,host-lib}.log`. Prior review evidence remains applicable to unchanged wire/admission quotas, owner/native seam, helper/root boundary, schema/migrations, privacy and UI. No broad core/schema/quota battery or old mutation was repeated. Native Windows/main materialization, real systemd/reboot/provider execution and human acceptance remain **not run**. The known GObject environment block, unrelated strict-Clippy warnings and unchanged discovery failure remain disclosed, not green; no dependency installation or environment bootstrap was attempted. These limits prevent overall merge/release-ready attestation despite acceptance of this source repair.
+
+Measured repair delta: production +105/−37 (net68), all in existing `deployment.rs`; tests +370/−26; test-only dependency manifest/lock edges +3/−0, reusing pinned rusqlite; docs +84/−0 before this report. No new runtime dependency, package, schema, protocol, scheduler or service. Scoped minimalism/elegance/correctness each meet 9/10; the shared existing-journal transition removes the divergent completion writers without adding coordination machinery.
+
+All owned commands completed. Label-verified teardown removed only runner/Postgres/Redis and an empty `buzz.proof=3720` container listing confirmed closure; no TLS proxy was started. No held mutation, source fix, live/service/provider contact, taskctl write, push, merge, PR or deployment occurred. This is a report-only handoff to the conductor. No source repair remains from this gate; later checkpoints retain their own authorization and acceptance requirements, and no task closure is implied.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=7db9df3b50cfd119e9dd2355be29fecdc3af2333..4185651aec0c6298d584d6a4e4a3357a246f3f77 findings=C=0/H=0/M=0/L=0 rework_rounds=2
+
+The quality record's overall `rework/partial` reflects the carried native/platform acceptance gap, not an unresolved source finding or a request for additional M-3 work.
