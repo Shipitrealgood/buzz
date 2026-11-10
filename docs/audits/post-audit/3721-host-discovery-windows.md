@@ -1,5 +1,77 @@
 # #3721 S2/S3 — shared discovery and Windows integration post-audit
 
+## Re-gate round 1 — source repair accepted; native verification pending
+
+Date: 2026-11-10. Same reviewer and assignment, limited to M-1 and defects
+introduced by its repair. Clean input HEAD
+`e1979d3ba6edf4c9aee3abaa743f079a34a72c2d`; reviewed repair range
+`f15313756c4b3f4e28d442f275532602e60e076f..5d72b08d3e5ab7bbcd52711e17a43572e184e47b`.
+The final input commit updates documentation only. Requested configuration remains
+Astra/high; served runtime identity and effort remain unknown.
+
+**Source disposition: M-1 addressed; no further source fix identified.** Open
+source findings C=0/H=0/M=0/L=0. **Verification disposition: partial**, because
+the changed Windows-only native regression has not compiled or run. This is not
+a merge-safe, release or native certification. The quality footer remains
+`rework` for that uncompleted verification obligation, not for an additional
+implementation defect or a request to build a new test platform.
+
+**Read:** [`create_managed_agent_phases`:435](../../../desktop/src-tauri/src/commands/agents.rs#L435)
+now calls `check_inventory` at the first hosted branch, before Phase 1, key
+generation, process reconciliation, intent retention, persistence, publication
+enqueue and profile publication. The [record-independent guard](../../../desktop/src-tauri/src/commands/agents_hosted.rs#L222)
+first validates the captured session, then scoped/current Status, selected runtime
+membership, present inventory, available/supported facts and canonical metadata.
+It does not require an intent or record to exist. The
+[late `check_runtime`](../../../desktop/src-tauri/src/commands/agents_hosted.rs#L261)
+reuses that guard and preserves record-command/default-argv matching. The early
+call is Windows-hosted-only; local/provider branches are unchanged. Production
+delta is +12/-3 in the existing two modules, with no rollback or identity redesign.
+
+**Read, not executed:** the [four regression cases](../../../desktop/src-tauri/src/commands/agents_hosted_tests.rs#L145)
+call the actual main creation phases with missing inventory, missing selected
+entry, unavailable runtime and unsupported configuration. They require the
+inventory error and empty intent/record/publication queue, no loopback publication
+connection, and no managed process. The listener is disposable, loopback-pinned
+with no proxy/redirects and a one-second HTTP timeout, and is closed before the
+[original available-runtime recovery case](../../../desktop/src-tauri/src/commands/agents_hosted_tests.rs#L215).
+Removing the early guard would let the otherwise valid draft reach main creation
+and fail these assertions (control-flow inference, not a measured mutant kill).
+No introduced source/test defect was identified.
+
+| Re-gate check | Independent result |
+| --- | --- |
+| Hermit `HERMIT_SELF_UPDATE=false`; `cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check` | PASS |
+| `git diff --check`; report local-link validation | PASS |
+| Static source-order checks: early call before Phase 1, `Keys::generate`, prepare, persist, enqueue, publish; no early `self.record()` dependency; late guard/argv comparison retained | PASS; static only |
+| From `desktop/src-tauri`, `cargo test --offline --lib hosted_native_create_recovery_and_session_fence --no-run` | BLOCKED, exit 101 before app compilation: `pkg-config --libs --cflags gio-2.0 'gio-2.0 >= 2.70'` cannot find `gio-2.0.pc`. Local independent log: `target/3721-review-m1-native-build.log`. This confirms the [executor's retained environment failure](../../verification/3721-host-discovery/m1-native-build-blocker.txt). |
+| Windows-only native fixture, including four new cases | NOT RUN. A Linux build would not itself execute this Windows-only fixture. |
+
+The initial **99 independently measured passes** below remain evidence for the
+unchanged core, hostd/controller, owner, ACP synthetic runtime and Node paths.
+None of those files changed in this repair; they were not rerun or promoted into
+proof of the new native cases. Executor differential-size evidence also remains
+executor-authored and applies to the unchanged repair source. Full CI, Windows
+build/UI, real systemd/providers, live systems and human acceptance remain unrun.
+No dependency installation, platform workaround, additional broad suite or source
+mutation was attempted.
+
+| Finding / obligation | Current disposition |
+| --- | --- |
+| M-1 — source repair accepted | Prior conductor fix-in-lane direction is implemented and independently read-verified. No further code repair requested. Native regression execution is still pending. |
+| Native verification gap | Return to conductor as the existing native acceptance limitation. Run the named fixture in the authorized Windows environment before certifying that behavior; this review grants no such environment or rollout authorization. |
+
+Minimalism/elegance/source correctness: 9/10 each, with native compilation and
+behavior explicitly unproven. All review commands exited; only this report was
+changed. The clean checkout is released with its DCO report commit. There is no
+further authorized review work to run in this environment.
+
+## Initial review history — source pin 7720b41a8
+
+The original finding and citations below describe the initial source pin; use
+that commit for historical line references. The re-gate above governs current
+source disposition and verification limits.
+
 Date: 2026-11-10. Reviewer: `/root/host_discovery_windows_review`, `codex-chuck`.
 Requested configuration: `gpt-6-astra` / `high`; actual served model and reasoning
 metadata are not independently exposed. Rework round: **0**.
@@ -152,4 +224,6 @@ is requested. Native activation stays separately gated. This reviewer changed
 only this report. All review build/test sessions finished; ownership is released
 with the DCO documentation commit after clean-status and process checks.
 
-quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=4149810598334eb8bff18f3c65d014cba3092a59..7720b41a853775eae23ce103944de904f626865b findings=C=0/H=0/M=1/L=0 rework_rounds=0
+Initial quality record: `quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=4149810598334eb8bff18f3c65d014cba3092a59..7720b41a853775eae23ce103944de904f626865b findings=C=0/H=0/M=1/L=0 rework_rounds=0`
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=f15313756c4b3f4e28d442f275532602e60e076f..5d72b08d3e5ab7bbcd52711e17a43572e184e47b findings=C=0/H=0/M=0/L=0 rework_rounds=1
