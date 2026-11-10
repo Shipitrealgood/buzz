@@ -138,11 +138,52 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
                 .unwrap(),
             device: Device::at(&path).unwrap(),
             scope: scope.clone(),
-            operation: "bc".repeat(32),
-            runtime: "native/grok".into(),
+            operation: String::new(),
+            runtime: String::new(),
             status,
             draft: serde_json::to_value(input()).unwrap(),
         };
+        // Catalog reads use the production projection with no setup operation.
+        // Actual creation must still reject that empty operation.
+        assert_eq!(context.check().unwrap_err(), "invalid operation");
+        let catalog = serde_json::to_value(commands::catalog(&context).unwrap()).unwrap();
+        assert_eq!(
+            catalog["status"],
+            serde_json::to_value(&context.status).unwrap()
+        );
+        assert_eq!(catalog["runtimes"].as_array().unwrap().len(), 1);
+        let runtime = &catalog["runtimes"][0];
+        assert_eq!(runtime["installedId"], "native/grok");
+        assert_eq!(runtime["metadata"]["command"], "grok");
+        assert_eq!(
+            runtime["metadata"]["default_args"],
+            json!(["agent", "--always-approve", "stdio"])
+        );
+        assert_eq!(runtime["metadata"]["availability"], "available");
+        assert_eq!(runtime["metadata"]["auth_status"]["status"], "unknown");
+        assert_eq!(
+            runtime["facts"],
+            serde_json::to_value(&context.status.inventory.as_ref().unwrap()["native/grok"])
+                .unwrap()
+        );
+        assert!(context
+            .device
+            .deployment_intents(&scope.community, &owner)
+            .unwrap()
+            .is_empty());
+        state
+            .workspace_apply_generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        assert_eq!(
+            commands::catalog(&context).err().unwrap(),
+            "active community changed"
+        );
+        // Resume the existing setup journey under the new current session.
+        context.session = Session::capture(&state, &scope.community, &scope.owner.to_hex())
+            .await
+            .unwrap();
+        context.operation = "bc".repeat(32);
+        context.runtime = "native/grok".into();
         let valid_status = context.status.clone();
         let retention_scope =
             crate::managed_agents::retention::active_retention_scope(app.handle(), &state).unwrap();

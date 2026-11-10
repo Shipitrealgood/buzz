@@ -152,6 +152,10 @@ pub async fn hosted_catalog(
     scope: Scope,
 ) -> Result<HostedCatalog, String> {
     let (create, _) = open(&app, &state, scope, String::new(), String::new()).await?;
+    catalog(&create)
+}
+
+pub(super) fn catalog(create: &Create<'_>) -> Result<HostedCatalog, String> {
     let runtimes = match &create.status.capability {
         d::Capability::Supported {
             runtimes,
@@ -186,9 +190,10 @@ pub async fn hosted_catalog(
             .collect(),
         _ => Vec::new(),
     };
-    create.check()?;
+    // Capability reads have no deployment operation or retained intent.
+    create.session.keys().map_err(|e| e.to_string())?;
     Ok(HostedCatalog {
-        status: create.status,
+        status: create.status.clone(),
         runtimes,
     })
 }
