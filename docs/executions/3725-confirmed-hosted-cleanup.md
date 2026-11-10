@@ -1,6 +1,6 @@
 # #3725 confirmed hosted Cleanup execution
 
-Status: Windows exposed a wire-byte defect; narrow sender repair awaiting re-gate.
+Status: current-source Windows native/build gates passed; evidence ready for review.
 Executor releases exclusive write/test ownership with the final documentation commit in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
 `proof/3720-host-registration-events`. Starting clean pin
@@ -374,3 +374,97 @@ edits, owned processes or temporary probe changes remain. Next gate: independent
 review of the sender/fixture delta, then resumed approved Windows verification
 only after reviewer release. Successful Cleanup native execution, full native
 IPC/keyring/systemd/provider/human workflows and live acceptance remain unproven.
+
+## Accepted sender repair: third Windows run
+
+Same reviewer accepted the sender/fixture delta (C=0/H=0/M=0/L=0), independently
+reran ws-client 5/5 and owner 2/2, and released clean
+`929c2cd890fbc2c0993549c3cbc64a2714232832`. Executor resumed exclusive ownership.
+Fresh remote head `8279e0dbf` was an ancestor; unchanged workflow/trigger checks
+and active workflow ID `323279417` hold. Normal fast-forward updated only the
+approved fork canary branch to that accepted source. Existing workflow launched
+as [run 42870540036](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036).
+Both jobs are monitored under the same finite gates; earlier failures remain
+preserved and no new successful result is inferred while this run is active.
+
+Compatibility ruling remains bounded: isolated verification/fresh disposable
+pilot only. The sender change does not promise transparent upgrade of previously
+admitted reordered command/result envelopes; exact dedup guards are unchanged.
+Historical-envelope compatibility, inspected-relay drift and final host-package
+provenance remain rollout preflight conditions. Prepared `c97256e` is not claimed
+current-source and is not rebuilt/activated here.
+
+### Third run terminal: current-source Windows gate passed
+
+[Run 42870540036](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036)
+completed **SUCCESS** on exact source
+`929c2cd890fbc2c0993549c3cbc64a2714232832`, run number 24. Native job
+`130020350387` ran `17:59:32–18:15:19Z` (**15m47s**); build job `130020349988`
+ran `17:59:33–18:16:29Z` (**16m56s**), 2026-11-10 UTC. Both terminal job/run
+metadata and source receipts agree. Watcher 62851 exited **0**. No new source fix
+was needed during this run; no additional workflow was launched.
+
+All Cargo commands used `--locked --target x86_64-pc-windows-msvc`; owner/core
+ran at repo root and desktop commands from `desktop/src-tauri`:
+
+| Native command/filter | Measured result |
+|---|---|
+| `cargo test … -p buzz-paired-owner --lib` | **16 passed**, 28.51s |
+| `cargo test … -p buzz-core --lib harness::` | **9 passed**, nine unique names |
+| `cargo test … --lib nostr_convert::` | **73 passed** |
+| `cargo test … --lib commands::agent_discovery::relay_directory::` | **7 passed** |
+| `cargo test … --lib commands::paired_hosts::` | **3 passed** |
+| Exact `commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence` | **1 passed**, 9.94s |
+| Exact `commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence` | **1 passed**, 10.72s |
+| Exact `managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary` | **1 passed** |
+| `crates/buzz-paired-owner/windows/test-journal-acl.ps1` | Owner used SQLite; another standard user read control and was denied DB/WAL/SHM |
+
+**111 distinct outer Rust cases, zero failed/ignored**, plus ACL. Counts checked
+against each artifact log's single summary and unique named passes; child fixture
+execution and workflow grep echoes are not extra cases. The new Cleanup case now
+compiles and runs on Windows through admission refusal, session fencing,
+runtime-inventory disappearance, pending/denied confirmation, archive-enqueue
+failure/phase-3 retry, existing lock contention/concurrent workspace and identity
+mutation, original-scope tombstone/archive and completion/no-resurrection. Those
+are assertions within one exact test, not separately counted cargo cases.
+
+Current-source native execution supersedes earlier NOT RUN statements only for
+these bounded fixtures/build. It does not prove full Tauri command dispatch, real
+keyring failure/import, host/systemd/provider/login/chat or human native workflow.
+The native peer remains an authenticated fixture, not a live relay or host.
+
+Artifact/evidence root:
+`/home/bryce/services/buzz-agents/releases/3725-windows-canary/929c2cd890fbc2c0993549c3cbc64a2714232832/42870540036/`.
+
+- Installer **`Buzz_0.5.29-test.24_x64-setup.exe`**, version **0.5.29-test.24**,
+  **56,458,561 bytes**, unsigned NSIS, updater artifacts disabled. SHA-256:
+  **`b5c800b489cc7f85f654ec8a768ed96a7ceec408e79c11754fbfdc34f75a050e`**.
+- [Installer artifact 13790342999](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036/artifacts/13790342999),
+  expires **2026-11-17T18:15:24Z**. ZIP **56,456,917 bytes**, SHA-256
+  `79b745b59dcdb033ba651fba9c814372c5b8bf784756d6dcff0c23c842f4c1c5`.
+- [Native artifact 13789439674](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036/artifacts/13789439674),
+  expires **2026-11-17T18:15:14Z**. ZIP **5,407 bytes**, SHA-256
+  `b138ee57859c58a66a8983a04e5f6450d224d3455caf6d2202dbd7ce2edca421`.
+- Both ZIP digests/sizes match GitHub metadata. Inspected exactly two installer
+  members and ten flat native receipt members before extraction. Executable PE
+  header and receipt source/version/filename/hash match. Native `source.txt`
+  matches source/run. `verification.json` records counts and digests; terminal
+  `run.json`/`jobs.json`/`artifacts.json`, original and stripped job logs, both ZIPs,
+  extracted `tests/` and `installer/` retained. **Installer never executed.**
+
+Prior failed runs/test.22 and test.23 remain preserved as described above; no
+receipt was replaced. The first fixture-expectation correction and second actual
+sender defect remain part of the review trail. Only third-run test.24 contains
+the accepted sender repair and successful current-source native fixture result.
+Nonfatal existing setup-node input/Node warnings were left alone.
+
+Final resumed phase changes documentation only; production/test/workflow delta
+since accepted `929c2cd` is **zero**. All monitor/download/build/test commands are
+terminal; no owned process remains. `git diff --check` and artifact/source checks
+passed. No unrelated edits were present or changed. Exclusive ownership is
+released at the following signed documentation commit for the same reviewer to
+assess this native/artifact evidence. Full CI, human acceptance, installer
+execution, live activation and historical-envelope upgrade compatibility remain
+outside this completed automated gate. Host package `c97256e` still predates the
+sender repair; final host-artifact provenance must be reconciled in later rollout
+preparation, with no rebuild or installation performed here.

@@ -1,6 +1,52 @@
 # #3725 confirmed hosted Cleanup — independent review
 
-## Current handoff: Windows failure and exact-wire repair
+## Current handoff: successful current-source Windows evidence
+
+Same reviewer: source corrections were accepted at clean
+`929c2cd890fbc2c0993549c3cbc64a2714232832`. This handoff changes **documentation
+only** and supplies the required native/artifact gate. Assess evidence and
+limitations; no new source repair arose and no broad source re-audit is requested.
+
+[Third run 42870540036](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036)
+is terminal **SUCCESS** at that exact source. Native job `130020350387` passed in
+15m47s; installer job `130020349988` passed in 16m56s. **111 distinct outer Rust
+cases, zero failed/ignored, plus ACL**: owner16, harness9, conversion73, directory7,
+paired-hosts3, exact create1, exact Cleanup1, exact metadata1. Cleanup passed
+10.72s, including the retained failure/retry and finalization race assertions.
+Counts derive from individual artifact logs and unique named cases, not grep
+echoes or subprocess double-counting.
+
+**Evidence probes:** read terminal metadata, native `source.txt`, the exact
+Cleanup log, ACL receipt and `verification.json` under
+`/home/bryce/services/buzz-agents/releases/3725-windows-canary/929c2cd890fbc2c0993549c3cbc64a2714232832/42870540036/`.
+Verify hashes/source association against the
+[final execution receipt](../executions/3725-confirmed-hosted-cleanup.md#third-run-terminal-current-source-windows-gate-passed).
+Full raw/stripped logs, artifacts and extracted receipts are retained there.
+
+- Current installer: `Buzz_0.5.29-test.24_x64-setup.exe`, **56,458,561 bytes**;
+  SHA-256 `b5c800b489cc7f85f654ec8a768ed96a7ceec408e79c11754fbfdc34f75a050e`.
+  Artifact `13790342999` expires **2026-11-17T18:15:24Z**.
+- Native artifact `13789439674` expires **2026-11-17T18:15:14Z**. Both ZIP sizes
+  and digests match GitHub metadata; archive members were inspected before
+  extraction, and installer receipt/source/version/hash plus PE header checked.
+- First failed runs `42862238726` and `42866083928` and test.22/test.23 artifacts
+  are retained separately. The first was a fixture expectation defect; the second
+  exposed the production byte-order defect. Earlier NOT RUN/failure statements
+  below describe those source pins and are superseded only by this bounded gate.
+
+Installer was **not executed**. This proves the native fixture/build assertions,
+not full Tauri IPC, real keyring/import failures, live relay/host/systemd/provider
+or human workflow. Browser mocks remain browser-only evidence. Runtime feature
+gate remains default-off; no live or package deployment actions occurred.
+Historical-envelope compatibility/fresh-pilot scope and `c97256e` provenance
+boundary from round 2 remain unchanged: that host package predates this shared
+sender and needs explicit later reconciliation against final accepted source.
+
+All processes are terminal; exclusive write/test ownership is released at this
+documentation commit. Review the evidence, then return disposition to conductor.
+No further workflow, installer execution or live action is implied.
+
+## Prior handoff: Windows failure and exact-wire repair
 
 Same reviewer: assess source delta
 `8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21..d093d6dcd556a6ef6017cf8a2a70c109c14627e8`,
