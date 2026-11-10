@@ -307,19 +307,73 @@ pub fn result(keys: &Keys, value: &DeploymentResult, now: u64) -> Result<Event> 
         MAX_EVENT,
     )
 }
-/// Verify and open the exact private host outcome.
-pub fn open_result(keys: &Keys, event: &Event, request: &Authority) -> Result<DeploymentResult> {
+/// Sign a bounded private observation without changing the public result header.
+pub fn result_body(keys: &Keys, body: &observation::ResultBody, now: u64) -> Result<Event> {
+    body.validate(&body.result.request)?;
+    if keys.public_key() != body.result.request.scope.host
+        || body
+            .observation
+            .as_ref()
+            .is_some_and(|o| o.observed_at > now)
+    {
+        return Err(Error);
+    }
+    let content = encrypted(keys, body.result.request.scope.owner, body)?;
+    if content.len() > 4096 {
+        return Err(Error);
+    }
+    signed(
+        keys,
+        body.result.request.scope.owner,
+        &Header::Result {
+            result: body.result.clone(),
+        },
+        content,
+        now,
+        MAX_EVENT,
+    )
+}
+/// Verify and open a private result, preserving legacy result-only bodies.
+pub fn open_result_body(
+    keys: &Keys,
+    event: &Event,
+    request: &Authority,
+) -> Result<observation::ResultBody> {
     let (_, h) = verify(
         &serde_json::to_vec(event).map_err(|_| Error)?,
         &request.scope.community,
         request.scope.host,
     )?;
-    let r: DeploymentResult = decrypted(keys, event, 4096)?;
-    if keys.public_key() != request.scope.owner || h != (Header::Result { result: r.clone() }) {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Body {
+        Current(observation::ResultBody),
+        Legacy(DeploymentResult),
+    }
+    let body = match decrypted::<Body>(keys, event, 4096)? {
+        Body::Current(b) => b,
+        Body::Legacy(result) => observation::ResultBody {
+            result,
+            observation: None,
+        },
+    };
+    if keys.public_key() != request.scope.owner
+        || h != (Header::Result {
+            result: body.result.clone(),
+        })
+        || body
+            .observation
+            .as_ref()
+            .is_some_and(|o| o.observed_at > event.created_at.as_secs())
+    {
         return Err(Error);
     }
-    r.validate(request)?;
-    Ok(r)
+    body.validate(request)?;
+    Ok(body)
+}
+/// Compatibility accessor for the exact private host outcome.
+pub fn open_result(keys: &Keys, event: &Event, request: &Authority) -> Result<DeploymentResult> {
+    Ok(open_result_body(keys, event, request)?.result)
 }
 /// Publish only actual installed catalog evidence while host management is enabled.
 pub fn status(keys: &Keys, value: &Status, now: u64) -> Result<Event> {

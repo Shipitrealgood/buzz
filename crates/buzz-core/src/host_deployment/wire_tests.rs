@@ -112,6 +112,7 @@ fn status_is_host_signed_scoped_and_expires() {
         scope: a.scope,
         availability: Availability::Current,
         capability: Capability::Supported {
+            harnesses: Default::default(),
             catalog_revision: "ff".repeat(32),
             runtimes: vec![],
         },
@@ -223,4 +224,140 @@ fn cleanup_namespace_cannot_be_reused_for_deploy_or_foreign_cleanup() {
         normal.action = action;
         assert!(sign_command(&owner, &normal, e.content.as_bytes(), 100).is_ok());
     }
+}
+
+#[test]
+fn private_observation_is_bound_bounded_historical_and_legacy_compatible() {
+    use super::observation::*;
+    let (owner, host, mut a) = input();
+    a.action = Action::Deploy;
+    a.content_sha256 = "ab".repeat(32);
+    let result = DeploymentResult {
+        request: a.clone(),
+        outcome: Outcome::NeedsLogin,
+        applied_revision: Some(2),
+    };
+    let o = Observation {
+        scope: a.scope.clone(),
+        agent: a.agent,
+        runtime_id: "native/grok".into(),
+        catalog_revision: "cd".repeat(32),
+        operation_id: a.operation_id.clone(),
+        revision: 2,
+        action_id: "ef".repeat(32),
+        observed_at: 110,
+        expires_at: 230,
+        login: LoginState::NotObserved,
+        login_at: None,
+        models: Models::Available {
+            catalog: crate::agent_models::normalize_agent_models(
+                &serde_json::json!({
+                    "agent":{"name":"synthetic","version":"1"},
+                    "stable":{"configOptions":[{"category":"model","currentValue":"private-model-sentinel","options":[{"value":"private-model-sentinel","name":"Private model"}]}]}
+                }),
+                None,
+            ),
+        },
+    };
+    let body = ResultBody {
+        result: result.clone(),
+        observation: Some(o.clone()),
+    };
+    let event = result_body(&host, &body, 110).unwrap();
+    assert!(event.content.len() <= 4096);
+    assert!(!serde_json::to_string(&event)
+        .unwrap()
+        .contains("private-model-sentinel"));
+    assert_eq!(open_result_body(&owner, &event, &a).unwrap(), body);
+    assert_eq!(open_result(&owner, &event, &a).unwrap(), result);
+    assert!(open_result_body(&host, &event, &a).is_err());
+    let legacy = super::wire::result(&host, &result, 110).unwrap();
+    assert_eq!(
+        open_result_body(&owner, &legacy, &a).unwrap().observation,
+        None
+    );
+    let config = Deploy {
+        catalog_revision: o.catalog_revision.clone(),
+        runtime_id: o.runtime_id.clone(),
+        name: "test".into(),
+        policy: Policy {
+            respond_to: "owner-only".into(),
+            respond_to_allowlist: vec![],
+            channel_add_policy: "owner_only".into(),
+        },
+        model: ModelSelection::PendingLogin {},
+        provider: None,
+        system_prompt: None,
+        effort: None,
+        parallelism: 1,
+    };
+    assert!(o.current(&result, &config, 110).is_ok());
+    assert!(o.current(&result, &config, 230).is_err());
+    assert!(o.current(&result, &config, 109).is_err());
+    for field in [
+        "scope",
+        "agent",
+        "operation",
+        "revision",
+        "expiry",
+        "login",
+        "oversize",
+    ] {
+        let mut wrong = o.clone();
+        match field {
+            "scope" => wrong.scope.generation = "01".repeat(32),
+            "agent" => wrong.agent = Keys::generate().public_key(),
+            "operation" => wrong.operation_id = "02".repeat(32),
+            "revision" => wrong.revision += 1,
+            "expiry" => wrong.expires_at += 1,
+            "login" => wrong.login = LoginState::Succeeded,
+            "oversize" => {
+                if let Models::Available { catalog } = &mut wrong.models {
+                    catalog.models = (0..64)
+                        .map(|i| crate::agent_models::AgentModelInfo {
+                            id: format!("{i}{}", "x".repeat(100)),
+                            name: None,
+                            description: None,
+                        })
+                        .collect();
+                }
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            result_body(
+                &host,
+                &ResultBody {
+                    result: result.clone(),
+                    observation: Some(wrong)
+                },
+                110
+            )
+            .is_err(),
+            "{field}"
+        );
+    }
+    let mut wrong_config = config;
+    wrong_config.catalog_revision = "03".repeat(32);
+    assert!(o.current(&result, &wrong_config, 110).is_err());
+    let wrong_header = DeploymentResult {
+        outcome: Outcome::Applied,
+        ..result.clone()
+    };
+    let forged = nostr::EventBuilder::new(event.kind, event.content.clone())
+        .tags([
+            nostr::Tag::parse([
+                "deployment",
+                &serde_json::to_string(&Header::Result {
+                    result: wrong_header,
+                })
+                .unwrap(),
+            ])
+            .unwrap(),
+            nostr::Tag::parse(["p", &owner.public_key().to_hex()]).unwrap(),
+        ])
+        .custom_created_at(event.created_at)
+        .sign_with_keys(&host)
+        .unwrap();
+    assert!(open_result_body(&owner, &forged, &a).is_err());
 }

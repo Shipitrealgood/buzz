@@ -799,31 +799,7 @@ pub struct UpdateManagedAgentResponse {
     pub profile_sync_error: Option<String>,
 }
 
-/// Response from `get_agent_models` — normalized model info for the frontend.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentModelsResponse {
-    pub agent_name: String,
-    pub agent_version: String,
-    /// Unified model list (merged from both ACP paths, deduplicated by ID).
-    pub models: Vec<AgentModelInfo>,
-    /// The agent's default model for a fresh session.
-    pub agent_default_model: Option<String>,
-    /// The user's persisted model selection (from ManagedAgentRecord.model).
-    pub selected_model: Option<String>,
-    /// Whether this agent supports model switching.
-    pub supports_switching: bool,
-}
-
-/// A single model available from an agent.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentModelInfo {
-    /// Canonical ID used for persistence and round-tripping.
-    pub id: String,
-    pub name: Option<String>,
-    pub description: Option<String>,
-}
+pub use buzz_core_pkg::agent_models::{AgentModelInfo, AgentModelsResponse};
 
 pub const DEFAULT_ACP_COMMAND: &str = "buzz-acp";
 /// ~5 min (320s) — matches the CLI harness default (BUZZ_ACP_IDLE_TIMEOUT).

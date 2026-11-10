@@ -31,6 +31,7 @@ fn protected_main_snapshot_same_key_expiry_tamper_and_terminal_receipt() {
         scope: scope.clone(),
         availability: d::Availability::Current,
         capability: d::Capability::Supported {
+            harnesses: Default::default(),
             catalog_revision: "cd".repeat(32),
             runtimes: vec!["acp/codex".into()],
         },

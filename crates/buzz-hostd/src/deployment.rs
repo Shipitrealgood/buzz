@@ -284,7 +284,7 @@ impl Host {
             catalog.community.as_ref() == Some(&scope.community) && catalog.current(revision)?,
             "catalog changed or wrong community"
         );
-        let runtimes = catalog
+        let runtimes: Vec<String> = catalog
             .runtimes
             .iter()
             .filter(|(_, r)| {
@@ -300,6 +300,15 @@ impl Host {
             availability: Availability::Current,
             capability: Capability::Supported {
                 catalog_revision: revision.into(),
+                harnesses: runtimes
+                    .iter()
+                    .filter_map(|id| {
+                        catalog.runtimes[id]
+                            .harness_id
+                            .as_ref()
+                            .map(|h| (id.clone(), h.clone()))
+                    })
+                    .collect(),
                 runtimes,
             },
             expires_at: now + 120,

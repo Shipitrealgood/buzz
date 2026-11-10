@@ -96,3 +96,6 @@ pub mod host_registry;
 
 /// Registered-host deployment data contract (execution remains disabled).
 pub mod host_deployment;
+
+/// Shared pure ACP model normalization and response types.
+pub mod agent_models;

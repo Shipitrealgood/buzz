@@ -51,6 +51,7 @@ fn test_runtime() -> buzz_hostd::Runtime {
         sha256: hex::encode(sha2::Sha256::digest(fs::read("/usr/bin/true").unwrap())),
     };
     buzz_hostd::Runtime {
+        harness_id: None,
         adapter: exe.clone(),
         harness: exe,
         args: vec![],

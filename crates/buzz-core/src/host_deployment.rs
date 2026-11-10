@@ -56,6 +56,9 @@ pub enum Capability {
         catalog_revision: String,
         /// Unique hostd catalog runtime IDs; no commands, paths or credentials.
         runtimes: Vec<String>,
+        /// Approved installed runtime to canonical harness mapping; absent means unsupported.
+        #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        harnesses: std::collections::BTreeMap<String, String>,
     },
 }
 impl Capability {
@@ -64,12 +67,16 @@ impl Capability {
         if let Self::Supported {
             catalog_revision,
             runtimes,
+            harnesses,
         } = self
         {
             if !identifier(catalog_revision)
                 || runtimes.len() > 64
                 || runtimes.iter().any(|id| !runtime_id(id))
                 || runtimes.windows(2).any(|w| w[0] >= w[1])
+                || harnesses
+                    .iter()
+                    .any(|(id, harness)| !runtimes.contains(id) || !runtime_id(harness))
             {
                 return Err(Error);
             }
@@ -123,6 +130,7 @@ impl Status {
             Capability::Supported {
                 catalog_revision,
                 runtimes,
+                ..
             } if catalog_revision == catalog && runtimes.iter().any(|id| id == runtime) => Ok(()),
             _ => Err(Error),
         }
@@ -381,3 +389,6 @@ pub mod wire;
 
 #[cfg(test)]
 mod wire_tests;
+
+/// Private per-operation discovery; never installation or entitlement evidence.
+pub mod observation;

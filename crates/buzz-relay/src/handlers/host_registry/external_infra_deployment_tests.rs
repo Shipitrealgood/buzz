@@ -164,6 +164,7 @@ mod external_infra_deployment_tests {
                 runtimes: [(
                     "acp/codex".into(),
                     buzz_hostd::Runtime {
+                        harness_id: None,
                         harness: exe.clone(),
                         adapter: exe,
                         args: vec![],

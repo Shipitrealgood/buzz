@@ -88,6 +88,7 @@ fn authority_roundtrip_and_each_binding_rejects_mismatch() {
 fn registration_unsupported_empty_stale_revoked_never_permit_deploy() {
     let s = scope();
     let supported = Capability::Supported {
+        harnesses: Default::default(),
         catalog_revision: "dd".repeat(32),
         runtimes: vec!["fixture/acp".into()],
     };
@@ -95,6 +96,7 @@ fn registration_unsupported_empty_stale_revoked_never_permit_deploy() {
         Capability::RegistrationOnly {},
         Capability::Unsupported {},
         Capability::Supported {
+            harnesses: Default::default(),
             catalog_revision: "dd".repeat(32),
             runtimes: vec![],
         },
@@ -137,6 +139,7 @@ fn registration_unsupported_empty_stale_revoked_never_permit_deploy() {
         vec!["x".into(); 65],
     ] {
         assert!(Capability::Supported {
+            harnesses: Default::default(),
             catalog_revision: "dd".repeat(32),
             runtimes
         }

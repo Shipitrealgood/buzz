@@ -61,6 +61,9 @@ impl Executable {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Runtime {
+    /// Canonical main harness identity, explicitly approved by the operator.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness_id: Option<String>,
     pub harness: Executable,
     pub adapter: Executable,
     pub args: Vec<String>,
@@ -113,6 +116,7 @@ impl Catalog {
         for (id, rt) in &self.runtimes {
             ensure!(
                 runtime_id(id)
+                    && rt.harness_id.as_deref().is_none_or(runtime_id)
                     && token(&rt.credential_profile)
                     && rt.args.len() <= 32
                     && rt.args.iter().all(|a| !a.contains(',')
@@ -340,6 +344,7 @@ mod tests {
             runtimes: [(
                 "local/approved".into(),
                 Runtime {
+                    harness_id: None,
                     adapter: exe.clone(),
                     harness: exe,
                     args: vec![],
