@@ -79,6 +79,7 @@ impl Execution {
         }
         Ok(())
     }
+    /// Fixed basename derived from the protected nonce, never a caller path.
     pub fn filename(&self) -> String {
         format!(".buzz-action-{}", self.nonce)
     }
@@ -106,8 +107,10 @@ pub struct ActionResult {
 pub struct Context {
     pub home: PathBuf,
     pub runtime: PathBuf,
+    pub notify: std::ffi::OsString,
 }
 impl Context {
+    /// Require the canonical per-unit paths supplied by the installed systemd unit.
     pub fn from_systemd(unit: &str) -> Result<Self> {
         let home = PathBuf::from(
             env::var_os("STATE_DIRECTORY").ok_or_else(|| anyhow!("state directory missing"))?,
@@ -120,7 +123,12 @@ impl Context {
                 && runtime == Path::new("/run").join(format!("buzz-agent-{unit}")),
             "wrong systemd context"
         );
-        Ok(Self { home, runtime })
+        Ok(Self {
+            home,
+            runtime,
+            notify: env::var_os("NOTIFY_SOCKET")
+                .ok_or_else(|| anyhow!("notification socket missing"))?,
+        })
     }
     /// The common environment is intentionally independent of inherited provider variables.
     pub fn environment(&self) -> BTreeMap<String, String> {
@@ -155,7 +163,7 @@ fn publish(dir: &Path, result: &ActionResult) -> Result<()> {
     f.persist(dir.join(result.execution.filename()))?;
     Ok(())
 }
-fn notify() -> Result<()> {
+fn notify(path: &std::ffi::OsStr) -> Result<()> {
     use std::os::{
         linux::net::SocketAddrExt,
         unix::{
@@ -163,8 +171,6 @@ fn notify() -> Result<()> {
             net::{SocketAddr, UnixDatagram},
         },
     };
-    let path =
-        env::var_os("NOTIFY_SOCKET").ok_or_else(|| anyhow!("notification socket missing"))?;
     let addr = match path.as_bytes().strip_prefix(b"@") {
         Some(name) => SocketAddr::from_abstract_name(name)?,
         None => SocketAddr::from_pathname(path)?,
@@ -236,7 +242,7 @@ pub async fn finite(
         .ok_or_else(|| anyhow!("stderr missing"))?;
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     // Readiness means supervised action started, not authentication or available models.
-    notify()?;
+    notify(&context.notify)?;
     let timeout = tokio::time::sleep(Duration::from_secs(
         execution
             .deadline
@@ -311,13 +317,17 @@ pub async fn finite(
             },
         };
         // Enumerating cached/local models offline cannot establish online readiness.
-        result.models = match (policy, local) {
-            (NetworkPolicy::Disabled, Models::Available { .. } | Models::Empty) => {
-                Models::Unavailable {
-                    reason: UnavailableReason::NetworkDisabled,
+        result.models = if rt.harness_id.is_none() {
+            Models::Unsupported
+        } else {
+            match (policy, local) {
+                (NetworkPolicy::Disabled, Models::Available { .. } | Models::Empty) => {
+                    Models::Unavailable {
+                        reason: UnavailableReason::NetworkDisabled,
+                    }
                 }
+                (_, other) => other,
             }
-            (_, other) => other,
         };
     }
     publish(&context.home, &result)?;

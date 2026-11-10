@@ -73,21 +73,97 @@ impl Helper {
         Ok(())
     }
     async fn action(&self, verb: &str, unit: &str) -> Result<String> {
+        self.request(verb, unit, None).await
+    }
+    async fn request(&self, verb: &str, unit: &str, nonce: Option<&str>) -> Result<String> {
         ensure!(
-            matches!(verb, "prepare" | "start" | "cleanup") && crate::id(unit),
+            matches!(
+                verb,
+                "prepare" | "start" | "cleanup" | "models" | "observe" | "cancel"
+            ) && crate::id(unit)
+                && nonce.is_none_or(crate::id)
+                && (matches!(verb, "observe" | "cancel") == nonce.is_some()),
             "invalid fixed helper action"
         );
         tokio::time::timeout(Duration::from_secs(90), async {
             let mut socket = tokio::net::UnixStream::connect(&self.socket).await?;
-            socket
-                .write_all(format!("{verb} {unit}").as_bytes())
-                .await?;
+            let request = match nonce {
+                Some(n) => format!("{verb} {unit} {n}"),
+                None => format!("{verb} {unit}"),
+            };
+            socket.write_all(request.as_bytes()).await?;
             socket.shutdown().await?;
             let mut output = Vec::new();
-            socket.take(16).read_to_end(&mut output).await?;
+            socket.take(65537).read_to_end(&mut output).await?;
+            ensure!(output.len() <= 65536, "oversized helper response");
             Ok::<_, anyhow::Error>(String::from_utf8(output)?)
         })
         .await?
+    }
+    async fn discover(
+        &self,
+        i: &Instance,
+    ) -> Result<buzz_core::host_deployment::observation::Observation> {
+        use crate::runtime_context::{ActionResult, Execution, Mode};
+        use buzz_core::host_deployment::observation::{Models, Observation, UnavailableReason};
+        let action: Execution = serde_json::from_str(&self.action("models", &i.unit_id).await?)?;
+        action.validate(i, nostr::Timestamp::now().as_secs())?;
+        ensure!(action.mode == Mode::Models, "wrong discovery action");
+        let remaining = action
+            .deadline
+            .saturating_sub(nostr::Timestamp::now().as_secs());
+        let observed = tokio::time::timeout(Duration::from_secs(remaining), async {
+            loop {
+                let raw = self
+                    .request("observe", &i.unit_id, Some(&action.nonce))
+                    .await?;
+                if raw == "pending\n" {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    continue;
+                }
+                let r: ActionResult = serde_json::from_str(&raw)?;
+                ensure!(
+                    r.execution == action && r.login_output.is_empty(),
+                    "wrong discovery response"
+                );
+                if r.finished {
+                    return Ok::<_, anyhow::Error>(r);
+                }
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        })
+        .await;
+        let result = match observed {
+            Ok(Ok(r)) => r,
+            other => {
+                self.request("cancel", &i.unit_id, Some(&action.nonce))
+                    .await?;
+                return match other {
+                    Ok(Err(e)) => Err(e),
+                    _ => Err(anyhow::anyhow!("discovery deadline exceeded")),
+                };
+            }
+        };
+        let mut o = Observation {
+            scope: i.scope.clone(),
+            agent: PublicKey::from_hex(&i.agent)?,
+            runtime_id: i.runtime_id.clone(),
+            catalog_revision: i.revision.clone(),
+            operation_id: action.operation,
+            revision: action.revision,
+            action_id: action.nonce,
+            observed_at: result.observed_at,
+            expires_at: result.observed_at + 120,
+            login: result.login,
+            login_at: result.login_at,
+            models: result.models,
+        };
+        if serde_json::to_vec(&o)?.len() > 2048 {
+            o.models = Models::Unavailable {
+                reason: UnavailableReason::Oversized,
+            };
+        }
+        Ok(o)
     }
     fn remove_staged(&self, unit: &str) -> Result<()> {
         let path = self.staging.join(format!("{unit}.cred"));
@@ -211,6 +287,7 @@ impl Host {
         unit_id: &str,
         mut outcome: Outcome,
         mut issue: Option<String>,
+        observation: Option<buzz_core::host_deployment::observation::Observation>,
     ) -> Result<Option<Event>> {
         let keys = self.store.keys()?;
         let tx = self.store.tx()?;
@@ -248,19 +325,40 @@ impl Host {
         let completed = cleaned || outcome == Outcome::Cleaned;
         let event = match terminal {
             Some(event) => event,
-            None => wire::result(
-                &keys,
-                &DeploymentResult {
-                    request: a.clone(),
-                    applied_revision: matches!(
+            None => {
+                let mut body = buzz_core::host_deployment::observation::ResultBody {
+                    result: DeploymentResult {
+                        request: a.clone(),
+                        applied_revision: matches!(
+                            outcome,
+                            Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
+                        )
+                        .then_some(a.expected_revision + 1),
                         outcome,
-                        Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
-                    )
-                    .then_some(a.expected_revision + 1),
-                    outcome,
-                },
-                nostr::Timestamp::now().as_secs(),
-            )?,
+                    },
+                    observation,
+                };
+                body.validate(a)?;
+                let now = nostr::Timestamp::now().as_secs();
+                match wire::result_body(&keys, &body, now) {
+                    Ok(event) => event,
+                    Err(error) => {
+                        use buzz_core::host_deployment::observation::{Models, UnavailableReason};
+                        if let Some(o) = body
+                            .observation
+                            .as_mut()
+                            .filter(|o| matches!(o.models, Models::Available { .. }))
+                        {
+                            o.models = Models::Unavailable {
+                                reason: UnavailableReason::Oversized,
+                            };
+                            wire::result_body(&keys, &body, now)?
+                        } else {
+                            return Err(error.into());
+                        }
+                    }
+                }
+            }
         };
         tx.execute(
             "UPDATE deployment_units SET cleaned=?,result=?,issue=? WHERE agent=? AND generation=? AND unit_id=? AND operation=? AND revision=?",
@@ -429,6 +527,7 @@ impl Host {
             tx.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET operation=excluded.operation,event=excluded.event,revision=excluded.revision,cleanup=max(cleanup,excluded.cleanup),result=CASE WHEN operation=excluded.operation AND revision=excluded.revision THEN result ELSE NULL END,issue=CASE WHEN operation=excluded.operation AND revision=excluded.revision AND cleaned=0 THEN issue ELSE NULL END",params![a.agent.to_hex(),g,unit_id,op,raw,a.expected_revision+1,a.action==Action::Cleanup && valid_command && (!expired || persisted_cleanup)])?;
             tx.commit()?;
             let unit = crate::unit_id(&scope, unit_id);
+            let mut observation = None;
             let applied = async {
                 if already_cleaned && a.action == Action::Cleanup && valid_command {
                     return Ok(Outcome::Cleaned);
@@ -475,6 +574,8 @@ impl Host {
                             "prepare unconfirmed"
                         );
                         if pending {
+                            observation = Some(helper.discover(&instance).await?);
+                            self.deployment_permit(ws, relay, &a, unit_id).await?;
                             return Ok(Outcome::NeedsLogin);
                         }
                         self.deployment_permit(ws, relay, &a, unit_id).await?;
@@ -503,7 +604,17 @@ impl Host {
             };
             // A superseded attempt has no receipt to publish. If cleanup won
             // concurrently, publish its exact retained terminal receipt instead.
-            if let Some(result) = self.finish_deployment(&a, unit_id, outcome, issue)? {
+            if let Some(result) = self.finish_deployment(
+                &a,
+                unit_id,
+                outcome.clone(),
+                issue,
+                if outcome == Outcome::NeedsLogin {
+                    observation
+                } else {
+                    None
+                },
+            )? {
                 ensure!(
                     ws.send_event(result).await?.accepted,
                     "result pending relay delivery"
@@ -555,7 +666,7 @@ impl Host {
             } else {
                 Outcome::CleanupPending
             };
-            self.finish_deployment(&a, &id, outcome, result.err().map(|e| e.to_string()))?;
+            self.finish_deployment(&a, &id, outcome, result.err().map(|e| e.to_string()), None)?;
         }
         Ok(())
     }

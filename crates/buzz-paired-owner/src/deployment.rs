@@ -329,6 +329,46 @@ impl Management {
         session(&q.scope, &self.community, &signer()?)?;
         Ok(reply)
     }
+    /// Read a fresh typed discovery observation through current relay permissions.
+    /// Historical encrypted receipts remain immutable and cannot authorize launch.
+    pub async fn observation(
+        &mut self,
+        device: &mut Device,
+        signer: &impl Fn() -> Result<Keys>,
+        operation: &str,
+    ) -> Result<Option<buzz_core::host_deployment::observation::Observation>> {
+        let keys = signer()?;
+        let intent = device
+            .deployment_intent(&self.community, &keys, operation)?
+            .context("missing intent")?;
+        let request = &intent.protected.authority;
+        let query = wire::Query {
+            v: 1,
+            scope: request.scope.clone(),
+            view: "operation".into(),
+            nonce: hex::encode(rand::random::<[u8; 32]>()),
+            operation_id: Some(operation.into()),
+        };
+        let reply = self.query(signer, &query).await?;
+        let Some(raw) = reply.data["result"].as_str() else {
+            return Ok(None);
+        };
+        let event: Event = serde_json::from_str(raw)?;
+        let keys = signer()?;
+        session(&request.scope, &self.community, &keys)?;
+        let body = wire::open_result_body(&keys, &event, request)?;
+        let Some(observation) = body.observation else {
+            return Ok(None);
+        };
+        let Command::Deploy { config, .. } =
+            wire::restore_command(&keys, request, &intent.protected.ciphertext)?
+        else {
+            bail!("not a preparation operation");
+        };
+        observation.current(&body.result, &config, now()?)?;
+        device.deployment_result(&self.community, &keys, operation, &event)?;
+        Ok(Some(observation))
+    }
     /// Send the exact journaled command only after main materialization/publication.
     pub async fn dispatch(
         &mut self,

@@ -347,13 +347,13 @@ pub fn open_result_body(
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Body {
-        Current(observation::ResultBody),
-        Legacy(DeploymentResult),
+        Current(Box<observation::ResultBody>),
+        Legacy(Box<DeploymentResult>),
     }
     let body = match decrypted::<Body>(keys, event, 4096)? {
-        Body::Current(b) => b,
+        Body::Current(b) => *b,
         Body::Legacy(result) => observation::ResultBody {
-            result,
+            result: *result,
             observation: None,
         },
     };

@@ -315,6 +315,17 @@ pub fn apply(
             remove_output(&layout.state_root, id, &old)?;
             remove_output(&layout.runtime_root, id, &old)?;
         }
+        if e.mode == Mode::Login {
+            save(
+                layout,
+                id,
+                "login",
+                &(
+                    buzz_core::host_deployment::observation::LoginState::InProgress,
+                    nostr::Timestamp::now().as_secs(),
+                ),
+            )?;
+        }
         save(layout, id, "execution", &e)?;
         set_mode(layout, id, true, system)?;
         if !system(&["start", "--no-block"], &unit)?.status.success() {
@@ -338,6 +349,17 @@ pub fn apply(
     );
     if verb == "cancel" || nostr::Timestamp::now().as_secs() >= e.deadline {
         crate::activation::abort(system, &unit)?;
+        if e.mode == Mode::Login {
+            save(
+                layout,
+                id,
+                "login",
+                &(
+                    buzz_core::host_deployment::observation::LoginState::Cancelled,
+                    nostr::Timestamp::now().as_secs(),
+                ),
+            )?;
+        }
         remove_output(&layout.runtime_root, id, &e)?;
         remove_output(&layout.state_root, id, &e)?;
         return Ok("cancelled\n".into());

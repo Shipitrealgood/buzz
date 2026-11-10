@@ -26,8 +26,7 @@ fn system(args: &[&str], unit: &str) -> Result<Output> {
     }
     Ok(command.output()?)
 }
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     ensure!(
         rustix::process::geteuid().is_root(),
         "root-installed helper required"
@@ -98,6 +97,12 @@ async fn main() -> Result<()> {
     let reply = buzz_hostd::activation::apply(&layout, uid, &request, &mut system)?;
     std::io::stdout().write_all(reply.as_bytes())?;
     Ok(())
+}
+#[tokio::main]
+async fn main() -> Result<()> {
+    run()
+        .await
+        .map_err(|_| anyhow::anyhow!("fixed host action unavailable"))
 }
 #[cfg(test)]
 mod tests {

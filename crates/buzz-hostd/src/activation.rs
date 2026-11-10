@@ -346,15 +346,15 @@ pub fn apply_local(
     }
     let rt = &catalog.runtimes[&parsed.runtime_id];
     if !existing {
-        if parsed.deployment.is_some() {
-            crate::service_actions::conversation(layout, &parsed)?;
-        }
         if !has_capacity(root, catalog.capacity)? {
             return Ok("failed\n".into());
         }
         let Ok(provider) = crate::provider(&rt.credential_profile) else {
             return Ok("failed\n".into());
         };
+        if parsed.deployment.is_some() {
+            crate::service_actions::conversation(layout, &parsed)?;
+        }
         let mut f = tempfile::NamedTempFile::new_in(root)?;
         serde_json::to_writer(
             &mut f,

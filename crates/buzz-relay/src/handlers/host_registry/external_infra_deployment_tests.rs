@@ -207,7 +207,7 @@ mod external_infra_deployment_tests {
                     let (mut socket, _) = listener.accept().await.unwrap();
                     let mut request = Vec::new();
                     (&mut socket)
-                        .take(74)
+                        .take(145)
                         .read_to_end(&mut request)
                         .await
                         .unwrap();
@@ -225,10 +225,11 @@ mod external_infra_deployment_tests {
                             match args[0] {
                                 "show" => {
                                     stdout = format!(
-                                "ActiveState={}\nUnitFileState={}\nFragmentPath={}\nDropInPaths=\nMainPID=0\nControlPID=0\nTasksCurrent=0\n",
+                                "ActiveState={}\nUnitFileState={}\nFragmentPath={}\nDropInPaths={}\nMainPID=0\nControlPID=0\nTasksCurrent=0\n",
                                 if state.1 { "active" } else { "inactive" },
                                 if state.1 { "enabled" } else { "disabled" },
-                                layout.template.display()
+                                layout.template.display(),
+                                {let id=request.split(' ').nth(1).unwrap();let path=layout.template.parent().unwrap().join(format!("buzz-paired-agent@{id}.service.d/50-buzz-execution-mode.conf"));if path.exists(){path.display().to_string()}else{String::new()}}
                             )
                                 }
                                 "disable" => {
@@ -238,6 +239,26 @@ mod external_infra_deployment_tests {
                                     }
                                 }
                                 "daemon-reload" => {},
+                                "start" => {
+                                    // Production finite supervisor; injected manager is not native isolation evidence.
+                                    let id=request.split(' ').nth(1).unwrap();
+                                    let prepared:buzz_hostd::Prepared=serde_json::from_slice(&std::fs::read(layout.private.join(format!("{id}.cred"))).unwrap()).unwrap();
+                                    let execution:buzz_hostd::runtime_context::Execution=serde_json::from_slice(&std::fs::read(layout.private.join(format!("{id}.execution"))).unwrap()).unwrap();
+                                    let (catalog,_)=buzz_hostd::Catalog::read(&layout.catalog).unwrap();
+                                    let context=buzz_hostd::runtime_context::Context {
+                                        home:layout.state_root.join(format!("buzz-agent-{id}")),
+                                        runtime:layout.runtime_root.join(format!("buzz-agent-{id}")),
+                                        notify:layout.runtime_root.join("notify.sock").into_os_string(),
+                                    };
+                                    for p in [&context.home,&context.runtime] {
+                                        if !p.exists(){std::fs::create_dir(p).unwrap();std::fs::set_permissions(p,std::fs::Permissions::from_mode(0o700)).unwrap();}
+                                    }
+                                    let notify_path=std::path::Path::new(&context.notify);
+                                    if notify_path.exists(){std::fs::remove_file(notify_path).unwrap();}
+                                    let _notify=std::os::unix::net::UnixDatagram::bind(notify_path).unwrap();
+                                    std::thread::spawn(move||tokio::runtime::Runtime::new().unwrap().block_on(
+                                        buzz_hostd::runtime_context::finite(&context,&prepared,&catalog,&execution,buzz_hostd::runtime_context::NetworkPolicy::Disabled))).join().unwrap().unwrap();
+                                },
                                 "enable" => state.1 = true,
                                 "is-active" | "is-enabled" => ok = state.1,
                                 _ => panic!("unexpected fixed operation"),
@@ -811,6 +832,26 @@ mod external_infra_deployment_tests {
                 .unwrap()
                 .outcome,
             d::Outcome::NeedsLogin
+        );
+        let observation = management
+            .observation(&mut device, &|| Ok(owner.clone()), &operation)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(observation.agent, agent.public_key());
+        assert_eq!(
+            observation.login,
+            buzz_core::host_deployment::observation::LoginState::NotObserved
+        );
+        assert_eq!(
+            observation.models,
+            buzz_core::host_deployment::observation::Models::Unsupported
+        );
+        assert_eq!(
+            wire::open_result_body(&owner, &result, &intent.protected.authority)
+                .unwrap()
+                .observation,
+            Some(observation)
         );
         // A lost host receipt is represented by the relay still having pending work:
         // the durable host result must be retransmitted without another helper effect.

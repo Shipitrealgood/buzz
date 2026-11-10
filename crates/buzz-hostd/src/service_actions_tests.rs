@@ -111,6 +111,7 @@ fn fixture() -> (tempfile::TempDir, Layout, Prepared, crate::Catalog, Context) {
     let context = Context {
         home: layout.state_root.join(format!("buzz-agent-{unit}")),
         runtime: layout.runtime_root.join(format!("buzz-agent-{unit}")),
+        notify: dir.path().join("notify").into_os_string(),
     };
     for p in [&context.home, &context.runtime] {
         fs::create_dir(p).unwrap();
@@ -208,6 +209,27 @@ fn finite_actions_are_correlated_local_login_only_and_refuse_busy() {
         .unwrap(),
         "cancelled\n"
     );
+    let login = apply(&layout, id, "login", None, true, &idle(), &mut |_, _| {
+        Ok(output(idle()))
+    })
+    .unwrap();
+    let login: Execution = serde_json::from_str(&login).unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&fs::read(path(&layout, id, "login")).unwrap()).unwrap();
+    assert_eq!(state[0], "in-progress");
+    apply(
+        &layout,
+        id,
+        "cancel",
+        Some(&login.nonce),
+        true,
+        &idle(),
+        &mut |_, _| Ok(output(idle())),
+    )
+    .unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&fs::read(path(&layout, id, "login")).unwrap()).unwrap();
+    assert_eq!(state[0], "cancelled");
     fs::write(path(&layout, id, "closed"), b"").unwrap();
     assert!(
         apply(&layout, id, "models", None, false, &idle(), &mut |_, _| Ok(
@@ -226,7 +248,7 @@ async fn production_finite_supervisor_preserves_context_and_bounds_output() {
     socket
         .set_read_timeout(Some(std::time::Duration::from_secs(2)))
         .unwrap();
-    std::env::set_var("NOTIFY_SOCKET", &notify_path);
+
     std::env::set_var("ANTHROPIC_API_KEY", "inherited-provider-sentinel");
     let program = dir.path().join("grok");
     fs::write(
@@ -308,7 +330,7 @@ print('device-code-private-sentinel',flush=True)
         r.login,
         buzz_core::host_deployment::observation::LoginState::Cancelled
     );
-    std::env::remove_var("NOTIFY_SOCKET");
+
     std::env::remove_var("ANTHROPIC_API_KEY");
 }
 
@@ -336,4 +358,114 @@ fn installed_binding_preserves_one_journal_and_offline_same_unit() {
             .unwrap(),
         NetworkPolicy::Disabled
     );
+}
+
+#[test]
+fn prepare_refresh_refuses_live_unit_and_wrong_staging_uid_before_stop() {
+    let (_dir, layout, mut prepared, _cat, _ctx) = fixture();
+    let id = prepared.instance.unit_id.clone();
+    let original = fs::read(path(&layout, &id, "cred")).unwrap();
+    let d = prepared.instance.deployment.as_mut().unwrap();
+    d.revision += 1;
+    d.operation_id = "dd".repeat(32);
+    fs::write(
+        layout.staging.join(format!("{id}.cred")),
+        serde_json::to_vec(&prepared.instance).unwrap(),
+    )
+    .unwrap();
+    fs::set_permissions(
+        layout.staging.join(format!("{id}.cred")),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let shape = format!(
+        "{}FragmentPath={}\nDropInPaths=\n",
+        idle().replace("inactive", "active"),
+        layout.template.display()
+    );
+    for uid in [layout.root_uid, layout.root_uid.wrapping_add(1)] {
+        let mut calls = Vec::new();
+        assert!(crate::activation::apply(
+            &layout,
+            uid,
+            &format!("prepare {id}"),
+            &mut |args, _| {
+                calls.push(args[0].to_string());
+                Ok(output(shape.clone()))
+            }
+        )
+        .is_err());
+        assert_eq!(calls, ["show"]);
+        assert_eq!(fs::read(path(&layout, &id, "cred")).unwrap(), original);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires a built buzz-acp binary supplied by BUZZ_TEST_ACP"]
+async fn actual_acp_models_uses_fixed_private_context_without_prompt_or_entitlement() {
+    let (dir, layout, prepared, mut cat, ctx) = fixture();
+    let _notify = std::os::unix::net::UnixDatagram::bind(&ctx.notify).unwrap();
+    let harness =
+        PathBuf::from(std::env::var_os("BUZZ_TEST_ACP").expect("explicit built ACP binary"));
+    assert!(harness.is_file());
+    let adapter = dir.path().join("synthetic-acp");
+    fs::write(&adapter,r##"#!/usr/bin/python3
+import json,os,sys
+assert 'BUZZ_PRIVATE_KEY' not in os.environ
+assert 'BUZZ_AUTH_TAG' not in os.environ
+assert os.getcwd()==os.environ['HOME']
+assert os.environ['GROK_HOME']==os.getcwd()+'/.grok'
+log=open('acp-methods','a',buffering=1)
+mode=open('fixture-mode').read()
+for line in sys.stdin:
+ m=json.loads(line); method=m.get('method'); log.write(str(method)+'\n')
+ if method=='initialize': r={'protocolVersion':1,'agentInfo':{'name':'synthetic','version':'1'},'agentCapabilities':{}}
+ elif method=='session/new':
+  assert m['params'].get('mcpServers',[])==[]
+  if mode=='error': print(json.dumps({'jsonrpc':'2.0','id':m['id'],'error':{'code':-32602,'message':'private error'}}),flush=True); continue
+  options=[] if mode=='empty' else [{'category':'model','id':'model','currentValue':'native-model','type':'select','options':[{'value':'native-model','name':'Native model'}]}]
+  r={'sessionId':'s','configOptions':options}
+ else: raise AssertionError('unexpected '+str(method))
+ print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)
+"##).unwrap();
+    fs::set_permissions(&adapter, fs::Permissions::from_mode(0o700)).unwrap();
+    let rt = cat.runtimes.get_mut("native/grok").unwrap();
+    rt.harness.path = harness;
+    rt.adapter.path = adapter;
+    for mode in ["normal", "empty", "error"] {
+        fs::write(ctx.home.join("fixture-mode"), mode).unwrap();
+        let e = Execution::new(
+            &prepared.instance,
+            Mode::Models,
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap();
+        let result =
+            crate::runtime_context::finite(&ctx, &prepared, &cat, &e, NetworkPolicy::Disabled)
+                .await
+                .unwrap();
+        assert!(result.finished);
+        assert_eq!(
+            result.login,
+            buzz_core::host_deployment::observation::LoginState::NotObserved
+        );
+        let reason = if mode == "error" {
+            buzz_core::host_deployment::observation::UnavailableReason::Execution
+        } else {
+            buzz_core::host_deployment::observation::UnavailableReason::NetworkDisabled
+        };
+        assert_eq!(
+            result.models,
+            buzz_core::host_deployment::observation::Models::Unavailable { reason }
+        );
+        assert!(
+            read_output(&layout.state_root, &prepared.instance.unit_id, &e)
+                .unwrap()
+                .is_some()
+        );
+    }
+    let methods = fs::read_to_string(ctx.home.join("acp-methods")).unwrap();
+    assert_eq!(methods.lines().filter(|m| *m == "initialize").count(), 3);
+    assert_eq!(methods.lines().filter(|m| *m == "session/new").count(), 3);
+    assert!(!methods.contains("session/prompt"));
 }
