@@ -1,5 +1,69 @@
 # #3721 checkpoint-2 source post-audit
 
+## Re-gate, 2026-11-10 — source accepted
+
+**Verdict: merge-safe for the bounded source packet; M1–M3 closed.** No open
+findings (C=0/H=0/M=0/L=0). This is source acceptance only: no merge/deployment
+authority or whole-product/native/online acceptance is conveyed.
+
+Same reviewer, rework round **1**. Re-gated clean HEAD
+`51db2cb14d79e95d8d5182531874ced18863f29b`; exact repair range
+`85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e..7517ebf3e7906fc51abe1dfbf468ff3069c944f6`.
+The final `51db2cb14` commit changes documentation only. Requested reviewer
+configuration remains Astra/high; served runtime model/effort metadata is unknown.
+The review was confined to prior M1–M3 and consequences of their repair.
+
+| Finding | Closure evidence, read and independently tested |
+| --- | --- |
+| M1 — closed | [retire:262](../../../crates/buzz-hostd/src/service_actions.rs#L262) retains the old descriptor through anchored removal; [restore:170](../../../crates/buzz-hostd/src/service_actions.rs#L170) removes/reloads the finite override before saving conversation mode. [shape:48](../../../crates/buzz-hostd/src/service_actions.rs#L48) admits the exact missing owned drop-in only for a stopped unit with the protected finite descriptor. [Handover regression:474](../../../crates/buzz-hostd/src/service_actions_tests.rs#L474) passes repeated refresh/cleanup and interrupted reload with active-state refusal. |
+| M2 — closed | Retirement validates and saves the terminal login before supersession; missing output resolves InProgress to Failed, while malformed/untrusted/nonterminal output propagates failure. [Start failure:385](../../../crates/buzz-hostd/src/service_actions.rs#L385) records Failed only after confirmed abort. The handover regression and [failure regression:571](../../../crates/buzz-hostd/src/service_actions_tests.rs#L571) pass both replacement paths, exit/transport start failures, and missing terminal output. |
+| M3 — closed | [New V4:5](../../../crates/buzz-relay/src/handlers/host_registry/external_infra_deployment_tests.rs#L5) passes preparation → fixed synthetic login → pending refresh before local observation → selected offline refusal, checking retained identity/unit/HOME/native state, login outcome and bounded files. The [production policy guard:95](../../../crates/buzz-hostd/src/runtime_context.rs#L95) is called by both installed run at line 377 and the fixture at line 534. Updated receipt/brief explicitly correct the initial evidence claim. |
+
+V4 executes the production finite supervisor and shared conversation-policy guard.
+It does **not** execute installed `run()` credential/environment bootstrap or a
+systemd manager. The fixture's older injected-active cases remain journal tests,
+not online execution proof. This satisfies the named bounded source obligation;
+it does not change the settled native/online gate.
+
+### Independent re-gate evidence
+
+Hermit, `HERMIT_SELF_UPDATE=false`; no source changes/mutations during testing.
+Local logs: `target/3721-regate-*.log`; durable results are recorded here.
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p buzz-hostd -p buzz-relay --no-run` | PASS, final pin fresh build check, 0.70s |
+| `target/debug/deps/buzz_hostd-bd1729a8745cad5b --test-threads=1` | PASS, 18; 1 unchanged explicit ignore; 2.18s |
+| `scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-961a502ccefb2125 external_infra_deployment_tests --ignored --test-threads=1` | PASS, all 5, including V4 and overlapping cleanup; 15.19s |
+| `cargo fmt --all --check`; explicit relay fixture `rustfmt --check --edition 2021`; `git diff --check` | PASS |
+| `cargo clippy -p buzz-hostd --all-targets --no-deps` | Completed, existing warnings; not warning-free |
+| Three `{desktop,web,mobile}/scripts/check-file-sizes.mjs`, `CHECK_FILE_SIZES_BASE=85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e` | PASS |
+
+**23 affected behavior tests independently passed this round.** Carry forward
+initial independent 72-test evidence for unchanged core/wire/normalization,
+owner, ACP strict/model-switch, controller registration-refresh and explicit actual
+ACP models coverage. The finite supervisor/model command body is unchanged; the
+runtime-context repair only extracts the conversation network predicate. The
+controller registration-refresh code is unchanged and does not exercise the
+repaired finite-action transitions, so no second controller rerun was required.
+This is explicit continuity, not a claim that 72 tests reran at the repair pin.
+
+NOT RUN remains native intended service startup/mount/cgroup/file/socket/network
+confinement, online policy/traffic, reboot, provider login/refresh/entitlement/chat,
+Windows UI/build, Tauri native, full CI, and human acceptance. No remaining source
+fix is requested solely for these settled later gates.
+
+All re-gate subprocesses exited. `proof down` removed the label-verified runner,
+Postgres and Redis; the following label-filtered Docker listing was empty. No proxy,
+provider/live relay, existing agent, board, push, merge, or deployment was touched.
+Only this report changed. Return the clean worktree to the conductor; proceed to
+the already scoped next checkpoint under its existing acceptance limits.
+
+## Initial review history (superseded by the re-gate above)
+
+The original findings, source citations and verification below describe candidate
+`93aa5b2a4`, not the repaired tree; retain them as the first-pass evidence trail.
+
 Date: 2026-11-10 UTC. **Verdict: rework — three required Medium findings.**
 Source acceptance is held for the concrete defects and missing named source gate
 below. This verdict does not require native/online success and grants no merge,
@@ -194,4 +258,7 @@ No implementation files changed; only this report is committed. Workspace return
 to the conductor for the bounded repair at this reviewed source pin plus the
 report commit.
 
-quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=db829357458e90ed434af1487039bedbe0a5ad5f..93aa5b2a4ca655957eafff7f99c2ca541514188a findings=C=0/H=0/M=3/L=0 rework_rounds=0
+Initial quality record: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=db829357458e90ed434af1487039bedbe0a5ad5f..93aa5b2a4ca655957eafff7f99c2ca541514188a findings=C=0/H=0/M=3/L=0 rework_rounds=0
+
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e..51db2cb14d79e95d8d5182531874ced18863f29b findings=C=0/H=0/M=0/L=0 rework_rounds=1
