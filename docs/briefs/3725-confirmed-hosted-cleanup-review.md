@@ -1,6 +1,67 @@
 # #3725 confirmed hosted Cleanup — independent review
 
-## Current handoff: H-1/H-2 re-gate
+## Current handoff: Windows failure and exact-wire repair
+
+Same reviewer: assess source delta
+`8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21..d093d6dcd556a6ef6017cf8a2a70c109c14627e8`,
+then the terminal Windows receipts. H-1/H-2 source repairs were accepted in round 1;
+this is a concrete production defect exposed by their required native gate.
+**No third Windows run is authorized to proceed until your re-gate/release.**
+
+- `8279e0dbf`: first native run failed on an incorrect admission-error expectation.
+  Fixture now asserts the exact competing-admission refusal its unadmitted
+  follow-on Deploy actually represents. Second native run passed that assertion.
+- `d093d6dcd`: second native run failed later with `unavailable` instead of pending.
+  Investigation proved production `send_event` converted typed Event into Value,
+  reordering bytes that owner journals and relay reconciliation compare exactly.
+  Existing sender now serializes the typed tuple directly. Fake peer preserves
+  incoming RawValue, as the real relay does. Production delta is **+5/-1**, no API
+  or protocol change; tests **+11/-7**. Guards and main finalizer remain unchanged.
+
+**Probe the actual bytes, not only semantic JSON equality.**
+`crates/buzz-ws-client/src/connection.rs:179` retains its existing event-ID and OK
+wait. `crates/buzz-paired-owner/src/deployment_tests.rs:372` captures raw event
+elements and `:466` compares three sends/retries with the original retained bytes.
+This assertion was measured RED before repair, GREEN afterward. Cross-check typed
+journal serialization at `deployment.rs:168` and `deployment/cleanup.rs:131` with
+real relay `handlers/host_deployment.rs:96`/store `paired_hosts/deployment.rs:140`;
+the relay preserves wire bytes. Do not canonicalize the response or weaken the
+reconciliation guard to hide a transport mismatch.
+
+Native fake peer `agents_hosted_cleanup_tests.rs:43` now preserves RawValue rather
+than rebuilding Value. Finite same-assumption check found other response event
+fields use retained strings and result fields use typed result serialization.
+Later state assertions now print attached errors. No wider fixture redesign.
+
+[Execution receipt](../executions/3725-confirmed-hosted-cleanup.md#second-native-failure-actual-sender-serialization-defect)
+preserves both failures, diagnostic source/claims, artifacts and exact commands.
+Affected local gates passed: ws-client **5**, owner **2**, format/whitespace/size.
+Both native runs compiled application/tests, passed **109 outer cases + ACL**, then
+failed Cleanup before the later completion/race assertions; metadata exact case
+was skipped by fail-fast. Neither run proves successful Cleanup. The new sender
+and RawValue peer have **not run on Windows**. Installer success is not native-test
+acceptance. No full Tauri IPC, real keyring, systemd/provider or human-flow coverage
+is claimed. No live changes or installer execution occurred.
+
+After source acceptance, the original executor may resume the already approved
+exact fork/workflow for native verification. Continue the same sequential
+worktree ownership; retain first/second failed-run receipts in the final evidence.
+
+Second run is terminal: build succeeded (20m7s), native failed (12m21s). Both
+installer downloads were hash/source/version verified and never executed. Latest
+download is test.23 from **8279e0dbf**, before the sender repair; it must not be
+presented as current passing Cleanup source. All owned processes stopped and
+exclusive source/test ownership is released with this documentation commit.
+
+**Shared hostd provenance:** the corrected sender is also used by hostd at
+`registration.rs:448` and `deployment.rs:354,434,532`. Conductor identifies prepared
+netcup package `c97256e` as predating this correction. Later rollout preparation
+must reconcile/refresh its provenance against final accepted source. Assess the
+introduced serialization compatibility effect, but do not rebuild/install or
+expand this review into deployment work. No current-source hostd artifact claim
+is made here.
+
+## Prior handoff: H-1/H-2 re-gate
 
 The same reviewer should re-gate the two findings in the unchanged
 [round-0 report](../audits/post-audit/3725-confirmed-hosted-cleanup.md), plus defects

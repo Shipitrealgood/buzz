@@ -1,6 +1,6 @@
 # #3725 confirmed hosted Cleanup execution
 
-Status: H-1/H-2 source repairs accepted; authorized Windows verification active.
+Status: Windows exposed a wire-byte defect; narrow sender repair awaiting re-gate.
 Executor releases exclusive write/test ownership with the final documentation commit in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
 `proof/3720-host-registration-events`. Starting clean pin
@@ -242,3 +242,135 @@ Original job metadata and raw/ANSI-stripped logs retained. Initial log retrieval
 refused terminal escapes; file-only retry allowed them and inspection used the
 stripped copy. Installer job `129991147255` remains monitored to terminal; this
 failed source/run will not be discarded or represented as native acceptance.
+
+First run terminal: installer job `129991147255` **SUCCESS**, 20m19s, completed
+`2026-11-10T17:31:13Z`; native job **FAILURE**, completed `17:25:22Z`. Watcher
+session 63462 exited 1 as expected. Terminal run/jobs metadata and complete logs
+are retained. Installer artifact `13786363168` expires `2026-11-17T17:30:19Z`.
+Downloaded `Buzz_0.5.29-test.22_x64-setup.exe` (56,479,037 bytes) agrees with its
+source/version/build receipt; SHA-256
+`e70675e36e1021d543a0ef14bc6115dcde67dcd3ed30cb71ba11037ce806f8cc`.
+ZIP digest `3b87b55a63901b3461a3e80be20795c3e9699750735e2b2764525722da835c20`
+matches metadata. Exactly two safe archive members and executable PE header
+checked. Never executed; this failed-run artifact is evidence, not acceptance.
+
+Fixture correction and failure receipt committed as
+`8279e0dbf9b02048bd33e593e0f9d92de39ed6fc`. After both first-run jobs terminated,
+fresh remote/ancestor checks and unchanged-workflow check passed; normal
+fast-forward advanced only the approved canary branch from `8cec4d7cf` to that
+commit. Existing workflow dispatched again as
+[run 42866083928](https://github.com/Shipitrealgood/buzz/actions/runs/42866083928).
+Both jobs remain owned/monitored with the same 45-second watcher; no production
+source or gate was weakened, and no installer was executed.
+
+### Second native failure: actual sender serialization defect
+
+Run `42866083928` on `8279e0dbf`, native job `130004669974`, completed **FAILURE**
+after 12m21s. The corrected admission assertion passed. At
+`agents_hosted_cleanup_tests.rs:180`, returned state was **unavailable**, expected
+**cleanup-pending**. The assertion did not print the attached error. Same measured
+suite counts: owner 16, harness 9, conversion 73, directory 7, registration 3 and
+hosted-create 1 passed (**109 outer cases**); Cleanup failed, metadata exact case
+did not run; ACL passed. No native completion/race assertion is claimed executed.
+
+Native artifact `13788242397`, 5,248 bytes, expires `2026-11-17T17:45:14Z`;
+SHA-256 `cc27b449b3c42613b7e6bba8431573fefe2c8770d42c15e7f1e7a754839c9971`
+matched metadata. Nine flat members and original/stripped job logs retained at
+`/home/bryce/services/buzz-agents/releases/3725-windows-canary/8279e0dbf9b02048bd33e593e0f9d92de39ed6fc/42866083928/`.
+
+Source investigation initially implicated the fake peer's `Value` roundtrip, but
+inspection found the **production** sender doing the same thing:
+`buzz-ws-client/src/connection.rs:181` converted the typed Event to `json!`/Value
+before transport. Deploy and Cleanup journal construction serialize Event
+directly; reconciliation compares exact bytes. The real relay handler preserves
+the received `RawValue` element and stores/returns that raw string. Therefore a
+fake-peer-only canonicalization would conceal the production failure. No such
+masking fix was applied, and the exact-byte reconciliation guard stays unchanged.
+
+Evidence before repair:
+
+- Temporary existing-owner-fixture diagnostic proved Value serialization differs
+  from retained bytes, typed serialization matches, and real `reconcile` rejects
+  altered bytes with **“admitted operation bytes changed”**, accepting exact bytes.
+  `cargo test --offline --locked -p buzz-paired-owner deployment_current_revision_refresh_launch_and_exact_retry -- --test-threads=1`:
+  **1 passed, 15 filtered, 11.63s**. Temporary diagnostic was restored byte-for-byte
+  before permanent edits; no diagnostic test was retained.
+- Permanent existing socket-fixture regression captures actual incoming event
+  `RawValue` and compares all three initial sends/retries with the retained event
+  string, replacing semantic Value equality. With unchanged sender: **RED,
+  0 passed/1 failed/15 filtered, 0.23s**, at exact equality (`deployment_tests.rs:467`).
+  This independently reproduces the production transport defect using its real
+  `send_event` path; the native failure's missing error text is not invented.
+
+Conductor ratified a narrow scope addition: existing `send_event` in connection.rs,
+existing owner socket fixture, native fake peer and evidence only. Commit
+`d093d6dcd556a6ef6017cf8a2a70c109c14627e8` serializes typed `("EVENT", &event)`
+directly to WebSocket text and retains the same event-ID/OK wait. No new public
+API, protocol, transport helper, journal, relay/schema change or guard relaxation.
+Native fake peer now retains incoming `RawValue` exactly like the real relay;
+state assertions include the attached error for future diagnostics.
+
+Finite same-assumption check of the remaining native fixture: only that incoming
+EVENT site rebuilt event bytes through Value. Other operation responses use
+retained `intent.event` strings; result strings use typed `wire::result` events.
+Outer JSON messages do not alter those embedded strings. No broader audit or
+fixture framework was added. Both Deploy and Cleanup typed journal construction
+use the same Event serialization as the repaired sender. General Nostr semantics
+and the existing acknowledgement path are unchanged; published field order now
+preserves typed Event representation.
+
+Repair verification, Hermit/self-update-disabled and offline/locked:
+
+| Command | Measured result |
+|---|---|
+| `cargo test --offline --locked -p buzz-ws-client --lib` | **5 passed**, zero failed/ignored, 0.10s. Existing auth/header/timeout tests. |
+| `cargo test --offline --locked -p buzz-paired-owner deployment -- --test-threads=1` | **2 passed**, zero failed/ignored, 14 filtered, 14.61s; includes actual wire-byte regression. |
+| `cargo fmt --package buzz-paired-owner --package buzz-ws-client --check` | PASS. |
+| Scoped native `rustfmt --edition 2021 --config skip_children=true --check` | PASS. |
+| `CHECK_FILE_SIZES_BASE=8279e0dbf9b02048bd33e593e0f9d92de39ed6fc node desktop/scripts/check-file-sizes.mjs` | PASS, read-only Git subprocess permission. |
+| `git diff --check` | PASS. |
+
+Sender repair delta: production **+5/-1** in one existing file; tests **+11/-7** in
+two existing fixtures, no moves. Earlier fixture wording correction `8279e0dbf`
+is separate and preserved. Unchanged UI/Node/browser checks were not rerun.
+The new sender/native-peer source is **NOT yet Windows verified**. Conductor holds
+the third workflow until the same reviewer re-gates this production delta.
+
+### Second run terminal and sender-repair ownership release
+
+Both second-run jobs are terminal: build `130004669830` **SUCCESS**, 20m7s,
+completed `2026-11-10T17:53:07Z`; native `130004669974` **FAILURE**, 12m21s,
+completed `17:45:21Z`. Overall run failed as required. Watcher 98297 exited 1;
+all download/local-test sessions completed. No detached process or third workflow.
+
+- Installer artifact `13787734362`, expires **2026-11-17T17:52:12Z**.
+- `Buzz_0.5.29-test.23_x64-setup.exe`, **56,434,987 bytes**, SHA-256
+  `093ed6573b414b2ece998ab5936dd594d0f754b88bf7bcf87cf0bccf2ef5e93b`.
+- ZIP **56,433,331 bytes**, SHA-256
+  `762b9ad1b789323f5c96d6964274bc7f77a31d8980635b0f9416898360f822b2`, matches
+  GitHub digest. Exactly installer/build-receipt members inspected; PE header and
+  source/version/filename/executable hash match receipt. Installer never executed.
+- Source is **8279e0dbf**, which predates the sender repair. This artifact is
+  preserved failed-run evidence, **not** a passing/current-source Cleanup canary.
+  Terminal `run.json`, `jobs.json`, full raw/stripped job logs, both ZIPs, extracted
+  receipts and `verification.json` are retained in the second evidence root above.
+  Local summary parsing initially assumed UTF-8 for the ACL log; corrected to its
+  actual UTF-16 BOM and verified its owner-use/secondary-user-denial receipt. This
+  was an evidence-reader error, not another native gate failure.
+
+Shared-dependency provenance: source read confirms hostd also calls this existing
+sender (`registration.rs:448`, `deployment.rs:354,434,532`). Per conductor, the
+previously prepared netcup package `c97256e` predates the sender correction and
+must not be labeled matching current source. Later rollout preparation must
+explicitly reconcile/refresh artifact provenance against final accepted source.
+No hostd rebuild, package preparation, installation, service or live action was
+performed in this slice. Independent review should assess introduced compatibility
+effects within the sender delta; deployment work remains separately owned.
+
+Exclusive write/test ownership is released at the following signed documentation
+commit in the same worktree for the same reviewer. Final source repair pin
+`d093d6dcd556a6ef6017cf8a2a70c109c14627e8`; source unchanged afterward. No unrelated
+edits, owned processes or temporary probe changes remain. Next gate: independent
+review of the sender/fixture delta, then resumed approved Windows verification
+only after reviewer release. Successful Cleanup native execution, full native
+IPC/keyring/systemd/provider/human workflows and live acceptance remain unproven.
