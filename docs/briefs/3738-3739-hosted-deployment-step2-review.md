@@ -1,6 +1,6 @@
 # Independent review: hosted deployment slice 2 (#3738 / #3739)
 
-Requested by conductor, 2026-11-10. Next agent: fresh codex-chuck, Astra/high.
+Requested by conductor, 2026-11-10. Next gate: the same codex-chuck reviewer, Astra/high, re-gating the four accepted findings below.
 Executor requested Astra/high; actual runtime identity metadata unavailable.
 
 ## Where the work lives
@@ -94,3 +94,35 @@ byte. All owned test containers and child processes are stopped before ownership
 transfer. Reuse this worktree exclusively; executor work is not an independent
 review gate. Return source findings and unsupported-native acceptance gaps to
 conductor; no live activation follows from source review.
+
+
+## Bounded repair re-gate (after first review)
+
+The historical first report is unchanged at
+`docs/audits/post-audit/3738-3739-hosted-deployment-step2.md`, committed at
+`42c88aa8fe6e739e4eb0c966a7fc8106208bbce7`. Review the repair delta from that
+pin, not a new audit campaign. Tested repair source is
+`4d8232383ee548bfa1d816f8e9b4a7b4faad0770`; the later handoff commit changes docs
+only. The execution receipt records exact commands, actual deltas and resource
+closure. Final affected regressions: 25 passed, zero failed/ignored.
+
+- H-1: exclusive rotating pending pages, durable host cursors using existing
+  work_cursor, per-item retained failure and bounded independent generation tasks.
+  Challenge the forty-item WS/helper journey and forty-generation controller test,
+  including restart and deliberately stalled helper response.
+- H-2/M-2: first anchor plus one replaceable Cleanup row per placement; separate
+  bounded allowance from ordinary Deploy history. Challenge exact current
+  authority/revision, expired-before-receipt refusal, fresh replacement recovery,
+  stable identity/unit/fence, and quota admission under both owner/community caps.
+  The conductor approved lost historical retrieval for retired replacement rows;
+  missing-or-superseded is explicit, semantic IDs cannot recreate fresh authority,
+  and retained envelope bytes still compare exactly. The reserved `c1ea0001`
+  prefix closes reuse as opaque Deploy or foreign first-Cleanup IDs (224-bit
+  digest binding); explicit native Deploy input refuses it before effects. No
+  forgotten-byte guarantee or unused future allocator.
+- M-1: early REQ refusal now calls close::refuse. The same-ID regression covers
+  disabled, malformed, multifilter, connection capacity and global capacity, with
+  a real admitted prior holder/topic and rejected late delivery after CLOSED.
+
+No new native acceptance is claimed, and previous native/environment gates remain.
+No additional mutation experiment or broad baseline suite is requested by default.

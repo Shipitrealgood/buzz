@@ -161,3 +161,118 @@ No real relay/provider/production credential/SSH/unit/account/mount/volume chang
 Historical stopped proof directories remain untouched. Next gate: independent
 Astra/high review on this clean committed worktree; supported native CI before
 merge, installation and pilot only in their later authorized slices.
+
+## Bounded first-review repairs — 2026-11-10
+
+Exclusive execution resumed from clean report-only pin
+`42c88aa8fe6e739e4eb0c966a7fc8106208bbce7`. The first review report remains
+historical and unchanged. Final tested repair source is signed-off commit
+`4d8232383ee548bfa1d816f8e9b4a7b4faad0770`; the following commit changes only
+this receipt and the reviewer brief. Requested executor settings remain
+Astra/high; actual runtime model metadata is unavailable.
+
+All four accepted findings were repaired within their existing seams:
+
+- H-1: pending pages rotate after a supplied operation ID, wrapping at the end.
+  Host processing advances a durable cursor before each bounded attempt. Offline
+  cleanup records helper failure per item and rotates past eight failures. The
+  existing controller schedules at most four independent cleanup generation
+  tasks; generation enumeration also rotates, so a held helper response does
+  not block registration discovery or the other cleanup tasks. Cursors reuse
+  namespaced entries in existing work_cursor; no scheduler service/table added.
+- H-2/M-2: a fresh current-authority Cleanup at the next exact revision can recover
+  a fenced placement after the original expired before receipt. Ordinary Deploy
+  history remains limited to 1,024 per owner/community and 4,096 per community.
+  Each existing placement reserves at most two Cleanup rows: first immutable
+  anchor and current replacement. Superseding the latter retires its relay
+  bytes/outcome, explicitly returning missing-or-superseded on later reads.
+  The caller retains historical envelopes if needed; no forgotten-byte history
+  is claimed. Old revisions cannot execute; unit/key/fence never change.
+- A replacement uses reserved prefix c1ea0001 plus 56 hex digest digits (224-bit
+  binding) over domain-separated canonical Authority with empty operation ID,
+  created_at and kind. Every prefixed Cleanup validates, even on another first
+  placement; Deploy refuses the prefix. Retained rows still compare complete
+  original event bytes. The default-off native entry point refuses explicit
+  reserved Deploy input before signer capture or materialization. No allocator
+  exists yet; future allocation must exclude the prefix, without rewriting
+  supplied retry IDs. No unused generator or history mechanism was introduced.
+- M-1: all early management REQ denials use existing close::refuse, which retires
+  holder/topic under the lifecycle lock before CLOSED and cancels when enqueue
+  fails. EVENT/COUNT response behavior is unchanged.
+
+Conductor approved the bounded retention/replay refinement and reserved namespace;
+see the appended [contract](2722-hosted-destination-contract.md). No migrations,
+schema catalog, dependency/lockfile, service sandbox or registration wire changes
+were needed. Migration81 remains byte-identical with the SHA recorded above.
+Host Cleanup continues to overwrite its existing per-agent row and consumes no
+permit-nonce history; this repair creates no additional owner create intents.
+All management/native gates remain disabled by default; UI create remains blocked.
+
+### Measured final verification
+
+All commands ran under Hermit with HERMIT_SELF_UPDATE=false. Proof commands used
+scripts/3720-registration-proof.sh and its isolated temporary databases only.
+The combined final affected regression set is **25 passed, 0 failed, 0 ignored**:
+
+| Exact command (from worktree root) | Final result |
+| --- | --- |
+| `cargo test -p buzz-core host_deployment --lib` | 11 passed, 0.07s |
+| `cargo test -p buzz-db -p buzz-hostd -p buzz-relay --no-run` | rebuilt affected test binaries successfully |
+| `scripts/3720-registration-proof.sh run target/debug/deps/buzz_relay-89115045a711bc85 external_infra_deployment_tests --ignored --test-threads=1` | 3 passed, 11.46s |
+| `scripts/3720-registration-proof.sh run target/debug/deps/buzz_hostd-c33faca283336bb7 registration_refresh::tests --test-threads=1` | 9 passed, 34.58s |
+| `scripts/3720-registration-proof.sh run target/debug/deps/buzz_db-417e37ddf5050076 cleanup_reserved_capacity_and_bounded_replacements_preserve_anchor --ignored --test-threads=1` | 1 passed, 0.85s |
+| `scripts/3720-registration-proof.sh run target/debug/deps/buzz_db-417e37ddf5050076 deployment_atomic_replay_placement_permissions_cleanup_and_revocation --ignored --test-threads=1` | 1 passed, 0.17s |
+| `cargo fmt --all --check`; `cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check`; `git diff --check` | passed |
+| `CHECK_FILE_SIZES_BASE=42c88aa8fe6e739e4eb0c966a7fc8106208bbce7 pnpm --dir desktop check:file-sizes` | passed after read-only escalation for sandbox `spawnSync git EPERM` |
+
+New/changed test names and discriminating cases:
+
+- `cleanup_namespace_cannot_be_reused_for_deploy_or_foreign_cleanup`: owner-signed
+  modified action/agent/revision/expiry/created time refused; normal opaque IDs
+  remain accepted by the codec.
+- `cleanup_reserved_capacity_and_bounded_replacements_preserve_anchor`: both
+  quota boundaries, denied new Deploy, admitted first Cleanup, six revisions,
+  at most two Cleanup rows, exact anchor/current bytes, stale/modified-ID refusal,
+  foreign first-Cleanup reuse refusal, explicit missing retired receipts, stable
+  unit and permanent Deploy fence. Historical quota rows are test-seeded; actual
+  admission and replacement/result transactions run through the production store.
+- `deployment_denied_same_id_retires_holder_and_topic`: admitted live positive
+  control, then disabled/malformed/multifilter/connection-capacity/global-capacity
+  refusals; holder/topic gone and late EVENT blocked after CLOSED.
+- Extended `deployment_owner_host_helper_restart_cleanup_journey`: forty retained
+  failed cleanups across page32/pass8 and reopen, expired original Cleanup with
+  zero helper request for that unit, fresh authorized replacement, original
+  key/unit, offline rotation across all forty-one units and revoked retry. The
+  actual activation body is exercised; systemctl remains the synthetic boundary.
+- `cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotation`:
+  forty retired generations, one deliberately held helper response, new invitation
+  discovered while it is held, durable per-item failure, progress across all
+  generations, and persisted enumeration after reopen. This controller scheduling
+  test uses a synthetic helper response; it is not systemd acceptance.
+
+Earlier repair attempts exposed one JoinSet type-inference error, a test comparing
+local versus admitted JSON field ordering, and a test fixture violating the
+existing one_grant uniqueness constraint. Each was corrected and the final rebuilt
+cases above passed. No new mutation experiment was performed: inline negative
+controls and positive controls discriminate the named defects. Prior strict-Clippy,
+discovery and native GObject limitations remain as recorded; those unchanged gates
+were not rerun. Native Windows compilation/main materialization remain **not run**,
+including execution of the five-line native namespace input guard. No library
+result is presented as native acceptance. TS/UI source was unchanged this round.
+
+### Repair-only size and handoff
+
+Measured against 42c88aa8, separately from original net2,514 production lines:
+wire+DB+relay +85/-20; host/controller +90/-22; native +5/-0; owner/WS/TS +0/-0.
+Total production **+180/-42, net138**; tests **+731/-21, net710**; moved code 0.
+Documentation **+190/-1, net189**. There is no new fixture,
+framework, migration, provider work or later-slice implementation.
+
+All commands have completed. Proof teardown removed exactly
+buzz-3720-registration-runner, buzz-3720-registration-postgres and
+buzz-3720-registration-redis; read-only `docker ps -a --filter label=buzz.proof=3720`
+returned no containers. No TLS proxy was started. Test-local sockets/tasks ended
+with their processes; there is no active build/test session. Prior stopped proof
+directories remain untouched. Ignored target/3738-repair-*.log files retain local
+build/test evidence. Next gate: the same independent reviewer re-gates the repaired
+findings and affected obligations at the clean committed handoff; no live action.
