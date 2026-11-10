@@ -1,10 +1,13 @@
 # #3725 confirmed hosted Cleanup — independent post-audit
 
-**Current verdict: merge-block pending required Windows native verification.**
-Round 1 accepts both source repairs; no remaining source findings or introduced
-defects were found (C=0 / H=0 / M=0 / L=0). H-1 is independently measured fixed;
-H-2's source correction is accepted but its native fixture remains unrun.
-See [round 1](#round-1--h-1h-2-source-re-gate) for the current pin and evidence.
+**Current verdict: merge-block pending successful Windows native verification.**
+Round 2 accepts the exact-wire sender repair and fixture corrections; the third
+existing Windows run may proceed after ownership release. No remaining in-scope
+source finding was found (C=0 / H=0 / M=0 / L=0). The first two Windows runs
+compiled native tests but failed Cleanup before completion/race assertions; the
+latest sender source has not yet run on Windows. See
+[round 2](#round-2--windows-failures-and-exact-wire-sender-repair) for current
+evidence and the historical-envelope compatibility boundary.
 The round-0 findings and receipts below are preserved as history and their source
 line references describe implementation `6038d0981`, before repair.
 
@@ -251,3 +254,132 @@ historical findings total H=2. Overall merge-safe status is withheld because the
 required native gate is unrun.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=6d7ca47d2d00560a7c6a221e475a52c107c0aab1..faf59a0b3421c5410f807428d768a2e353e32396 findings=C=0/H=0/M=0/L=0 rework_rounds=1
+
+## Round 2 — Windows failures and exact-wire sender repair
+
+**2026-11-10. Source accepted for the third existing Windows run; native gate
+still pending.** Same reviewer, worktree and bounded assignment. Clean handoff
+`2e992cbbf7a78d93dbe992a0e914357325a27120`; implementation range
+`8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21..d093d6dcd556a6ef6017cf8a2a70c109c14627e8`.
+`8279e0dbf9b02048bd33e593e0f9d92de39ed6fc` corrects a native fixture assertion;
+`d093d6dcd` repairs the shared sender and exact-wire fixtures; `2e992cbbf` is
+documentation only. Read the updated execution/brief, full delta and sender,
+relevant journal/relay/host callers, and saved terminal Windows evidence.
+No new in-scope source finding or introduced defect was supported.
+
+### Source assessment
+
+The old sender converted a typed `Event` to `serde_json::Value` through `json!`,
+which reordered object keys. The journal constructs its event string directly
+from typed Event ([Deploy:168](../../../crates/buzz-paired-owner/src/deployment.rs#L168),
+[Cleanup:131](../../../crates/buzz-paired-owner/src/deployment/cleanup.rs#L131)).
+The real relay extracts the incoming event as
+[RawValue:96](../../../crates/buzz-relay/src/handlers/host_deployment.rs#L96) and
+[stores those bytes](../../../crates/buzz-db/src/store/paired_hosts/deployment.rs#L140).
+Thus semantic JSON equality in the previous fixture concealed a real transport
+defect: owner reconciliation's exact retained-string comparison could not pass.
+
+[send_event:179](../../../crates/buzz-ws-client/src/connection.rs#L179) now serializes
+the typed `("EVENT", &event)` tuple directly to the same WebSocket text send.
+Event ID, signed content, public method signature, error conversion, logging,
+buffer behavior, acknowledgement matching and timeout remain unchanged. The
+outer tuple serializes as the same two-element JSON array; only the unnecessary
+Value conversion is removed. No receiver normalization or exact-byte guard
+weakening was introduced.
+
+The owner fixture now captures the incoming raw event element and compares all
+three initial/denied/retried sends to the original retained string
+([deployment_tests.rs:372](../../../crates/buzz-paired-owner/src/deployment_tests.rs#L372),
+[:466](../../../crates/buzz-paired-owner/src/deployment_tests.rs#L466)). It exercises
+the production sender. The executor's preserved pre-fix RED receipt is accepted
+as executor evidence; I independently ran the repaired suite GREEN. No redundant
+external mutation was performed. The native peer likewise preserves RawValue at
+[cleanup_tests:43](../../../desktop/src-tauri/src/commands/agents_hosted_cleanup_tests.rs#L43);
+it no longer rewrites the evidence it returns. Other response event/result fields
+remain embedded retained/typed strings. The first fixture correction now asserts
+the actual unexpired follow-on Deploy refusal
+([:122](../../../desktop/src-tauri/src/commands/agents_hosted_cleanup_tests.rs#L122));
+it does not weaken identity/no-effect assertions. Later state assertions now
+include error details. H-1/H-2 production guards/finalizer are unchanged.
+
+### Windows evidence assessed, not re-executed by reviewer
+
+I read each saved `run.json`, `jobs.json`, exact Cleanup log, suite terminal
+counts, UTF-16 ACL receipt, `verification.json` and installer build receipt from:
+
+- `/home/bryce/services/buzz-agents/releases/3725-windows-canary/8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21/42862238726/`
+- `/home/bryce/services/buzz-agents/releases/3725-windows-canary/8279e0dbf9b02048bd33e593e0f9d92de39ed6fc/42866083928/`
+
+| Run / source | Read result and limits |
+|---|---|
+| [42862238726](https://github.com/Shipitrealgood/buzz/actions/runs/42862238726), `8cec4d7cf` | Both jobs terminal: installer success, native failure. Native compiled; 109 outer cases passed plus ACL. Cleanup failed its admission-message expectation at line 121. Metadata exact case was not reached. |
+| [42866083928](https://github.com/Shipitrealgood/buzz/actions/runs/42866083928), `8279e0dbf` | Both jobs terminal: installer success, native failure. Same 109 passed plus ACL; corrected refusal assertion passed. Cleanup returned `unavailable` instead of `cleanup-pending` at line 180; attached error was not logged, so its exact error text is not a measured Windows fact. Portable raw-wire regression and source trace establish the sender defect independently. Later completion/race assertions and metadata case were not reached. |
+
+Independently recalculated extracted installer SHA-256 and size match the saved
+source/version/hash receipts: test.22, 56,479,037 bytes,
+`e70675e36e1021d543a0ef14bc6115dcde67dcd3ed30cb71ba11037ce806f8cc`;
+test.23, 56,434,987 bytes,
+`093ed6573b414b2ece998ab5936dd594d0f754b88bf7bcf87cf0bccf2ef5e93b`.
+This is local artifact verification, not fresh GitHub metadata retrieval. Neither
+installer contains the sender repair or represents successful Cleanup acceptance;
+neither was executed. Earlier statements that the native fixture was uncompiled
+are superseded for these two older pins, not for current-source native acceptance.
+
+### Compatibility boundary and routing
+
+The shared sender is used by owner commands and hostd registration/status/result
+publication. Registration dedup compares parsed event content
+([paired_hosts.rs:163](../../../crates/buzz-db/src/store/paired_hosts.rs#L163));
+deployment command and terminal-result dedup intentionally compare exact raw
+strings ([deployment.rs:89](../../../crates/buzz-db/src/store/paired_hosts/deployment.rs#L89),
+[:157](../../../crates/buzz-db/src/store/paired_hosts/deployment.rs#L157)).
+Changing serialization preserves normal signed-event semantics, but does **not**
+promise transparent upgrade of already-admitted old reordered envelopes. Such
+commands already fail owner reconciliation; a host upgraded after publishing an
+old reordered terminal result can have its typed duplicate rejected by the
+unchanged terminal-result equality gate. Do not relax those guards as a shortcut.
+
+Named question returned to conductor: limit this gate to isolated verification
+and fresh disposable pilot, with historical-envelope compatibility as rollout
+preflight, or expand into upgrade recovery. **Conductor ruled the former** on
+2026-11-10. The accepted, user-supplied
+[WSL receipt](/home/bryce/services/buzz-agents/releases/3738-relay-readonly-20261110/wsl-readonly-receipt.json)
+records f316, schema 1–81, no deployment implementation/flag, and all three
+deployment tables absent; no deployed host-deployment history exists on that
+inspected relay at that receipt. This is read evidence, not my live inspection.
+Conductor also confirms the current netcup controller remains registration-only
+and prepared `c97256e` was never activated. The historical-envelope limitation is
+therefore a future rollout condition, not an in-scope repair request for current
+fresh-pilot acceptance. Check drift and reconcile final artifact provenance before
+rollout. The `c97256e` package predates this shared dependency change and must not
+be labeled current-source; no rebuild/install was done by this reviewer.
+
+### Independent verification and handoff
+
+Hermit activated with self-update disabled; existing loopback fixtures only:
+
+- `cargo test --offline --locked -p buzz-ws-client --lib`: **5 passed**, 0 failed,
+  0 ignored, 0.10s. These cover existing header/auth/timeout behavior.
+- `cargo test --offline --locked -p buzz-paired-owner deployment -- --test-threads=1`:
+  **2 passed**, 0 failed, 14 filtered, 14.39s, including actual exact wire bytes.
+- Owner/ws-client package fmt, scoped native-fixture rustfmt, `git diff --check`
+  and audit citation checks: **PASS**. Windows workflow unchanged from accepted
+  `8cec4d7cf`; unchanged Node/browser suites were not rerun.
+
+Current sender/native-peer Windows execution, full native IPC/keyring and human
+workflow remain **NOT RUN**. The two preserved failed Windows runs are not green
+gates. No third workflow, source export, dependency install, host artifact build,
+live operation or board mutation was performed in review.
+
+Recommendation: original executor may proceed with the third already-authorized
+existing Windows run after this clean signed review commit releases ownership.
+Require successful exact Cleanup and remaining native/ACL cases plus current
+source/run/artifact association, then return evidence and any fixes to the same
+reviewer. No source change is requested on this pin. All owned commands are
+terminal; no temporary source/test edits or detached processes remain.
+
+Requested configuration: **gpt-6-astra / high**; served identity/effort unknown.
+No open in-scope source findings; overall merge-block remains the required native
+verification gate, not a new counted source finding.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21..d093d6dcd556a6ef6017cf8a2a70c109c14627e8 findings=C=0/H=0/M=0/L=0 rework_rounds=2
