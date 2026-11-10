@@ -41,8 +41,16 @@ fn native_phases(home: &std::path::Path) {
     let mut context = tauri::test::mock_context(tauri::test::noop_assets());
     let app_data = home.join("app-data");
     context.config_mut().identifier = app_data.to_str().unwrap().to_owned();
-    let state = crate::app_state::build_app_state();
-    *state.relay_url_override.lock().unwrap() = Some("wss://127.0.0.1:9".into());
+    let mut state = crate::app_state::build_app_state();
+    // Deployment scopes require a canonical HTTPS domain, not an IP literal.
+    // Keep that valid fixture domain pinned to loopback, without proxy/redirects.
+    state.http_client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve("localhost", ([127, 0, 0, 1], 9).into())
+        .build()
+        .unwrap();
+    *state.relay_url_override.lock().unwrap() = Some("wss://localhost:9".into());
     let app = tauri::test::mock_builder()
         .manage(state)
         .build(context)
@@ -52,15 +60,16 @@ fn native_phases(home: &std::path::Path) {
         let state = app.state::<AppState>();
         let owner = state.signing_keys().unwrap();
         let scope = buzz_core_pkg::paired_message::Scope {
-            community: "https://127.0.0.1:9".into(),
+            community: "https://localhost:9".into(),
             owner: owner.public_key(),
             host: Keys::generate().public_key(),
             generation: "ab".repeat(32),
         };
+        d::validate_scope(&scope).unwrap();
         let input = || {
             serde_json::from_value::<CreateManagedAgentRequest>(json!({
             "name":"Isolated hosted agent", "personaId":"one-definition", "systemPrompt":"A safe fixture prompt", "agentCommand":"grok", "agentArgs":["agent","--always-approve","stdio"],
-            "backend":{"type":"registered_host","scope":scope}, "relayUrl":"wss://127.0.0.1:9",
+            "backend":{"type":"registered_host","scope":scope}, "relayUrl":"wss://localhost:9",
             "spawnAfterCreate":false, "startOnAppLaunch":false
         })).unwrap()
         };
