@@ -10,6 +10,32 @@ was not exercised. SQL-seeded host binding survival and advertised capability do
 not substitute for that check. [Bounded follow-up](../briefs/3734-wsl-registration-addendum.md)
 uses existing owner/host clients; no product implementation is requested.
 
+## Current result — live relay increment completed
+
+Bryce reports “all worked” and supplies the WSL final summary: Hetzner primary
+upgraded and healthy; migration82 verified; Windows history, messaging and
+registration refresh passed; disposable host paired, revoked and cleaned up;
+real netcup untouched; hosted deployment still disabled. Credit those actual
+live observations. They do not retroactively pass the isolated six-stage proof
+or prove live rollback registration. No further isolated attempt is requested.
+
+WSL final receipt location:
+`/tmp/buzz-hosted-prep-929c-w39MsZNb/live-rollout-dwokhHfk/final-registration-acceptance.txt`.
+The summary is user-supplied; full receipt bytes, final immutable image/flags,
+recovery path, interruption measurements and detailed review are not reproduced
+here or independently inspected by this conductor. The prior candidate pins
+remain the approved deployment target, not a newly measured identity claim.
+Windows build number was not restated; credit the reported live journey without
+inventing an installer-version verification.
+
+Relay-only upgrade/registration acceptance is complete by reported outcome.
+Netcup P1 package and runbook were already built and independently accepted at
+19b60eee; do not repeat that preparation. Remaining work is the scoped live
+preflight and approved activation of the prepared controller on the same host
+identity/state, relay deployment enablement, then one disposable agent's native
+runtime/provider/create/chat/confirmed Cleanup acceptance. Those live actions
+still require separate approval. Claude/Grok/Scout remain outside the change.
+
 ## Subsequent disposition — isolated attempt closed; relay-only live work approved
 
 Bryce returned the finalized addendum, SHA256
@@ -98,5 +124,6 @@ unrun. Completed source/Windows automated reviews remain credited separately.
 Netcup P1 remains independently accepted at19b60eee with manifest
 `ec1fb606e835ba238a39021a3ad17d90e1f8c3ea933b568f2fa5db78e5671441`.
 No rebuild or implementation is needed from this receipt. #3734 remains open,
-now awaiting execution/receipt for the separately approved relay-only handoff.
-Registration compatibility remains a disclosed live acceptance gap. Existing Claude/Grok/Scout and real netcup registration stay untouched.
+now records successful user-reported relay-only rollout and live registration
+acceptance above. The remaining deployment enablement and host/pilot gates are
+separate; the isolated proof remains incomplete as historical evidence. Existing Claude/Grok/Scout and real netcup registration stay untouched.
