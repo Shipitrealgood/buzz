@@ -10,6 +10,31 @@ was not exercised. SQL-seeded host binding survival and advertised capability do
 not substitute for that check. [Bounded follow-up](../briefs/3734-wsl-registration-addendum.md)
 uses existing owner/host clients; no product implementation is requested.
 
+## Subsequent disposition — isolated attempt closed; relay-only live work approved
+
+Bryce returned the finalized addendum, SHA256
+`c7a3216a4003ca985c3ec97139136561155d1f4f6a00ad07793645337d60c505`,
+at `registration-addendum-mpjtKOfC/addendum.txt` beneath the WSL evidence
+root. Both existing clients built offline at929c; hostd SHA256
+`cd81ef66643abcb1b83e2f001d25db28df10500e09a86bdec4cbfe9c425ad6e8`,
+owner example SHA256
+`6173ae7fd04af3242f6ac0aa71c38e4b86e2a2e20f6636e58405065bb3e1bb9b`.
+Two setup attempts stopped before registration traffic; corrected old/schema81
+fixture readiness timed out and diagnostics were not retained. Zero protocol
+stages proven. Disposable resources removed, original53 artifacts unchanged.
+Independent Astra/high review accepted truthful gap documentation, NOT protocol
+compatibility. This is user-supplied evidence, not locally remeasured.
+
+After this gap and rollback limits were explained, Bryce explicitly approved
+relay-only live upgrade and registration testing: “yea i am good with it”.
+The [approved WSL handoff](../briefs/3734-wsl-approved-relay-rollout.md) supersedes
+prior requests for another isolated registration run. It authorizes recovery
+checkpoint, exact candidate load, migration82, primary candidate with deployment
+DISABLED, ordinary traffic/existing-registration checks and one disposable host
+registration/revocation through Windows. Netcup controller changes, deployment
+flag enablement, agent creation and existing-agent actions remain unauthorized.
+No live execution is claimed by this approval record. #3734 stays open for receipt.
+
 ## Reported provenance
 
 - WSL evidence: `/tmp/buzz-hosted-prep-929c-w39MsZNb`, mode0700.
@@ -73,5 +98,5 @@ unrun. Completed source/Windows automated reviews remain credited separately.
 Netcup P1 remains independently accepted at19b60eee with manifest
 `ec1fb606e835ba238a39021a3ad17d90e1f8c3ea933b568f2fa5db78e5671441`.
 No rebuild or implementation is needed from this receipt. #3734 remains open,
-awaiting the narrow registration addendum, then a concrete combined live approval
-request. Existing Claude/Grok/Scout and real netcup registration stay untouched.
+now awaiting execution/receipt for the separately approved relay-only handoff.
+Registration compatibility remains a disclosed live acceptance gap. Existing Claude/Grok/Scout and real netcup registration stay untouched.
