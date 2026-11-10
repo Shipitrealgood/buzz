@@ -1,0 +1,16 @@
+   Compiling buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.73s
+     Running unittests src/lib.rs (target/debug/deps/buzz_core-c8d9fb5e0e46263c)
+
+running 9 tests
+test harness::runtime_metadata::tests::vendor_metadata_distinguishes_cli_and_adapter_guidance ... ok
+test harness::tests::main_registry_projection_preserves_candidates_and_defaults ... ok
+test harness::tests::shared_availability_version_and_auth_classifiers ... ok
+test harness::windows_install::tests::test_every_windows_install_command_downloads_to_a_file_then_executes_it ... ok
+test harness::windows_install::tests::test_every_windows_install_command_preserves_failure_exit_codes ... ok
+test harness::windows_install::tests::test_every_windows_install_command_quotes_the_body_exactly_once ... ok
+test harness::windows_install::tests::test_goose_windows_install_command_keeps_its_env_prefix ... ok
+test harness::windows_install::tests::test_no_windows_install_command_pipes_a_download_into_iex ... ok
+test harness::windows_install::tests::test_windows_install_commands_target_the_official_vendor_urls ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 315 filtered out; finished in 0.00s

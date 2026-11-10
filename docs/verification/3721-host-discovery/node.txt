@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: row 4: create input never contains definition env vars
+ok 1 - row 4: create input never contains definition env vars
+  ---
+  duration_ms: 1.717403
+  type: 'test'
+  ...
+# Subtest: row 2: harnessOverride follows the backend-aligned formula
+ok 2 - row 2: harnessOverride follows the backend-aligned formula
+  ---
+  duration_ms: 0.388914
+  type: 'test'
+  ...
+# Subtest: row 3: plain avatar URLs pass through; base64 data URIs upload via the injectable
+ok 3 - row 3: plain avatar URLs pass through; base64 data URIs upload via the injectable
+  ---
+  duration_ms: 0.348353
+  type: 'test'
+  ...
+# Subtest: row 3: failed persona avatar upload never substitutes the runtime avatar
+ok 4 - row 3: failed persona avatar upload never substitutes the runtime avatar
+  ---
+  duration_ms: 0.368595
+  type: 'test'
+  ...
+# Subtest: mapping carries the runtime and definition fields
+ok 5 - mapping carries the runtime and definition fields
+  ---
+  duration_ms: 0.985152
+  type: 'test'
+  ...
+# Subtest: no backend intent is byte-identical to the pre-intent mapping
+ok 6 - no backend intent is byte-identical to the pre-intent mapping
+  ---
+  duration_ms: 0.285309
+  type: 'test'
+  ...
+# Subtest: Buzz shared compute definition carries native provider and auto model
+ok 7 - Buzz shared compute definition carries native provider and auto model
+  ---
+  duration_ms: 0.204657
+  type: 'test'
+  ...
+# Subtest: provider intent forces startOnAppLaunch off and omits local commands
+ok 8 - provider intent forces startOnAppLaunch off and omits local commands
+  ---
+  duration_ms: 0.254824
+  type: 'test'
+  ...
+# Subtest: row 1: refuses when the configured runtime is not available
+ok 9 - row 1: refuses when the configured runtime is not available
+  ---
+  duration_ms: 0.683929
+  type: 'test'
+  ...
+# Subtest: row 1: resolves the configured runtime when available
+ok 10 - row 1: resolves the configured runtime when available
+  ---
+  duration_ms: 0.286751
+  type: 'test'
+  ...
+# Subtest: row 1: no preference resolves the default with no warnings
+ok 11 - row 1: no preference resolves the default with no warnings
+  ---
+  duration_ms: 0.21888
+  type: 'test'
+  ...
+# Subtest: row 1: refuses when no runtimes exist at all
+ok 12 - row 1: refuses when no runtimes exist at all
+  ---
+  duration_ms: 0.164227
+  type: 'test'
+  ...
+# Subtest: row 6: fetched query uses cached data without refetching
+ok 13 - row 6: fetched query uses cached data without refetching
+  ---
+  duration_ms: 0.231187
+  type: 'test'
+  ...
+# Subtest: row 6: unfetched query refetches instead of resolving empty
+ok 14 - row 6: unfetched query refetches instead of resolving empty
+  ---
+  duration_ms: 0.178478
+  type: 'test'
+  ...
+# Subtest: item-13: goose+buzz-agent both available — persona with no runtime resolves buzz-agent
+ok 15 - item-13: goose+buzz-agent both available — persona with no runtime resolves buzz-agent
+  ---
+  duration_ms: 0.126712
+  type: 'test'
+  ...
+# Subtest: item-13: goose-only available — persona with no runtime resolves goose
+ok 16 - item-13: goose-only available — persona with no runtime resolves goose
+  ---
+  duration_ms: 0.124708
+  type: 'test'
+  ...
+# Subtest: item-13: no runtimes available — refuses with actionable error
+ok 17 - item-13: no runtimes available — refuses with actionable error
+  ---
+  duration_ms: 0.135524
+  type: 'test'
+  ...
+# Subtest: registered-host definition mapping uses canonical metadata and never requests local start
+ok 18 - registered-host definition mapping uses canonical metadata and never requests local start
+  ---
+  duration_ms: 0.220172
+  type: 'test'
+  ...
+# Subtest: hosted retry rejects exact installed-ID or scope changes before definition effects
+ok 19 - hosted retry rejects exact installed-ID or scope changes before definition effects
+  ---
+  duration_ms: 20.139209
+  type: 'test'
+  ...
+# Subtest: provider selection blocks submit until the probe completes
+ok 20 - provider selection blocks submit until the probe completes
+  ---
+  duration_ms: 0.1726
+  type: 'test'
+  ...
+# Subtest: provider selection blocks submit while required config is missing
+ok 21 - provider selection blocks submit while required config is missing
+  ---
+  duration_ms: 0.090796
+  type: 'test'
+  ...
+# Subtest: complete provider config allows submit
+ok 22 - complete provider config allows submit
+  ---
+  duration_ms: 0.093521
+  type: 'test'
+  ...
+# Subtest: local never gates submit
+ok 23 - local never gates submit
+  ---
+  duration_ms: 0.048823
+  type: 'test'
+  ...
+# Subtest: local draft resolves to null intent
+ok 24 - local draft resolves to null intent
+  ---
+  duration_ms: 0.073711
+  type: 'test'
+  ...
+# Subtest: provider draft resolves with coerced config values
+ok 25 - provider draft resolves with coerced config values
+  ---
+  duration_ms: 0.142053
+  type: 'test'
+  ...
+# Subtest: probe resolution prefills schema defaults on a fresh draft
+ok 26 - probe resolution prefills schema defaults on a fresh draft
+  ---
+  duration_ms: 0.169945
+  type: 'test'
+  ...
+# Subtest: probe resolution keeps user-typed values over schema defaults
+ok 27 - probe resolution keeps user-typed values over schema defaults
+  ---
+  duration_ms: 0.107722
+  type: 'test'
+  ...
+# Subtest: probe resolution keeps a user-cleared field cleared
+ok 28 - probe resolution keeps a user-cleared field cleared
+  ---
+  duration_ms: 0.109423
+  type: 'test'
+  ...
+# Subtest: a schema-less probe result records the probe without touching config
+ok 29 - a schema-less probe result records the probe without touching config
+  ---
+  duration_ms: 0.084047
+  type: 'test'
+  ...
+# Subtest: probe resolution preserves unrelated draft fields
+ok 30 - probe resolution preserves unrelated draft fields
+  ---
+  duration_ms: 0.073991
+  type: 'test'
+  ...
+# Subtest: host destination always blocks even with complete provider/capability data
+ok 31 - host destination always blocks even with complete provider/capability data
+  ---
+  duration_ms: 0.167233
+  type: 'test'
+  ...
+# Subtest: host submit requires both current registration and native readiness
+ok 32 - host submit requires both current registration and native readiness
+  ---
+  duration_ms: 0.093401
+  type: 'test'
+  ...
+# Subtest: host catalog and model evidence remain exact-scope and freshness bound
+ok 33 - host catalog and model evidence remain exact-scope and freshness bound
+  ---
+  duration_ms: 0.73706
+  type: 'test'
+  ...
+1..33
+# tests 33
+# suites 0
+# pass 33
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 479.237951

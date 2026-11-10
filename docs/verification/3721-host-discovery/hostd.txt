@@ -1,0 +1,79 @@
+   Compiling buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.66s
+     Running unittests src/lib.rs (target/debug/deps/buzz_hostd-0d871f539b36364e)
+
+running 28 tests
+test activation::tests::counts_all_irreversible_reservations_at_the_root_boundary ... ok
+test activation::tests::rejects_overridden_or_preexisting_foreign_instance ... ok
+test registration::tests::exact_retry_and_revocation_outbox_survive_restart ... ok
+test registration::tests::expired_rebooted_or_rollback_offer_never_first_consumes ... ok
+test registration::tests::generation_outbox_is_not_starved_by_older_restrictive_work ... ok
+test registration::tests::wrong_proof_attempts_are_distinct_and_bounded ... ok
+test service_actions::tests::actual_acp_models_uses_fixed_private_context_without_prompt_or_entitlement ... ignored, requires a built buzz-acp binary supplied by BUZZ_TEST_ACP
+test service_actions::tests::failed_login_start_and_missing_terminal_output_never_stay_in_progress ... ok
+test service_actions::tests::finite_actions_are_correlated_local_login_only_and_refuse_busy ... ok
+test service_actions::tests::installed_binding_preserves_one_journal_and_offline_same_unit ... ok
+test service_actions::tests::owned_output_never_follows_agent_links_and_mode_shape_is_exact ... ok
+test service_actions::tests::prepare_refresh_refuses_live_unit_and_wrong_staging_uid_before_stop ... ok
+test service_actions::tests::production_finite_supervisor_preserves_context_and_bounds_output ... ok
+test service_actions::tests::stopped_login_handover_retains_outcome_and_refresh_retires_outputs ... ok
+test store::tests::old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_cursor ... ok
+test store::tests::request_tests::create_commit_and_unpair_in_both_orders ... ok
+test store::tests::restart_restores_exact_ack_and_local_tombstone ... ok
+test store::tests::wrong_proof_replay_spends_one_attempt_reboot_invalidates_offer ... ok
+test tests::staged_instance_cannot_select_root_program_provider_or_foreign_catalog ... ok
+test user_service::tests::actual_user_runtime_prepare_refresh_selected_conversation_and_cleanup ... ignored, requires built BUZZ_TEST_RUNTIME and BUZZ_TEST_ACP; synthetic executables only
+test user_service::tests::automatic_main_candidates_resolve_each_account_without_manual_rows ... ok
+test user_service::tests::cleanup_after_launch_paths_move_does_not_require_current_catalog ... ok
+test user_service::tests::cleanup_retries_preserve_shared_files_and_refuse_symlink_escapes ... ok
+test user_service::tests::current_native_status_is_independent_of_history_models_and_entitlement ... ok
+test user_service::tests::finite_actions_are_serialized_correlated_and_cancel_confirmed ... ok
+test user_service::tests::new_route_has_no_root_client_and_fixed_unit_uses_account_supervision ... ok
+test user_service::tests::prepare_replay_restart_and_identity_fences_precede_effects ... ok
+test user_service::tests::trusted_finite_runner_uses_account_context_and_bounds_process_tree ... ok
+
+test result: ok. 26 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 8.12s
+
+     Running unittests src/bin/buzz-host-activate.rs (target/debug/deps/buzz_host_activate-c705fc126c9d6ce8)
+
+running 1 test
+test tests::authenticates_connecting_uid_not_inode_group ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/buzz-host-runtime.rs (target/debug/deps/buzz_host_runtime-1fabeca895881d55)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/buzz_hostd-c6ec734a86c6765b)
+
+running 13 tests
+test registration_refresh::tests::cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotation ... ok
+test registration_refresh::tests::disconnected_exact_restrictive_write_retries_before_live_read ... ok
+test registration_refresh::tests::failed_old_generation_does_not_block_new_offer ... ok
+test registration_refresh::tests::failure_retry_is_jittered_and_capped ... ok
+test registration_refresh::tests::hint_during_snapshot_is_not_discarded ... ok
+test registration_refresh::tests::idle_retains_auth_and_snapshot_and_services_heartbeat ... ok
+test registration_refresh::tests::local_new_generation_and_offline_revoke_progress_without_reauth ... ok
+test registration_refresh::tests::untrusted_and_wrong_scope_notifications_fail_closed ... ok
+test registration_refresh::tests::verified_bursts_coalesce_and_missed_notice_recovers_on_backstop ... ok
+test store::tests::old_resync_cycle_cannot_starve_current_and_clock_rollback_retains_cursor ... ok
+test store::tests::request_tests::create_commit_and_unpair_in_both_orders ... ok
+test store::tests::restart_restores_exact_ack_and_local_tombstone ... ok
+test store::tests::wrong_proof_replay_spends_one_attempt_reboot_invalidates_offer ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.48s
+
+     Running unittests examples/registration_deployment_probe.rs (target/debug/examples/registration_deployment_probe-04dec29e73aee915)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/registration_isolation_probe.rs (target/debug/examples/registration_isolation_probe-0b64bc0a0525d5d4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

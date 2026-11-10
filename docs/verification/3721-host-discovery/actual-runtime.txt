@@ -1,0 +1,14 @@
+   Compiling buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+   Compiling buzz-ws-client v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-ws-client)
+   Compiling buzz-sdk v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-sdk)
+   Compiling buzz-hostd v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-hostd)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.45s
+     Running unittests src/lib.rs (target/debug/deps/buzz_hostd-0d871f539b36364e)
+
+running 2 tests
+test service_actions::tests::actual_acp_models_uses_fixed_private_context_without_prompt_or_entitlement ... ok
+test user_service::tests::actual_user_runtime_prepare_refresh_selected_conversation_and_cleanup ... Error: managed runtime unavailable
+Error: managed runtime unavailable
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 1.03s

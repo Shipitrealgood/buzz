@@ -1,0 +1,9 @@
+   Compiling buzz-paired-owner v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-paired-owner)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.44s
+     Running unittests src/lib.rs (target/debug/deps/buzz_paired_owner-61bbc1dbab8a1333)
+
+running 2 tests
+test deployment::tests::deployment_current_revision_refresh_launch_and_exact_retry ... ok
+test deployment::tests::protected_main_snapshot_same_key_expiry_tamper_and_terminal_receipt ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 6.33s

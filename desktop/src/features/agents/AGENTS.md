@@ -11,8 +11,8 @@ Plan of record: `Buzz/Harness-Provider-Model.md` in Morgan's Obsidian vault
 ## The one rule
 
 **Harness capability facts have exactly one source: the Rust runtime catalog.**
-`KnownAcpRuntime` (`desktop/src-tauri/src/managed_agents/discovery/runtime_metadata.rs`)
-declares each harness's model/provider/effort env keys and capabilities. Spawn
+`KnownAcpRuntime` (`crates/buzz-core/src/harness/runtime_metadata.rs`, re-exported
+by Desktop discovery) declares each harness's model/provider/effort env keys and capabilities. Spawn
 applies them; `AcpRuntimeCatalogEntry` exposes them over IPC; and
 `lib/agentConfigCore.ts` projects them into field descriptors. The frontend
 never maintains a rival copy of this table. Setup guidance follows the same

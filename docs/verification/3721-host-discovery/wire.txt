@@ -1,0 +1,20 @@
+   Compiling buzz-core v0.1.0 (/home/bryce/services/buzz-wt-3720-host-registration/crates/buzz-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.62s
+     Running unittests src/lib.rs (target/debug/deps/buzz_core-c8d9fb5e0e46263c)
+
+running 13 tests
+test host_deployment::tests::authority_roundtrip_and_each_binding_rejects_mismatch ... ok
+test host_deployment::tests::closed_config_destination_intent_and_cleanup_results ... ok
+test host_deployment::tests::empty_variants_remain_closed_and_overflow_cannot_look_applied ... ok
+test host_deployment::tests::encrypted_command_identity_and_action_cannot_be_substituted ... ok
+test host_deployment::tests::registration_unsupported_empty_stale_revoked_never_permit_deploy ... ok
+test host_deployment::wire_tests::altered_signature_ciphertext_and_duplicate_wire_fields_fail ... ok
+test host_deployment::wire_tests::bounded_operation_with_receipt_fits_encrypted_query_and_rejects_padded_results ... ok
+test host_deployment::wire_tests::cleanup_namespace_cannot_be_reused_for_deploy_or_foreign_cleanup ... ok
+test host_deployment::wire_tests::exact_signed_encrypted_command_and_native_restore ... ok
+test host_deployment::wire_tests::optional_host_facts_are_bounded_and_old_messages_stay_unknown ... ok
+test host_deployment::wire_tests::private_observation_is_bound_bounded_historical_and_legacy_compatible ... ok
+test host_deployment::wire_tests::result_binding_and_permit_challenge_are_not_interchangeable ... ok
+test host_deployment::wire_tests::status_is_host_signed_scoped_and_expires ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 0.19s
