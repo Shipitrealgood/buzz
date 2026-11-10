@@ -1,6 +1,6 @@
 # Execution receipt: #3721 host service and discovery
 
-Status: committed source candidate for fresh independent review. This is not
+Status: bounded M1–M3 repair for the same independent reviewer’s re-gate. This is not
 native service, provider, Windows, online-activation or pilot acceptance.
 
 Workspace `/home/bryce/services/buzz-wt-3720-host-registration`, branch
@@ -13,7 +13,10 @@ Toolchain measured under Hermit (`HERMIT_SELF_UPDATE=false`):
 
 Accepted inputs: [spec](../specs/3721-host-service-discovery.md),
 [executor brief](../briefs/3721-host-service-discovery.md), accepted M-3 repair.
-The executor performed no independent merge gate. Next role is fresh Chuck.
+The executor performed no independent merge gate. Next role is the same Chuck re-gate.
+The first review at `85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e` required
+[M1–M3](../audits/post-audit/3721-host-service-discovery.md); the repair below
+supersedes the earlier V4 completion claim.
 
 ## Committed source
 
@@ -87,11 +90,13 @@ unchanged; neither cancelled login nor capacity refusal was its claimed coverage
 Independent review should assess this continuity, not treat the old binary as an
 exact-final-build claim.
 
-V1 source artifacts and fixed staging/UID checks, V2 real finite subprocess/context
-and output/deadline/cancel/busy controls, V3 actual synthetic ACP enumeration/strict
-session checks, V4 private journey/replay, and V5 affected regressions are covered
-as enumerated. V1/V2/V4 native portions are **NOT RUN**, not green via injection.
-The tests bind production functions; no external mutation campaign was added.
+The original gates covered V1 source artifacts, V2 finite subprocess/context,
+V3 synthetic ACP enumeration/strict sessions and V5 regressions. The original
+V4 evidence covered private preparation/replay and an injected active lifecycle;
+it did **not** cover login → pending refresh → production offline refusal.
+The earlier claim of full V4 source completion was incorrect (review M3).
+The bounded repair adds that named sequence below. Native V1/V2/V4 portions
+remain **NOT RUN**. No external mutation campaign was added.
 
 Observed development failures were corrected: namespaced-vs-canonical harness key
 validation; explicit 0700 creation instead of inherited umask; strict CLI fixture
@@ -127,4 +132,69 @@ real Grok login/credential persistence/refresh/entitlement/chat, Windows shared 
 and native build, Tauri native tests (known GObject environment gap), full `just ci`,
 and human acceptance. N1 remains #3719; provider evidence #3722; Windows #2722.
 
-Next gate: [fresh independent review brief](../briefs/3721-host-service-discovery-review.md).
+Next gate: [same-reviewer re-gate brief](../briefs/3721-host-service-discovery-review.md).
+
+
+## Bounded review repair: M1–M3
+
+Clean repair start: `85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e` (report-only
+atop candidate `93aa5b2a4ca655957eafff7f99c2ca541514188a`). Signed source/test
+commit: `7517ebf3e7906fc51abe1dfbf468ff3069c944f6`. Requested Astra/high;
+served runtime metadata remains unknown. No unrelated changes were present.
+
+- M1: while the previous descriptor is retained and the unit is confirmed inactive,
+  reconcile then unlink its exact state/runtime outputs with anchored custody and
+  directory sync. Remove/reload the owned finite drop-in before saving conversation
+  mode. An interrupted unlink/reload accepts only the exact missing owned path with
+  the old finite descriptor and an inactive unit; active or foreign shapes fail.
+  Conversation start now explicitly checks inactivity before this handover.
+- M2: a stopped login's bounded correlated terminal result updates the existing
+  root summary before models or pending refresh supersedes it. Missing terminal
+  output turns InProgress into Failed; untrusted/nonterminal output refuses
+  replacement. Confirmed failed start (exit or transport error) records Failed.
+  No login result is promoted to model availability or subscription entitlement.
+- M3: extended the existing fixture with `discovery_login_refresh_and_production_offline_refusal`.
+  It drives private preparation, root-local fixed synthetic login, a new pending
+  revision before local polling, and selected-start failure using the production
+  `NetworkPolicy::require_conversation` guard also called by installed `run()`.
+  It checks same secret/OA/agent/unit/HOME, persistent synthetic native state,
+  current Succeeded login plus NetworkDisabled models, and one current output
+  after refresh/zero after selected handover. The unit fixture repeats refresh
+  and cleanup and exercises the interrupted drop-in prefix. No new platform/store.
+
+This V4 source gate uses the production finite supervisor and offline predicate;
+it does not execute the installed `run()` environment/credential bootstrap or
+systemd. The older simulated-active journey is still a journal/lifecycle regression,
+not online execution evidence. Successful online selected-start remains NOT RUN.
+
+| Repair invocation (Hermit, `HERMIT_SELF_UPDATE=false`) | Measured result |
+| --- | --- |
+| `cargo test -p buzz-hostd -p buzz-relay --no-run` | PASS, 2m52s after correcting a test-only missing `&Path` borrow |
+| `target/debug/deps/buzz_hostd-bd1729a8745cad5b --test-threads=1` | PASS, 18; 1 unchanged explicit ignore; 2.26s |
+| `proof run target/debug/deps/buzz_relay-961a502ccefb2125 external_infra_deployment_tests --ignored --test-threads=1` | PASS, 5; 14.99s, includes new V4 and old replay/overlapping cleanup |
+| `proof run target/debug/deps/buzz_hostd-c33faca283336bb7 registration_refresh::tests --test-threads=1` | PASS, 9; 34.30s |
+| `cargo clippy -p buzz-hostd --all-targets --no-deps` | Completed, 4.60s; existing warnings, none in changed production files |
+| `cargo fmt --all --check`; explicit relay-fixture `rustfmt --check --edition 2021`; `git diff --check` | PASS |
+| Three `{desktop,web,mobile}/scripts/check-file-sizes.mjs`, `CHECK_FILE_SIZES_BASE=85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e` | PASS |
+
+**32 repair behavior tests passed; no behavioral failures.** Initial compile failed
+on the new fixture's missing path borrow and was corrected before tests. No source
+changed during the successful replacement build or subsequent behavior gates.
+Core/wire/normalizer, ACP, owner accessor and desktop have zero source delta from
+the reviewed pin; their independently rerun evidence in the review report carries.
+The unchanged explicit ACP-models test was not rerun: the finite supervisor,
+normalizer and ACP entrypoint bodies are unchanged; the only runtime-context delta
+extracts the conversation policy guard. Full 72-test repetition was not performed.
+
+Measured repair delta: **90 added / 20 removed production lines, net +70 in three
+files**; **427 added / 47 removed test lines in two existing fixture files**,
+including moving the existing injected manager closure for reuse by root-local
+login. The one-line production offline guard moved into a documented shared
+method. No new source files, schema, policy variants or adjacent subsystem changes.
+
+All repair build/test processes exited. `proof down` removed the label-verified
+runner/Postgres/Redis; the following `docker ps -a --filter label=buzz.proof=3720
+--format '{{.Names}}'` returned empty. No proxy was started. Fixture TempDirs,
+synthetic subprocesses and helper tasks closed. Native/network/provider/Windows/
+Tauri/full-CI/human gates above remain NOT RUN. No live changes or board actions.
+The same independent reviewer owns the remaining acceptance decision.

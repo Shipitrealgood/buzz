@@ -1,109 +1,55 @@
-# Independent review: checkpoint-2 service and discovery (#3721)
+# Same-reviewer re-gate: #3721 M1–M3
 
-Requested 2026-11-10 by the conductor. Next role: fresh `codex-chuck`.
-Related: #3719 online isolation, #3722 native Grok evidence, #2722 Windows journey.
+Return to the reviewer of [the initial report](../audits/post-audit/3721-host-service-discovery.md).
+This is bounded rework of that assignment, not a new architecture audit.
 
-## Where the work lives
+Workspace `/home/bryce/services/buzz-wt-3720-host-registration`, branch
+`proof/3720-host-registration-events`. Clean repair start
+`85e20fc2df0b51817fc0cfe5cc4de7a255de9e5e`; signed source/test repair
+`7517ebf3e7906fc51abe1dfbf468ff3069c944f6`. A following documentation-only
+commit carries this brief and the updated [receipt](../executions/3721-host-service-discovery.md).
+Original source candidate: `93aa5b2a4ca655957eafff7f99c2ca541514188a`.
+Requested executor configuration Astra/high; served runtime metadata unknown.
 
-Worktree `/home/bryce/services/buzz-wt-3720-host-registration`, branch
-`proof/3720-host-registration-events` (not main). Source range:
-`db829357458e90ed434af1487039bedbe0a5ad5f..39bbd9e1aab2f6b1e922c4eab567f1a51a8b9b52`,
-four signed commits. A subsequent documentation-only commit carries this brief
-and the final receipt. No pre-existing unrelated changes were present.
+## Re-gate focus
 
-```sh
-cd /home/bryce/services/buzz-wt-3720-host-registration
-export HERMIT_SELF_UPDATE=false
-. ./bin/activate-hermit
-git log --oneline db8293574..HEAD
-```
+- **M1:** `service_actions::retire` deletes the previous correlated files before
+  replacing its descriptor, after caller-confirmed inactivity. `restore` removes/
+  reloads the finite drop-in before conversation mode. `shape` handles the stopped
+  unlink-before-reload prefix using the protected finite descriptor. Check foreign
+  and active cases still refuse; directory sync precedes descriptor replacement.
+- **M2:** retirement saves a validated terminal login outcome before models or
+  refresh supersedes it; missing output resolves InProgress to Failed. Bad output
+  refuses replacement. Failed start records Failed after confirmed abort. Check
+  the existing protected summary remains a current login fact, not entitlement.
+- **M3:** new `discovery_login_refresh_and_production_offline_refusal` in the
+  existing relay fixture proves prepare → synthetic fixed login → unpolled pending
+  refresh → selected refusal. It asserts identity/unit/HOME persistence, current
+  login, network-disabled models and bounded outputs. The production offline
+  guard is shared with installed `run()`; bootstrap/systemd are not executed.
 
-## What landed
+Host fixture additions cover both supersession paths before local observation,
+repeated refresh/cleanup, interrupted unlink/reload, and failed/missing login output.
+The older simulated-active relay journey remains only lifecycle/journal evidence.
+The original V4 completion claim was overstated; the receipt explicitly corrects it.
 
-The existing registration controller/journal now has a checked-in deployment
-binding to the fixed helper. Fixed login/models/conversation modes share the
-persistent per-unit context; finite actions use bounded supervision and private
-output custody. Preparation returns immutable encrypted observations through the
-existing journal/private query, and ACP has a default-off strict model gate.
-The shipped execution policy remains offline and conversation refuses it.
+## Evidence and limits
 
-Read the [spec](../specs/3721-host-service-discovery.md),
-[executor input](3721-host-service-discovery.md), and
-[execution receipt](../executions/3721-host-service-discovery.md).
-The receipt lists 72 passing focused tests and exact source/native limits.
+Measured: host lib18 + isolated relay5 + registration-refresh9 = **32 passed**.
+Serialized replacement build passed after one test-only borrow correction. Formatting,
+three scoped size checks and diff checks passed. Host clippy completed with existing
+warnings only. Exact commands/timings and delta accounting are in the receipt.
+Production repair: +90/−20 lines in three files; tests +427/−47 in two existing
+files, including relocation of the manager closure. No new source files/subsystem.
 
-## Your job
+Core/owner/ACP/desktop source is unchanged; carry the initial review's independent
+checks. The explicit ACP-models gate and the full72 were not rerun. Native systemd,
+rootfs dependency closure, confinement/network, provider, online activation, Windows,
+Tauri native, full CI and human acceptance remain NOT RUN. No new online policy,
+test bypass, store/history/sweeper, UI, installer/adoption or live-agent work.
 
-Independently evaluate the pinned source, especially the new authority and custody
-edges. The executor's tests are evidence, not an independent gate. Do not infer
-systemd, network, provider or online-start correctness from injected manager output.
-
-**Special instruction:** the source currently accepts only the disabled network
-policy. Real finite commands execute under that source configuration, but no native
-service was run. Distinguish a real production-path implementation from the
-remaining installation/dependency-closure/N1 proof. Successful online selected-start
-is explicitly not claimed, by conductor ruling in the spec.
-
-## Specifically look for
-
-1. **Can root output reads escape the intended unit?**
-   Probe `crates/buzz-hostd/src/service_actions.rs:165`: anchored directory/file
-   opens, symlink/hardlink/regular-file/owner/cap checks, exact descriptor equality,
-   sanitized terminal output and RuntimeDirectory-only live login output. Probe
-   `:241` cleanup ordering after observed stop/disable; include missing outputs.
-2. **Does finite selection preserve one unit and refuse live conversations?**
-   Probe `service_actions.rs:47`, `:78`, `:263`: exact owned Restart=no bytes,
-   foreign overrides, main/control/task emptiness, short root transactions and
-   start/observe/cancel correlation. In `activation.rs`, pending revision refresh
-   must refuse before the existing abort/replace path can stop a conversation.
-3. **Does context and supervision stay bounded?**
-   Probe `runtime_context.rs:182` and `:342`: clear environment, fixed login argv,
-   unchanged ACP models command, shared HOME/GROK_HOME/XDG/cwd, combined 64 KiB
-   capture and deadlines. Distinguish process tests from unproven native cgroup
-   behavior. Read the empty-root unit bind list against the explicit closure limit.
-4. **Can result assembly weaken accepted cleanup or immutable replay?**
-   Probe `crates/buzz-hostd/src/deployment.rs:103` and `:284`: observation polling,
-   post-discovery permit, terminal byte replay, superseded completion, oversize
-   fallback and M-3 monotonic cleanup. Existing SQL/journal authority stays in place.
-5. **Are observations private, current, and facts rather than entitlement?**
-   Probe `crates/buzz-core/src/host_deployment/wire.rs:311`, `:337`,
-   `observation.rs:110`, `:137`, and `crates/buzz-paired-owner/src/deployment.rs:334`.
-   Check unchanged public header, 4 KiB ciphertext/2 KiB observation budgets,
-   legacy decode, exact saved config binding, private current-permission query and
-   expiry. Native login state must remain distinct from available models/entitlement.
-6. **Can the actual session still prompt after strict rejection?**
-   Probe `crates/buzz-acp/src/pool.rs:1691` through the strict missing/rejected
-   branches, plus config/runtime/isolated_execution and both lib startup paths.
-   Tests in `pool_strict_model_tests.rs` drive `run_isolated_prompt` and inspect
-   actual requests; already-current needs no switch and default-off must continue.
-
-## Deviations and uncertainty
-
-- V4 ends at offline selected-start refusal; online success remains N1/native.
-- RuntimeDirectory live bytes plus sanitized StateDirectory terminal result avoid
-  a sweeper/history mechanism. Judge the exact custody/lifetime reasoning.
-- One current root login outcome is overwritten by new login start/cancel, keeping
-  a prior success from masquerading as the latest invocation's outcome.
-- Main normalizer/DTOs moved; Tauri native tests were not run. Their existing cases
-  ran through the same shared core function, and Tauri formatting passed.
-- Final narrow reruns cover decode boxing and capacity/login-state corrections.
-  Relay regression predates those deltas; the receipt spells out continuity.
-- Source size is net approximately +1,428 production lines across 24 files;
-  raw added/deleted/moved accounting and accepted estimate revision are in receipt.
-
-## What not to chase
-
-N1 online policy/namespace provisioning is #3719. Real Grok entitlement/login/chat
-is #3722. Windows UI/build is #2722. Existing Claude/Grok/Scout services and
-credentials, installer/adoption, legacy HTTP retirement, generic lifecycle/fleet
-refresh, preset extraction, rootfs builders and architecture cleanup are outside
-this review. Existing unrelated clippy warnings remain explicitly recorded.
-
-## Deliverable and preflight
-
-Return severity-ranked concrete findings and exact run/not-run evidence to the
-conductor; no merge, push, deployment, live contact or board authority is delegated.
-Read the full spec/receipt, confirm the source pin and clean tree, and keep one
-exclusive writer/test owner. The owned fixture containers have been removed; the
-existing proof script is the documented isolated regression runner if needed.
-Requested executor settings were Astra/high; hidden runtime routing was unavailable.
+All owned fixture containers and test/build processes closed; no unrelated edits.
+Use Hermit with `HERMIT_SELF_UPDATE=false` and the same existing proof runner if
+needed. Review the committed delta and these findings only, expanding on new
+material evidence. Return an independent verdict/evidence to the conductor;
+no push, merge, deployment, provider contact or taskctl authority is delegated.
