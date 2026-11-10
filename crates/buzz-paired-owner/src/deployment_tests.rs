@@ -399,7 +399,14 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                 let reply = wire::Reply {
                     query: query.clone(),
                     expires_at: now().unwrap() + wire::PERMIT_SECONDS,
-                    data: served.lock().unwrap().clone(),
+                    data: {
+                        let data = served.lock().unwrap().clone();
+                        if let Some(by_operation) = data.get("by_operation") {
+                            by_operation[query.operation_id.as_deref().unwrap()].clone()
+                        } else {
+                            data
+                        }
+                    },
                 };
                 let event = wire::reply(&relay, query.scope.owner, &reply, now().unwrap()).unwrap();
                 socket
@@ -658,11 +665,72 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         .await
         .is_err());
     assert_eq!(sent.lock().unwrap().len(), before);
+    let mut again_authority = expired.protected.authority.clone();
+    again_authority.operation_id = "fc".repeat(32);
+    let again = seed_intent(
+        &mut expired_device,
+        &owner,
+        again_authority,
+        &command,
+        snapshot.clone(),
+    );
+    let lost_dir = tempfile::tempdir().unwrap();
+    let mut lost_device = Device::at(&lost_dir.path().join("owner.sqlite")).unwrap();
+    let lost = seed_intent(
+        &mut lost_device,
+        &owner,
+        expired.protected.authority.clone(),
+        &command,
+        snapshot.clone(),
+    );
+    let absent = seed_intent(
+        &mut lost_device,
+        &owner,
+        again.protected.authority.clone(),
+        &command,
+        snapshot.clone(),
+    );
+    let lost_receipt = wire::result_body(&host, &body_for(&lost), now().unwrap()).unwrap();
+    *responses.lock().unwrap() = serde_json::json!({"by_operation":{
+        (absent.protected.authority.operation_id.clone()):missing.clone(),
+        (lost.protected.authority.operation_id.clone()):{"event":lost.event,"result":serde_json::to_string(&lost_receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":1}
+    }});
+    assert!(management
+        .continue_deployment(
+            &mut lost_device,
+            &signer,
+            &absent.protected.authority.operation_id,
+            &status,
+            d::ModelSelection::PendingLogin {},
+            snapshot.clone()
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        lost_device
+            .deployment_intents(&scope.community, &owner)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        lost_device
+            .deployment_intent(
+                &scope.community,
+                &owner,
+                &lost.protected.authority.operation_id
+            )
+            .unwrap()
+            .unwrap()
+            .phase,
+        3
+    );
+    *responses.lock().unwrap() = missing.clone();
     let replacement = management
         .continue_deployment(
             &mut expired_device,
             &signer,
-            &expired.protected.authority.operation_id,
+            &again.protected.authority.operation_id,
             &status,
             d::ModelSelection::PendingLogin {},
             snapshot.clone(),
@@ -762,7 +830,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     // Fill the existing bounded table only in this disposable fixture; refusal
     // keeps every prior row rather than evicting recovery evidence.
     let tx = expired_device.db.transaction().unwrap();
-    for index in 2..1024 {
+    for index in 3..1024 {
         tx.execute(
             "INSERT INTO deployment_intents VALUES(?,?,?,?)",
             params![

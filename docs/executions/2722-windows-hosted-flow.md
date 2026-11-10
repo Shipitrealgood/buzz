@@ -80,3 +80,17 @@ an exact signed/encrypted retained fixture row, actual main record recovery and
 same key/auth-tag assertions, including refusal to recover the older root.
 Execution of this native case remains **NOT RUN**. It does not independently
 exercise the Windows top-level transport command or establish native acceptance.
+
+
+Final native expiry correction: the previous transaction's peer check blocked
+repeat replacement after successive expired/unadmitted initial attempts. Current
+continuation explicitly reads each expired same-revision peer through the existing
+operation query and passes only verified-absent IDs to the transaction. Local
+phase/expiry/no-receipt alone never proves non-admission. The transaction still
+rejects any new/unverified peer. The lost-admission-reply negative stores the
+admitted peer receipt and refuses replacement. Latest native lookup can select an
+expired/verified-absent candidate for explicit refresh, but rejects known/historical
+admission conflicts. Owner gate **2/2 PASS**, 5.24 seconds. Each existing query has
+a five-second deadline; enumeration is capped at 1,024 retained intents. There is
+no aggregate action deadline or automatic retry: pathological same-revision peer
+sets can require many sequential reads, and an unavailable read fails the action.

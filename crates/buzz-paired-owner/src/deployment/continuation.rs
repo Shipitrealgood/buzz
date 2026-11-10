@@ -150,6 +150,27 @@ impl Management {
                 "selected model is no longer available"
             );
         }
+        // Local expiry/phase cannot prove non-admission after a lost reply.
+        // Verify every same-revision expired peer before allowing its retained
+        // row to be superseded. No new peer may slip into the transaction.
+        let mut absent_peers = Vec::new();
+        for peer in device.deployment_intents(&self.community, &keys)? {
+            let p = &peer.protected.authority;
+            if p.scope == a.scope
+                && p.agent == a.agent
+                && p.expected_revision == revision
+                && p.operation_id != previous
+            {
+                ensure!(
+                    p.expires_at <= now()? && peer.phase < 3 && peer.result.is_none(),
+                    "competing retained setup exists"
+                );
+                let read = self.operation(device, signer, &p.operation_id).await?;
+                ensure!(!read.admitted, "competing setup was admitted");
+                absent_peers.push(p.operation_id.clone());
+            }
+        }
+        let keys = signer()?;
         let prior = device.restore_materialization(&self.community, &keys, &old)?;
         let mut expected = prior.clone();
         expected["record"]["model"] = match &model {
@@ -179,7 +200,7 @@ impl Management {
             },
             status,
             snapshot,
-            Some(previous),
+            Some((previous, &absent_peers)),
         )
     }
 }

@@ -81,7 +81,7 @@ impl Device {
         command: &Command,
         status: &Status,
         snapshot: Value,
-        previous: Option<&str>,
+        previous: Option<(&str, &[String])>,
     ) -> Result<Intent> {
         self.deployment_schema()?;
         session(&authority.scope, selected, keys)?;
@@ -126,7 +126,7 @@ impl Device {
             );
             return Ok(old);
         }
-        if let Some(previous) = previous {
+        if let Some((previous, absent_peers)) = previous {
             let mut stmt = tx.prepare(
                 "SELECT data FROM deployment_intents WHERE community=? AND owner=? LIMIT 1025",
             )?;
@@ -135,12 +135,18 @@ impl Device {
             })?;
             for raw in rows {
                 let other: Intent = serde_json::from_str(&raw?)?;
+                validate_materialization(selected, keys, &other)?;
                 let a = &other.protected.authority;
                 ensure!(
                     a.operation_id == previous
                         || a.scope != authority.scope
                         || a.agent != authority.agent
-                        || a.expected_revision < authority.expected_revision,
+                        || a.expected_revision < authority.expected_revision
+                        || (a.expected_revision == authority.expected_revision
+                            && a.expires_at <= wall
+                            && other.phase < 3
+                            && other.result.is_none()
+                            && absent_peers.contains(&a.operation_id)),
                     "newer setup intent exists"
                 );
             }

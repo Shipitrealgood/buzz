@@ -280,12 +280,26 @@ impl Create<'_> {
             return Ok(());
         }
         let mut winner = None;
+        let mut expired_absent: Option<(u64, String)> = None;
         for intent in candidates {
             let op = &intent.protected.authority.operation_id;
             let read = management
                 .operation(&mut self.device, &|| self.session.keys(), op)
                 .await
                 .map_err(|e| e.to_string())?;
+            if (read.admitted && !read.current)
+                || (!read.admitted && (intent.phase >= 3 || intent.result.is_some()))
+            {
+                return Err("Placement conflict or admission unresolved".into());
+            }
+            if !read.admitted
+                && intent.protected.authority.expires_at <= nostr::Timestamp::now().as_secs()
+            {
+                let candidate = (intent.protected.authority.expires_at, op.clone());
+                if expired_absent.as_ref().is_none_or(|old| &candidate > old) {
+                    expired_absent = Some(candidate);
+                }
+            }
             if read.current
                 || (!read.admitted
                     && intent.protected.authority.expires_at > nostr::Timestamp::now().as_secs())
@@ -296,7 +310,9 @@ impl Create<'_> {
                 winner = Some(op.clone());
             }
         }
-        self.operation = winner.ok_or("Setup admission unresolved; no current intent")?;
+        self.operation = winner
+            .or_else(|| expired_absent.map(|(_, op)| op))
+            .ok_or("Setup admission unresolved; no current intent")?;
         Ok(())
     }
     async fn recover<R: tauri::Runtime>(
