@@ -187,7 +187,9 @@ pub fn build_managed_agent_summary<R: tauri::Runtime>(
     let pair_key = workspace_pair_key(app, record);
     let pair_runtime = pair_key.as_ref().and_then(|key| runtimes.get(key));
 
-    let (status, pid, log_path) = if record.backend != BackendKind::Local {
+    let (status, pid, log_path) = if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
+        ("host_pending".to_string(), None, String::new())
+    } else if record.backend != BackendKind::Local {
         // Two-axis status model for remote agents:
         //
         //   Control-plane (this field): "deployed" = provider has been invoked and

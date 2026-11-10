@@ -124,6 +124,41 @@ async fn deployment_atomic_replay_placement_permissions_cleanup_and_revocation()
     let agent = Keys::generate().public_key();
     let (a, e) = command(&owner, &scope, agent, &"11".repeat(32), 0, Action::Deploy);
     let raw = serde_json::to_vec(&e).unwrap();
+    let mut expired = a.clone();
+    expired.expires_at = nostr::Timestamp::now().as_secs() - 1;
+    let expired = wire::sign_command(
+        &owner,
+        &expired,
+        e.content.as_bytes(),
+        expired.expires_at - 10,
+    )
+    .unwrap();
+    assert!(db
+        .post_host_deployment(
+            c,
+            &origin,
+            owner.public_key(),
+            &serde_json::to_vec(&expired).unwrap(),
+            false
+        )
+        .await
+        .is_err());
+    assert!(db
+        .post_host_deployment(c, &origin, host.public_key(), &raw, false)
+        .await
+        .is_err());
+    let mut tamper: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    tamper["sig"] = "00".repeat(64).into();
+    assert!(db
+        .post_host_deployment(
+            c,
+            &origin,
+            owner.public_key(),
+            &serde_json::to_vec(&tamper).unwrap(),
+            false
+        )
+        .await
+        .is_err());
     db.post_host_deployment(c, &origin, owner.public_key(), &raw, false)
         .await
         .unwrap();
@@ -196,6 +231,27 @@ async fn deployment_atomic_replay_placement_permissions_cleanup_and_revocation()
             .is_err(),
         "challenge cannot authorize another attempt"
     );
+    let _ = db
+        .remove_relay_member(c, &owner.public_key().to_hex(), &Keys::generate())
+        .await
+        .unwrap();
+    q.nonce = "24".repeat(32);
+    assert!(
+        db.read_host_deployment(c, host.public_key(), Some(&g), false, &q)
+            .await
+            .is_err(),
+        "removed owner cannot authorize new attempts"
+    );
+    let _ = db
+        .add_relay_member(
+            c,
+            &owner.public_key().to_hex(),
+            "member",
+            None,
+            &Keys::generate(),
+        )
+        .await
+        .unwrap();
     let (_, cleanup) = command(&owner, &scope, agent, &"14".repeat(32), 1, Action::Cleanup);
     db.post_host_deployment(
         c,
@@ -243,16 +299,17 @@ async fn deployment_atomic_replay_placement_permissions_cleanup_and_revocation()
         n + 500,
     )
     .unwrap();
-    db.post_registry_event(
-        c,
-        &origin,
-        owner.public_key(),
-        &serde_json::to_vec(&revoke).unwrap(),
-        false,
-        &[0; 32],
-    )
-    .await
-    .unwrap();
+    let raw_revoke = serde_json::to_vec(&revoke).unwrap();
+    q.nonce = "25".repeat(32);
+    let (revoked, raced) = tokio::join!(
+        db.post_registry_event(c, &origin, owner.public_key(), &raw_revoke, false, &[0; 32]),
+        db.read_host_deployment(c, host.public_key(), Some(&g), false, &q)
+    );
+    revoked.unwrap();
+    if let Ok(permit) = raced {
+        assert_eq!(permit.data["unit_id"], a.operation_id);
+    }
+
     q.nonce = "23".repeat(32);
     assert!(
         db.read_host_deployment(c, host.public_key(), Some(&g), false, &q)

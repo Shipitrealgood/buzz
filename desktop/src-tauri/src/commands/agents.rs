@@ -402,9 +402,29 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
     app: AppHandle<R>,
     state: &AppState,
 ) -> Result<CreateManagedAgentResponse, String> {
-    if input.destination.is_some() {
+    if input.destination.is_some() || matches!(input.backend, BackendKind::RegisteredHost { .. }) {
         return Err("Registered-host creation is not available yet.".into());
     }
+    create_managed_agent_phases(
+        input,
+        app,
+        state,
+        #[cfg(windows)]
+        None,
+    )
+    .await
+}
+
+#[cfg(windows)]
+#[path = "agents_hosted.rs"]
+pub(crate) mod hosted;
+
+async fn create_managed_agent_phases<R: tauri::Runtime>(
+    input: CreateManagedAgentRequest,
+    app: AppHandle<R>,
+    state: &AppState,
+    #[cfg(windows)] mut hosted: Option<&mut hosted::Create<'_>>,
+) -> Result<CreateManagedAgentResponse, String> {
     let name = input.name.trim().to_string();
     let requested_persona_id = input
         .persona_id
@@ -757,9 +777,16 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
         if let Some(level) = input.effort_level.clone() {
             super::agent_config::apply_picker_effort_level(&mut record, Some(level));
         }
-        records.push(record);
-
-        save_managed_agents(&app, &records)?;
+        #[cfg(windows)]
+        if let Some(hosted) = hosted.as_deref_mut() {
+            let about = crate::managed_agents::record_effective_description(&record, &personas);
+            hosted.prepare(&app, state, &record, about)?;
+        }
+        persist_created_record(&app, &mut records, record)?;
+        #[cfg(windows)]
+        if let Some(hosted) = hosted.as_deref_mut() {
+            hosted.advance(1)?;
+        }
 
         let record = records
             .iter()
@@ -814,6 +841,10 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
     // ── Phase 4: sync agent profile on relay (async, outside lock) ───────────
     // Use the avatar persisted on the record so the published profile and any
     // later reconciliation agree on the same value.
+    #[cfg(windows)]
+    if let Some(hosted) = hosted.as_deref() {
+        hosted.check()?;
+    }
     let mut profile_sync_error = profile::publish_agent_profile_with_about(
         state,
         &resolved_relay_url,
@@ -824,6 +855,10 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
         auth_tag.as_deref(),
     )
     .await;
+    #[cfg(windows)]
+    if let Some(hosted) = hosted.as_deref() {
+        hosted.check()?;
+    }
     profile_sync_error =
         super::agent_models::flush_managed_agent_policy(&app, state, profile_sync_error).await;
 
@@ -882,6 +917,24 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
         profile_sync_error,
         spawn_error,
     })
+}
+
+fn persist_created_record<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    records: &mut Vec<ManagedAgentRecord>,
+    record: ManagedAgentRecord,
+) -> Result<(), String> {
+    if let Some(existing) = records.iter().find(|r| r.pubkey == record.pubkey) {
+        if serde_json::to_value(existing).map_err(|e| e.to_string())?
+            != serde_json::to_value(&record).map_err(|e| e.to_string())?
+        {
+            return Err("Recovered create conflicts with the saved main record.".into());
+        }
+    } else {
+        records.push(record);
+    }
+    save_managed_agents(app, records)?;
+    Ok(())
 }
 
 /// Data needed for background profile reconciliation after agent start.
@@ -968,6 +1021,9 @@ pub async fn start_managed_agent(
             reconcile_relay.as_str(),
         ));
 
+        if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
+            return Err("Registered-host lifecycle actions are not available yet.".into());
+        }
         let target = if record.backend == BackendKind::Local {
             StartTarget::Local
         } else {
@@ -1180,6 +1236,9 @@ pub async fn delete_managed_agent(
             // remote deployment. The frontend sends force_remote_delete: true only after
             // the user confirms the orphan warning.
             if let Some(record) = records.iter().find(|r| r.pubkey == pubkey) {
+                if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
+                    return Err("Registered-host cleanup must be confirmed before removal; this action is not available yet.".into());
+                }
                 if record.backend != BackendKind::Local
                     && record.backend_agent_id.is_some()
                     && !force_remote_delete.unwrap_or(false)

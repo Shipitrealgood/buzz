@@ -134,6 +134,9 @@ fn token(t: &str) -> bool {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Instance {
+    /// Opt-in management fields; absent preserves legacy provisioning semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment: Option<ManagedDeployment>,
     pub unit_id: String,
     pub scope: Scope,
     pub request_id: String,
@@ -144,6 +147,18 @@ pub struct Instance {
     pub secret: String,
     pub oa: String,
     pub policy: Policy,
+}
+
+/// Structured main configuration tied to one monotonic placement revision.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedDeployment {
+    /// Current exact owner operation, separate from the stable initial unit ID.
+    pub operation_id: String,
+    /// Accepted monotonic placement revision.
+    pub revision: u64,
+    /// Main-resolved configuration; no program, path, environment or credentials.
+    pub config: buzz_core::host_deployment::Deploy,
 }
 
 pub fn id(value: &str) -> bool {
@@ -224,6 +239,25 @@ impl Instance {
                 && scope_catalog.runtimes.contains_key(&self.runtime_id),
             "instance is outside approved catalog"
         );
+        if let Some(d) = &self.deployment {
+            d.config.validate()?;
+            ensure!(
+                id(&d.operation_id)
+                    && d.revision > 0
+                    && d.config.runtime_id == self.runtime_id
+                    && d.config.catalog_revision == self.revision
+                    && d.config.policy == self.policy,
+                "invalid deployment binding"
+            );
+            ensure!(
+                scope_catalog.runtimes[&self.runtime_id].credential_profile == "none",
+                "host deployment never borrows provider credentials"
+            );
+            ensure!(
+                d.config.provider.is_none(),
+                "this native host adapter does not support provider overrides"
+            );
+        }
         let agent = Keys::new(SecretKey::from_hex(&self.secret)?);
         ensure!(
             agent.public_key().to_hex() == self.agent
@@ -277,6 +311,7 @@ mod tests {
         let req = "ab".repeat(32);
         let rev = "cc".repeat(32);
         let mut i = Instance {
+            deployment: None,
             unit_id: unit_id(&scope, &req),
             request_id: req,
             scope,
@@ -329,7 +364,7 @@ mod tests {
 }
 
 // The library and daemon share the actual durable store and existing journals.
-// Only the registration facade is exported to native integration callers.
+// Registration and opt-in deployment facades reuse this same journal.
 extern crate self as buzz_hostd;
 mod clock;
 // Also built in the daemon; registration links only its durable-store subset.
@@ -352,3 +387,39 @@ mod unit;
 
 use clock::Clock;
 use store::Store;
+
+/// Fixed privileged operation implementation; executable owns peer admission.
+pub mod activation;
+
+/// Opt-in native deployment reconciliation on the existing registration journal.
+pub mod deployment;
+
+/// Map the bounded resolved configuration to existing ACP configuration names.
+/// Provider overrides are refused by Instance::validate, never borrowed locally.
+pub fn deployment_environment(i: &Instance) -> Result<BTreeMap<String, String>> {
+    let mut env = BTreeMap::new();
+    if let Some(d) = &i.deployment {
+        ensure!(
+            !matches!(
+                d.config.model,
+                buzz_core::host_deployment::ModelSelection::PendingLogin {}
+            ),
+            "native login/model selection pending"
+        );
+        d.config.validate()?;
+        env.insert("BUZZ_ACP_AGENTS".into(), d.config.parallelism.to_string());
+        env.insert("BUZZ_ACP_DISPLAY_NAME".into(), d.config.name.clone());
+        env.insert("BUZZ_ACP_EXIT_AFTER_INACTIVITY".into(), "0".into());
+        env.insert("BUZZ_ACP_LAZY_POOL".into(), "true".into());
+        if let Some(prompt) = &d.config.system_prompt {
+            env.insert("BUZZ_ACP_SYSTEM_PROMPT".into(), prompt.clone());
+        }
+        if let Some(effort) = &d.config.effort {
+            env.insert("BUZZ_ACP_EFFORT_LEVEL".into(), effort.clone());
+        }
+        if let buzz_core::host_deployment::ModelSelection::Selected { id } = &d.config.model {
+            env.insert("BUZZ_ACP_MODEL".into(), id.clone());
+        }
+    }
+    Ok(env)
+}

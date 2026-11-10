@@ -239,8 +239,12 @@ async fn request(
         let mut tick = tokio::time::interval(Duration::from_secs(5));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         tick.tick().await;
+        let mut next_send = tokio::time::Instant::now() + Duration::from_secs(5);
         loop {
             tokio::select! { biased; _=c.cancel.cancelled()=>break, _=tick.tick()=>{}, message=signals.recv()=>{match message { Ok(m) if m.community_id==c.tenant.community() && matches!(m.event.kind.as_u16(),43103|43104)=>{}, Ok(_)=>continue, Err(tokio::sync::broadcast::error::RecvError::Closed)=>break, Err(_)=>{} }} }
+            // Coalesce wake storms; each private view has a finite send/DB rate.
+            tokio::select! { _=c.cancel.cancelled()=>break, _=tokio::time::sleep_until(next_send)=>{} }
+            next_send = tokio::time::Instant::now() + Duration::from_secs(5);
             if c.subscriptions.lock().await.get(&sub) != Some(&owner) {
                 break;
             }

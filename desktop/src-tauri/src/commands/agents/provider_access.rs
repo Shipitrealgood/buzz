@@ -16,7 +16,7 @@ pub(super) fn needs_reconciliation_with_policy(
     owner_only_access: bool,
 ) -> bool {
     (owner_only_access || record.provider_policy_pending)
-        && record.backend != BackendKind::Local
+        && matches!(record.backend, BackendKind::Provider { .. })
         && record.backend_agent_id.is_some()
 }
 
@@ -45,7 +45,7 @@ fn collect_targets_with(
                 config,
                 cached_binary_path: record.provider_binary_path,
             },
-            BackendKind::Local => {
+            BackendKind::Local | BackendKind::RegisteredHost { .. } => {
                 unreachable!("provider access reconciliation selected a local agent")
             }
         })

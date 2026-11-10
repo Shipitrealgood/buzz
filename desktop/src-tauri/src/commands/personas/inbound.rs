@@ -393,7 +393,8 @@ fn reconcile_inbound_persona_event_blocking<R: tauri::Runtime>(
                             ),
                         });
                     }
-                    crate::managed_agents::BackendKind::Provider { .. } => {}
+                    crate::managed_agents::BackendKind::Provider { .. }
+                    | crate::managed_agents::BackendKind::RegisteredHost { .. } => {}
                 }
             }
             save_managed_agents(&app, &agents)?;

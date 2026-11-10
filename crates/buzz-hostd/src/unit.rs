@@ -29,6 +29,7 @@ pub async fn activate(
     );
     let agent = q.agent_keys()?;
     let packet = Instance {
+        deployment: None,
         unit_id: unit_id.clone(),
         scope: scope.clone(),
         runtime_id: q.runtime.clone(),

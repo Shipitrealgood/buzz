@@ -294,6 +294,15 @@ export type ManagedAgentRuntimeStatus = {
 
 export type ManagedAgentBackend =
   | { type: "local" }
+  | {
+      type: "registered_host";
+      scope: {
+        community: string;
+        owner: string;
+        host: string;
+        generation: string;
+      };
+    }
   | { type: "provider"; id: string; config: Record<string, unknown> };
 
 /** ACP conversation boundary configured on an agent definition. */

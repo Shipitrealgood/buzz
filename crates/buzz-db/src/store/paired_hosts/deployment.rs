@@ -186,8 +186,8 @@ impl Db {
                 json!({"event":e})
             }
             "pending" | "live" => {
-                let rows: Vec<String> = sqlx::query_scalar("SELECT o.operation_id FROM paired_agent_operations o JOIN paired_agent_placements p ON p.community_id=o.community_id AND p.agent_pubkey=o.agent_pubkey AND p.last_operation_id=o.operation_id WHERE o.community_id=$1 AND o.owner_pubkey=$2 AND o.host_pubkey=$3 AND o.generation=$4 AND o.state IN ('pending','failed','cleanup-pending') ORDER BY o.operation_id LIMIT 33")
-                    .bind(t).bind(owner).bind(host).bind(&g[..]).fetch_all(tx.conn()).await?;
+                let rows: Vec<String> = sqlx::query_scalar("SELECT o.operation_id FROM paired_agent_operations o JOIN paired_agent_placements p ON p.community_id=o.community_id AND p.agent_pubkey=o.agent_pubkey AND p.last_operation_id=o.operation_id WHERE o.community_id=$1 AND o.owner_pubkey=$2 AND o.host_pubkey=$3 AND o.generation=$4 AND o.state IN ('pending','failed','cleanup-pending') AND (o.expires_at>$5 OR o.state IN ('pending','cleanup-pending')) ORDER BY o.operation_id LIMIT 33")
+                    .bind(t).bind(owner).bind(host).bind(&g[..]).bind(now).fetch_all(tx.conn()).await?;
                 json!({"operations":rows.iter().take(32).collect::<Vec<_>>(),"more":rows.len()>32})
             }
             "operation" | "permit" => {

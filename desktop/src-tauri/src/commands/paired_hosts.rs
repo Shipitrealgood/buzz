@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 mod create;
 pub use create::*;
 
-fn journal_dir(app: &AppHandle) -> Result<PathBuf> {
+fn journal_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf> {
     Ok(app.path().app_local_data_dir()?.join("paired-hosts"))
 }
 /// The ordinary Windows app data directory can roam between devices. Delete
@@ -26,7 +26,7 @@ pub(crate) fn reset_paired_host_journal(app: &AppHandle) -> Result<()> {
         Err(e) => Err(e.into()),
     }
 }
-fn device(app: &AppHandle) -> Result<Device> {
+pub(crate) fn device<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<Device> {
     let dir = journal_dir(app)?;
     buzz_paired_owner::protect_windows_journal(
         &dirs::data_local_dir().ok_or_else(|| anyhow!("local application data unavailable"))?,
@@ -44,14 +44,14 @@ fn device(app: &AppHandle) -> Result<Device> {
         }),
     )
 }
-struct Session<'a> {
+pub(crate) struct Session<'a> {
     state: &'a AppState,
     origin: String,
     owner: PublicKey,
     generation: u64,
 }
 impl<'a> Session<'a> {
-    async fn capture(state: &'a AppState, expected: &str, owner: &str) -> Result<Self> {
+    pub(crate) async fn capture(state: &'a AppState, expected: &str, owner: &str) -> Result<Self> {
         ensure!(
             !expected.trim().is_empty() && !owner.is_empty(),
             "select a community and an unlocked identity"
@@ -75,7 +75,7 @@ impl<'a> Session<'a> {
             generation: state.workspace_apply_generation.load(Ordering::Acquire),
         })
     }
-    fn keys(&self) -> Result<Keys> {
+    pub(crate) fn keys(&self) -> Result<Keys> {
         let _guard = self
             .state
             .workspace_apply_lock

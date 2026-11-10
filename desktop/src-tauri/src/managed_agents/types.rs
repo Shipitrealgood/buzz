@@ -6,6 +6,9 @@ use std::{collections::BTreeMap, path::PathBuf, process::Child};
 pub enum BackendKind {
     #[default]
     Local,
+    RegisteredHost {
+        scope: buzz_core_pkg::paired_message::Scope,
+    },
     Provider {
         id: String,
         config: serde_json::Value,

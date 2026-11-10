@@ -128,3 +128,54 @@ fn status_is_host_signed_scoped_and_expires() {
     tampered.content.push('a');
     assert!(open_status(&owner, &tampered, &s.scope, 100).is_err());
 }
+
+#[test]
+fn bounded_operation_with_receipt_fits_encrypted_query_and_rejects_padded_results() {
+    let (owner, host, mut a) = input();
+    let content = "A".repeat(29 * 1024);
+    use sha2::{Digest, Sha256};
+    a.content_sha256 = hex::encode(Sha256::digest(content.as_bytes()));
+    let command = sign_command(&owner, &a, content.as_bytes(), 100).unwrap();
+    let receipt = result(
+        &host,
+        &DeploymentResult {
+            request: a.clone(),
+            outcome: Outcome::Cleaned,
+            applied_revision: Some(2),
+        },
+        110,
+    )
+    .unwrap();
+    let q = Query {
+        v: 1,
+        scope: a.scope.clone(),
+        view: "operation".into(),
+        nonce: "ef".repeat(32),
+        operation_id: Some(a.operation_id.clone()),
+    };
+    let r = Reply {
+        query: q.clone(),
+        expires_at: 120,
+        data: serde_json::json!({"event":serde_json::to_string(&command).unwrap(),"result":serde_json::to_string(&receipt).unwrap(),"unit_id":a.operation_id,"revision":2}),
+    };
+    let relay = Keys::generate();
+    let envelope = reply(&relay, owner.public_key(), &r, 110).unwrap();
+    assert!(serde_json::to_vec(&envelope).unwrap().len() < MAX_FRAME);
+    assert_eq!(
+        open_reply(&owner, relay.public_key(), &q, &envelope, 110)
+            .unwrap()
+            .data,
+        r.data
+    );
+    let padded = nostr::EventBuilder::new(receipt.kind, "A".repeat(4097))
+        .tags(receipt.tags.iter().cloned())
+        .custom_created_at(receipt.created_at)
+        .sign_with_keys(&host)
+        .unwrap();
+    assert!(verify(
+        &serde_json::to_vec(&padded).unwrap(),
+        &a.scope.community,
+        host.public_key()
+    )
+    .is_err());
+}

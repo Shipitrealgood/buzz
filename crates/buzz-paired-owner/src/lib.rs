@@ -51,3 +51,6 @@ mod tests;
 
 /// Private root-WebSocket registration and native journal adapter.
 pub mod registry;
+
+/// Protected native deployment intent and authenticated relay dispatch.
+pub mod deployment;

@@ -33,6 +33,10 @@ export function RunOnSummarySection({
         >
           This computer
         </p>
+      ) : summary.location === "registered_host" ? (
+        <p className="text-sm text-muted-foreground">
+          Registered host — deployment pending
+        </p>
       ) : (
         <div className="space-y-2 rounded-2xl border border-border bg-muted/30 px-4 py-3">
           <p

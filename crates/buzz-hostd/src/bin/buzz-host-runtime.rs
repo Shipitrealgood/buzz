@@ -27,6 +27,7 @@ fn main() -> Result<()> {
     ensure!(catalog.current(&rev)?, "catalog changed before exec");
     let socket = env::var_os("NOTIFY_SOCKET")
         .ok_or_else(|| anyhow!("paired unit requires systemd readiness"))?;
+    let deployment_env = buzz_hostd::deployment_environment(&i)?;
     let error = Command::new(&rt.harness.path)
         .env_clear()
         .env("NOTIFY_SOCKET", socket)
@@ -38,6 +39,7 @@ fn main() -> Result<()> {
         .env("HOME", &home)
         .env("PATH", "/usr/local/bin:/usr/bin:/bin")
         .envs(cred.provider)
+        .envs(deployment_env)
         .env("BUZZ_PRIVATE_KEY", i.secret)
         .env("BUZZ_AUTH_TAG", i.oa)
         .env(

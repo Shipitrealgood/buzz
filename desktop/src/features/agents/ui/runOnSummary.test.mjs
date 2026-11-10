@@ -169,3 +169,9 @@ test("humanizeConfigKey handles snake_case, camelCase, and acronyms", () => {
   assert.equal(humanizeConfigKey("api_url"), "API URL");
   assert.equal(humanizeConfigKey(""), "");
 });
+
+test("registered host is never summarized as local or provider", () => {
+  assert.deepEqual(summarizeRunOn({ type: "registered_host", scope: {} }), {
+    location: "registered_host",
+  });
+});

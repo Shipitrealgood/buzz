@@ -1,5 +1,5 @@
-//! The existing executable's registration-only entry point. It never calls the
-//! provisioning poller, runtime catalog, activation helper or agent unit code.
+//! Registration controller with explicit opt-in deployment reconciliation.
+//! Default registration behavior remains independent of the execution helper.
 use anyhow::{ensure, Context, Result};
 use buzz_hostd::registration::{Host, RegistrationClock};
 use clap::Subcommand;
@@ -28,7 +28,7 @@ pub enum Command {
         #[arg(long)]
         generation: String,
     },
-    /// Reconcile registration only. The relay public key is operator-pinned.
+    /// Reconcile registration. The relay public key is operator-pinned.
     Run {
         #[arg(long)]
         community: String,
@@ -42,6 +42,9 @@ pub enum Command {
         /// One bounded pass, useful for operator checks and disposable fixtures.
         #[arg(long)]
         once: bool,
+        /// Enable private deployment only in a compatible fixed helper installation.
+        #[arg(long)]
+        deployment: bool,
     },
 }
 
@@ -70,6 +73,7 @@ pub async fn execute(dir: &Path, command: Command) -> Result<()> {
             label,
             ca_cert,
             once,
+            deployment,
         } => {
             ensure!(
                 buzz_core::host_registry::origin(&community),
@@ -81,6 +85,10 @@ pub async fn execute(dir: &Path, command: Command) -> Result<()> {
             );
             let relay = PublicKey::from_hex(&relay_key)?;
             ensure!(relay.to_hex() == relay_key, "invalid relay public key");
+            if deployment {
+                buzz_hostd::deployment::Helper::installed(dir)?;
+                buzz_hostd::Catalog::read(Path::new(buzz_hostd::OPERATOR_CATALOG))?;
+            }
             let _lock = controller_lock(dir)?;
             let connector = connector(ca_cert.as_deref())?;
             crate::registration_refresh::run(
@@ -91,6 +99,7 @@ pub async fn execute(dir: &Path, command: Command) -> Result<()> {
                     relay,
                     label,
                     connector,
+                    deployment,
                 },
                 once,
             )

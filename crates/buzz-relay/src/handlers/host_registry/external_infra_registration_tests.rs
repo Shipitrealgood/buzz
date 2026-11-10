@@ -14,6 +14,7 @@ mod external_infra_tests {
     use tokio::task::JoinHandle;
 
     include!("registration_executable_tests.rs");
+    include!("external_infra_deployment_tests.rs");
 
     struct Fixture {
         state: Arc<AppState>,
@@ -24,6 +25,9 @@ mod external_infra_tests {
     }
     impl Fixture {
         async fn new() -> Self {
+            Self::with_deployment(false).await
+        }
+        async fn with_deployment(deployment: bool) -> Self {
             let url = crate::test_support::database_url();
             let parsed = url::Url::parse(&url).unwrap();
             assert_eq!(
@@ -41,6 +45,7 @@ mod external_infra_tests {
                 .clone();
             let c = Arc::make_mut(&mut state.config);
             c.host_registry_enabled = true;
+            c.host_deployment_enabled = deployment;
             c.require_relay_membership = true;
             let host = format!("registry-{}.test", uuid::Uuid::new_v4().simple());
             let community = state

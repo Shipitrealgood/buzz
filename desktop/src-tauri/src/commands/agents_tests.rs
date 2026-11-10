@@ -922,6 +922,14 @@ async fn registered_host_create_is_rejected_before_store_keys_or_publication() {
             "must not persist identity, intent, or record"
         );
     }
+    let input: CreateManagedAgentRequest = serde_json::from_value(
+        serde_json::json!({"name":"Fixture","backend":{"type":"registered_host","scope":scope}}),
+    )
+    .unwrap();
+    assert!(
+        matches!(create_managed_agent_in(input,app.handle().clone(),&state).await,Err(ref e) if e=="Registered-host creation is not available yet.")
+    );
+    assert!(!app_data.exists());
     for destination in [
         serde_json::json!({"type":"local"}),
         serde_json::json!({"type":"registered-host"}),

@@ -18,6 +18,7 @@ export type RunOnConfigRow = {
 
 export type RunOnSummary =
   | { location: "local" }
+  | { location: "registered_host" }
   | { location: "provider"; providerId: string; rows: RunOnConfigRow[] };
 
 /**
@@ -139,6 +140,8 @@ function compareKeys(a: string, b: string): number {
  */
 export function summarizeRunOn(backend: ManagedAgentBackend): RunOnSummary {
   if (backend.type === "local") return { location: "local" };
+  if (backend.type === "registered_host")
+    return { location: "registered_host" };
   const rows = Object.entries(backend.config ?? {})
     .sort(([a], [b]) => compareKeys(a, b))
     .map(([key, value]): RunOnConfigRow => {

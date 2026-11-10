@@ -22,6 +22,7 @@ pub(super) struct Settings {
     pub relay: PublicKey,
     pub label: String,
     pub connector: Option<buzz_ws_client::Connector>,
+    pub deployment: bool,
 }
 impl Settings {
     async fn connect(&self) -> Result<NostrWsConnection> {
@@ -36,6 +37,13 @@ impl Settings {
 
 pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()> {
     let mut host = Host::at(dir, false)?;
+    if settings.deployment {
+        host.retry_deployment_cleanup(
+            &settings.community,
+            &buzz_hostd::deployment::Helper::installed(dir)?,
+        )
+        .await?;
+    }
     if once {
         let mut failed = false;
         for g in host.work(&settings.community, &RegistrationClock::read()?)? {
@@ -50,6 +58,7 @@ pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()
                     &RegistrationClock::read()?,
                 )
                 .await?;
+                deployment(&mut host, &mut ws, &g, &settings, dir).await?;
                 ws.disconnect().await?;
                 Ok::<_, anyhow::Error>(())
             })
@@ -78,6 +87,9 @@ pub(super) async fn run(dir: &Path, settings: Settings, once: bool) -> Result<()
                     result?;
                 }
                 _ = check.tick() => {
+                    if settings.deployment {
+                        host.retry_deployment_cleanup(&settings.community, &buzz_hostd::deployment::Helper::installed(dir)?).await?;
+                    }
                     for g in host.work(&settings.community, &RegistrationClock::read()?)? {
                         // Retired invitations may still be in a bounded network
                         // await. Count them too, not just the latest work query.
@@ -136,7 +148,12 @@ async fn generation(dir: &Path, g: &str, settings: &Settings) -> Result<()> {
         }
         if let Ok(Ok(Some(mut ws))) = result {
             let started = Instant::now();
-            let result = connected(&mut host, &mut ws, g, settings, BACKSTOP, COALESCE).await;
+            let backstop = if settings.deployment {
+                COALESCE
+            } else {
+                BACKSTOP
+            };
+            let result = connected(&mut host, &mut ws, g, settings, backstop, COALESCE).await;
             if result.is_ok() {
                 return Ok(());
             }
@@ -197,6 +214,9 @@ async fn connected(
                 .await
             })
             .await??;
+            if settings.deployment {
+                deployment(host, ws, g, settings, Path::new("/var/lib/buzz-hostd")).await?;
+            }
             next_refresh = Instant::now() + coalesce;
             next_backstop = Instant::now() + backstop;
         }
@@ -215,3 +235,19 @@ async fn connected(
 #[cfg(test)]
 #[path = "registration_refresh_tests.rs"]
 mod tests;
+
+async fn deployment(
+    host: &mut Host,
+    ws: &mut NostrWsConnection,
+    g: &str,
+    settings: &Settings,
+    dir: &Path,
+) -> Result<()> {
+    if !settings.deployment {
+        return Ok(());
+    }
+    let helper = buzz_hostd::deployment::Helper::installed(dir)?;
+    let (catalog, revision) = buzz_hostd::Catalog::read(Path::new(buzz_hostd::OPERATOR_CATALOG))?;
+    host.reconcile_deployments(ws, settings.relay, g, &catalog, &revision, &helper)
+        .await
+}

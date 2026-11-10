@@ -1252,6 +1252,7 @@ dependencies = [
  "base64 0.22.1",
  "buzz-core",
  "buzz-sdk",
+ "buzz-ws-client",
  "hex",
  "nostr 0.44.7",
  "rand 0.10.2",
@@ -1319,6 +1320,7 @@ dependencies = [
 name = "buzz-ws-client"
 version = "0.1.0"
 dependencies = [
+ "buzz-core",
  "futures-util",
  "nostr 0.44.7",
  "serde_json",
@@ -11516,6 +11518,7 @@ dependencies = [
  "futures-util",
  "log",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",

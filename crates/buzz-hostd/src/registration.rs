@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 pub use crate::clock::Clock as RegistrationClock;
 /// Host registration state backed by the existing host.sqlite store.
 pub struct Host {
-    store: Store,
+    pub(crate) store: Store,
     live: std::cell::RefCell<Option<live::Live>>,
 }
 mod live;

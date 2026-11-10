@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 /// All frames stay below the ordinary WebSocket ceiling, including encryption.
 pub const MAX_FRAME: usize = 60 * 1024;
 /// A command is returned inside an encrypted private response.
-pub const MAX_EVENT: usize = 43 * 1024;
+pub const MAX_EVENT: usize = 32 * 1024;
 /// Maximum lifetime of one immediately consumed execution permit.
 pub const PERMIT_SECONDS: u64 = 10;
 
@@ -207,7 +207,12 @@ pub fn verify(raw: &[u8], origin: &str, signer: PublicKey) -> Result<(Event, Hea
         {
             return Err(Error)
         }
-        Header::Result { result } => result.validate(&result.request)?,
+        Header::Result { result } => {
+            if e.content.len() > 4096 {
+                return Err(Error);
+            }
+            result.validate(&result.request)?;
+        }
         _ => {}
     }
     Ok((e, h))

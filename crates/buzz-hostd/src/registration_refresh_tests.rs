@@ -43,6 +43,7 @@ impl Fixture {
         let relay = Keys::generate();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let settings = Settings {
+            deployment: false,
             community: "https://refresh.test".into(),
             url: format!("ws://{}", listener.local_addr().unwrap()),
             relay: relay.public_key(),
