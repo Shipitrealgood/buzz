@@ -3,6 +3,7 @@ use super::*;
 use buzz_core_pkg::{host_deployment::observation::Observation, paired_message::Scope};
 use serde::Serialize;
 
+/// Secret-free retained setup state exposed to the WebView.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedSetup {
@@ -22,12 +23,14 @@ pub struct HostedSetup {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Approved installed ID with canonical Rust harness metadata.
 pub struct HostedRuntime {
     installed_id: String,
     metadata: Option<crate::managed_agents::AcpRuntimeCatalogEntry>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Current native host capability and its supported metadata projection.
 pub struct HostedCatalog {
     status: d::Status,
     runtimes: Vec<HostedRuntime>,
@@ -127,11 +130,13 @@ pub(super) async fn setup(
     Ok(response)
 }
 
+/// Mint one opaque operation token after the native feature gate.
 #[tauri::command]
 pub fn hosted_setup_token() -> Result<String, String> {
     enabled()?;
     Ok(Keys::generate().secret_key().to_secret_hex())
 }
+/// Read current scoped capability without local harness discovery.
 #[tauri::command]
 pub async fn hosted_catalog(
     app: AppHandle,
@@ -161,6 +166,7 @@ pub async fn hosted_catalog(
         runtimes,
     })
 }
+/// Prepare through the existing main create phases and return a sanitized setup.
 #[tauri::command]
 pub async fn hosted_prepare(
     input: CreateManagedAgentRequest,
@@ -172,6 +178,7 @@ pub async fn hosted_prepare(
 ) -> Result<HostedSetup, String> {
     create(input, app, &state, scope, operation, runtime).await
 }
+/// List protected local setups without making per-agent network requests.
 #[tauri::command]
 pub async fn hosted_setup_list(
     app: AppHandle,
@@ -226,12 +233,14 @@ pub async fn hosted_setup_list(
 }
 #[derive(serde::Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
+/// Explicit continuation actions; the native owner supplies revisions and keys.
 pub enum HostedAction {
     Check,
     Retry,
     Refresh,
     Launch { model: String },
 }
+/// Reconcile and continue the latest exact scoped setup under current permission.
 #[tauri::command]
 pub async fn hosted_setup_action(
     app: AppHandle,
