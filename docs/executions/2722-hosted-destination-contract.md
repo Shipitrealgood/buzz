@@ -120,3 +120,31 @@ covering signed transport, protected reads, atomic placement/retry, main identit
 materialization and host journal/helper integration. Runtime/login/service/network
 policy, native Windows journey and disposable pilot are separate gates. No live
 changes, provider authentication, historical fixture repair, or teardown occurred.
+
+## Slice 2 refinement (2026-11-10, conductor approved)
+
+The authorized implementation is recorded in
+[3738-3739-hosted-deployment-step2.md](3738-3739-hosted-deployment-step2.md).
+Kind43104 and additive migration82 implement the private management extension;
+registration81 remains unchanged. One bounded host-signed capability table is
+additional to the two placement/operation tables; it is not grant authority.
+
+Owner intents now atomically include exact signed command bytes and an
+owner-self NIP44 materialization snapshot bound to that command's full authority.
+The snapshot omits the agent key; recovery obtains it from the original Command.
+Main's normal record still requires its existing key field. A persisted
+RegisteredHost backend has safe pending summary and refused unsupported lifecycle
+routes. UI creation remains blocked; the native entry point is default off.
+
+Current-authority permit issuance is the revoke linearization point. One fresh,
+short-lived nonce is durably consumed before each privileged deploy attempt.
+Revocation prevents later permits; it does not kill an already-running agent.
+Only a persisted explicit cleanup intent authorizes restrictive offline retry.
+Expired commands retain identity and exact bytes; failed expired work leaves the
+poll queue and requires an explicit new operation, never an implicit new key.
+
+The actual fixed helper body is shared with isolated tests; its executable keeps
+root/peer authentication and fixed production paths. Today's registration-only
+service installation fails the execution precondition. Slice3 owns compatible
+service/account/mount integration; native Windows and actual systemd acceptance
+remain separate gates. No installed service or provider was changed.
