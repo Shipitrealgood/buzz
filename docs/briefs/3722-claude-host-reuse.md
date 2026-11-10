@@ -1,100 +1,105 @@
-# #3722 Claude host reuse — conductor review brief
+# #3722 — main discovery/readiness planning handoff
+
+**Date:** 2026-11-10. **Next owner:** conductor for plan review, then a fresh
+executor only after dispatch. Requested `gpt-6-astra` / `high`; actual served
+model/reasoning not independently exposed. This brief supersedes the earlier
+recommendation to extract main auth orchestration. Native provider login stays
+outside Buzz, on netcup.
 
 ## Where the work lives
 
 Worktree `/home/bryce/services/buzz-wt-3720-host-registration`, branch
-`proof/3720-host-registration-events`; clean input
-`a59b3db1dd4e6c7977a915e9e9e127925eb83e48`. Requested Astra/high; served
-model/reasoning unknown. This assignment owns four docs and two existing test
-files; product source is unchanged. The conductor owns task/roadmap mutations.
+`proof/3720-host-registration-events`; clean source input
+`3169659626044819e17c7f62fe2d060b890c760e`. Activate Hermit with
+`HERMIT_SELF_UPDATE=false` before Git. Reuse this worktree for sequential source
+execution and independent review, handing over ownership between stages.
 
-## What landed
+## What is in the tree
 
-[Audit](../audits/pre-audit/3722-claude-host-reuse.md): **C0/H2/M1/L0**, gaps against
-multi-harness main reuse. [Selected T decision](../specs/3719-host-online-readiness.md)
-and [old brief](3719-host-online-readiness.md) now record normal host networking,
-retained authorization/private-state/runtime/helper controls, and explicit waiver
-of co-resident network/abstract-socket denial. The old D proposal is superseded;
-no source policy changed. Two small existing-test extensions add Claude alongside
-Grok and demonstrate the current unsupported-login boundary. No implementation fix.
+This assignment adds [the bounded spec](../specs/3722-main-discovery-native-login.md)
+and replaces this brief only. Product/test source stays at the input pin. The
+[accepted audit](../audits/pre-audit/3722-claude-host-reuse.md) remains historical:
+H1/H2/M1 findings stand, but its proposed auth extraction no longer does.
+[Selected T](../specs/3719-host-online-readiness.md) remains normal networking
+with private per-agent state, authorization and approved runtime controls.
+Conductor owns roadmap, pilot plan and task mutations; none belong to this worker.
 
-## Your next job
+## Sequence and suggested commit boundaries
 
-Review these findings with Bryce **before** implementation. Latest steering is
-reconnaissance and direction discussion, not “add Claude next, then Codex.” The
-same Create flow can prepare Claude only with an approved complete catalog runtime
-and native feature enabled. Hostd does not discover installed Claude automatically;
-it cannot authenticate Claude today. Accepted checkpoints remain valid for their
-scope, not evidence that the desired machine-as-black-box behavior is complete.
+1. **Resolve native-entry design first.** The conductor/operator specifies a
+   concrete exact-service native-login approach by source/OS design, with no live
+   action. If significant privileged interactive machinery is required, return
+   that decision before coding the dependent path. Demonstration is later, in
+   the approved disposable pilot.
+2. **S1: shared main facts/classifiers.** Put only portable registry/discovery/
+   readiness decisions in existing `buzz-core`; adapt Desktop to consume them.
+   Leave Tauri, installers, global caches and login orchestration in Desktop.
+   This boundary makes semantic reuse independently reviewable before host wiring.
+3. **S2–S4: one coherent host/contract/UI increment.** Resolve host candidates,
+   preserve catalog approval, evaluate same-service readiness, extend existing
+   private observations and update existing setup/model UI. Retire the custom
+   host login command and receipt gate together with their replacement. New
+   clients read old observations as unknown; old clients reject new optional
+   fields, so activation requires matched gated host/client builds.
+4. **S5: explicit T policy commit.** Pair a named root-approved online policy with
+   an exact reviewed service configuration; retain offline defaults. Keep this
+   separable from discovery/readiness for policy review and rollback.
+5. **Source verification and independent review.** Use finite affected tests from
+   the spec, then return committed evidence. No live activation follows by default.
+6. **Conductor prepares rollout approval.** One approved disposable Grok pilot
+   demonstrates the agreed native-entry procedure and the complete journey.
 
-Recommended smallest next slice, subject to review: make main's existing auth-method
-interpretation callable through an explicit context/resolver seam, with Desktop
-still consuming that same implementation. Hostd should own approval, private
-execution context and supervision, not provider decisions. Then agree how shared
-readiness is represented and how candidate discovery uses the same main registry
-under approved search roots. Only afterward connect these to the host. Roughly
-120–150 existing lines of DTO/terminal interpretation are extraction candidates;
-that is a read-derived move estimate, **not** a total production LOC promise.
-A full runtime registry/readiness extraction has no reliable estimate yet.
+## Pre-flight
 
-## Specifically look for
+- Read the new spec and latest dispatch before treating older task/audit prose as
+  authority. This is a plan-only handoff, not permission to implement.
+- Preserve checkpoint evidence for unchanged source; do not restart broad audits.
+- Confirm exclusive write/test ownership and exact committed baseline; preserve
+  any unrelated edits discovered on handoff.
+- Read root/feature instructions and applicable test guidance before edits.
+- Record that exact native login entry and actual service/provider gates are open.
 
-1. **Inventory versus discovery:** [host status:394](../../crates/buzz-hostd/src/deployment.rs#L394)
-   iterates the root catalog; [main discovery:921](../../desktop/src-tauri/src/managed_agents/discovery.rs#L921)
-   resolves adapters and underlying CLIs. Probe whether the next proposal really
-   shares machine discovery or merely adds another manually authored entry.
-2. **One owner for auth:** [main auth:80](../../desktop/src-tauri/src/commands/agent_auth.rs#L80)
-   chooses terminal versus ACP; [argv:262](../../desktop/src-tauri/src/commands/agent_auth.rs#L262)
-   handles the existing Claude compatibility detail. Probe that a shared extraction
-   deletes the duplicate host policy rather than introducing Claude/Codex matches.
-3. **Readiness is not login history:** [runtime:378](../../crates/buzz-hostd/src/runtime_context.rs#L378)
-   and [UI gate:118](../../desktop/src/shared/api/hostedAgents.ts#L118) demand host-login
-   Succeeded. Probe the proposed same-context readiness result/representation;
-   neither model output nor Unknown may become successful authentication.
-4. **Root approval remains meaningful:** [catalog pins:24](../../crates/buzz-hostd/src/lib.rs#L24)
-   verify two files, not full CLI/Node/tool closure. Probe shared metadata-driven
-   commands against approved runtime resolution; no arbitrary root execution or
-   operator-home PATH/auth inheritance.
-5. **Interactive boundary:** [stdin null:156](../../crates/buzz-hostd/src/runtime_context.rs#L156)
-   and [operator output loop:60](../../crates/buzz-hostd/src/bin/buzz-host-activate.rs#L60)
-   cannot accept pasted codes. Probe feasibility only in an explicitly approved
-   fresh agent context later. If a large auth broker is needed, name that separate
-   boundary; do not build one implicitly or use API keys as subscription proof.
+## Things to flag back before powering through
 
-## Deviations and judgment calls
+1. **Exact service login is missing.** [Unit:10](../../crates/buzz-hostd/deploy/buzz-paired-agent@.service#L10)
+   uses DynamicUser/private state; [context:156](../../crates/buzz-hostd/src/runtime_context.rs#L156)
+   has null stdin. Neither an operator login nor a guessed numeric UID is the
+   agent's context. If native OS tooling cannot supply the exact context without
+   new interactive machinery, return the prerequisite before dependent coding;
+   default is hold that work and the pilot.
+2. **Single owner of facts.** [Main registry:50](../../desktop/src-tauri/src/managed_agents/discovery/catalog.rs#L50)
+   and [presets:128](../../desktop/src-tauri/src/managed_agents/discovery/presets.rs#L128)
+   remain the semantic source. A parallel hostd provider table or whole-desktop
+   relocation is scope drift. Move shared facts; keep callers thin.
+3. **Additional native CLI approval.** [Runtime:63](../../crates/buzz-hostd/src/lib.rs#L63)
+   pins only harness/adapter. Claude/Codex status commands need approved native
+   executable closure; missing approval is not permission to search operator HOME.
+4. **Auth truth.** [Grok metadata:115](../../desktop/src-tauri/src/managed_agents/discovery/presets.rs#L115)
+   says NotApplicable. Do not manufacture login success or infer entitlement from
+   ACP models. Unknown and probe failures block; NotApplicable is explicitly not
+   authenticated. Richer unsupported configurations remain unsupported.
+5. **Wire rollout.** [Observation:62](../../crates/buzz-core/src/host_deployment/observation.rs#L62)
+   denies unknown fields. If rolling mixed-version interoperability is required,
+   return that decision; matched gated activation is the proposed minimum.
 
-No product code, live actions or framework added. Replaced obsolete conditional D
-text with selected T and a historical commit reference. Extended existing synthetic
-fixtures instead of running installed Claude or rebuilding Windows. The proposed
-shared-main extraction is a recommendation for discussion, not ratified architecture.
-No claim that generic ACP `authenticate` already implements Claude terminal login.
-Root catalog approval versus automatic candidate enrollment remains an explicit
-product choice; recommendation retains approval while sharing discovery facts.
+## What NOT to do
 
-## What not to chase
+Scope is source reuse and truthful existing UI/transport projections. Keep live
+Claude/Grok/Scout, pairing, operator homes/credentials and services untouched.
+No custom login flow, terminal/PTY, broker, per-provider hostd adapters, installer,
+adoption, namespace/veth/nft, relay schema/resources, HTTP cleanup, main catch-up,
+new project or prolonged standalone fixture platform. No test proves entitlement
+unless an explicitly approved native provider journey actually ran.
 
-Preserve main forms, identity/journal/relay lifecycle and accepted tests. Exclude
-Windows CI/build, real providers/native CLI, operator/existing-agent homes,
-installation, adoption, network namespaces/firewall, rootfs fixture platforms,
-new daemon/registry/plugin framework and remote login protocol/UI. #3719/#3721
-normal-network source work waits for this discussion; #3722 real provider evidence
-still requires a separate approved disposable pilot. Full CI/native/human acceptance
-remain NOT RUN. No board, push, merge, deployment or live change authority transfers.
+## Done criteria and verification state
 
-## Verification, deliverable and release
+Planning endpoint: spec states file-level changes, explicit context/approval,
+readiness versus model semantics, compatibility limit, native-entry blocker and
+finite gates. It is ready for human plan review; implementation and the native
+journey are not accepted by this document.
 
-The audit records exact commands: **36 distinct behavior cases passed** (1 real
-ACP/synthetic adapter fixture, 2 core normalization, 33 named Node cases). Temporary
-Unix socket required the same bounded test's approved unsandboxed rerun; initial
-EPERM is retained. Initial Node file-level passes are not extra test cases.
-Production stays pinned; these tests do not establish real adapter/auth/native
-service behavior. Accepted checkpoint-2/3 evidence carries because product source
-is unchanged. No Docker/relay/test platform was launched.
-
-Final checks **PASS**: Rust test-file formatting; all three desktop/web/mobile
-differential file-size gates against the input pin; 77 owned-doc local targets/line
-bounds; `git diff --check`. File-size checks first met sandbox git-spawn EPERM,
-then completed with authorized subprocess access. No full lint/CI claim.
-Return DCO commit and clean status to conductor; all owned build/test processes
-must have exited. This closes reconnaissance only. Next deliverable is the
-conductor's discussion/direction ruling, not an executor launch.
+This assignment performed bounded source inspection, preflight and spec
+self-review. Relative document/source links and `git diff --check` must pass
+before its docs-only DCO commit. Builds, product tests, native service/provider
+checks, full CI and human acceptance are **NOT RUN**. No long-running process was
+started. Return commit and final status; source execution requires a new dispatch.
