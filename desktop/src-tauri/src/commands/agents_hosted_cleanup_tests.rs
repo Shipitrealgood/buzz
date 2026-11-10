@@ -255,6 +255,179 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
     conn.execute_batch("DROP TRIGGER cleanup_fixture_failure")
         .unwrap();
     context.device = Device::at(path).unwrap();
+    // H-2: fresh proof precedes a finite local commit. Contention with either
+    // existing writer boundary must leave phase 3 retryable before any effect.
+    assert!(
+        management
+            .cleanup_state(
+                &mut context.device,
+                &|| context.session.keys(),
+                &pending.operation
+            )
+            .await
+            .unwrap()
+            .1
+    );
+    for identity in [false, true] {
+        let workspace_guard = (!identity).then(|| state.workspace_apply_lock.try_lock().unwrap());
+        let identity_guard = identity.then(|| state.identity_mutation.lock().unwrap());
+        assert!(cleanup::finish(
+            app,
+            state,
+            &context.session,
+            &mut context.device,
+            &intent,
+            None,
+            || panic!("contended finalization must have no effects")
+        )
+        .is_err());
+        assert_eq!(
+            context
+                .device
+                .deployment_intent(&scope.community, &owner, &pending.operation)
+                .unwrap()
+                .unwrap()
+                .phase,
+            3
+        );
+        drop(identity_guard);
+        drop(workspace_guard);
+    }
+    let switched_relay = "wss://cleanup-switched.example";
+    let switched_owner = Keys::generate();
+    let import_dir = tempfile::tempdir().unwrap();
+    std::thread::scope(|threads| {
+        let (workspace_start, workspace_started) = std::sync::mpsc::channel();
+        let (identity_start, identity_started) = std::sync::mpsc::channel();
+        let (tested, attempts) = std::sync::mpsc::channel();
+        let workspace_tested = tested.clone();
+        let phase = || {
+            Device::at(path)
+                .unwrap()
+                .deployment_intent(&scope.community, &owner, &pending.operation)
+                .unwrap()
+                .unwrap()
+                .phase
+        };
+        let workspace_writer = threads.spawn(move || {
+            workspace_started
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            assert!(
+                state.workspace_apply_lock.try_lock().is_err(),
+                "workspace writer entered during finalization"
+            );
+            workspace_tested.send(()).unwrap();
+            let _guard = state.workspace_apply_lock.blocking_lock();
+            assert_eq!(phase(), 4, "writer entered before completion mark");
+            // Same owner is sufficient to reproduce the review's community race.
+            state
+                .workspace_apply_generation
+                .fetch_add(1, Ordering::AcqRel);
+            *state.relay_url_override.lock().unwrap() = Some(switched_relay.into());
+        });
+        let imported_owner = switched_owner.clone();
+        let import_path = import_dir.path();
+        let identity_writer = threads.spawn(move || {
+            identity_started
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            assert!(
+                state.identity_mutation.try_lock().is_err(),
+                "identity import entered during finalization"
+            );
+            tested.send(()).unwrap();
+            let _guard = state.identity_mutation.lock().unwrap();
+            assert_eq!(phase(), 4, "identity import entered before completion mark");
+            crate::commands::identity::commit_imported_identity(
+                state,
+                import_path,
+                imported_owner,
+                |_| Ok(crate::app_state::IdentityStorage::Ephemeral),
+            )
+            .unwrap();
+        });
+        cleanup::finish(
+            app,
+            state,
+            &context.session,
+            &mut context.device,
+            &intent,
+            None,
+            || {
+                // This is the shared finalizer's existing before-remove boundary,
+                // inside the real Session commit and managed-agent store guards.
+                assert!(state.managed_agents_store_lock.try_lock().is_err());
+                assert_eq!(phase(), 3);
+                workspace_start.send(()).unwrap();
+                identity_start.send(()).unwrap();
+                for _ in 0..2 {
+                    attempts
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap();
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+        workspace_writer.join().unwrap();
+        identity_writer.join().unwrap();
+    });
+    use crate::managed_agents::retention::{
+        get_retained_event, scoped_retention_db_path, tombstone_retention_d_tag,
+    };
+    use buzz_core_pkg::kind::{KIND_IA_ARCHIVE_REQUEST, KIND_MANAGED_AGENT};
+    assert!(get_retained_event(
+        &conn,
+        5,
+        &owner.public_key().to_hex(),
+        &tombstone_retention_d_tag(KIND_MANAGED_AGENT, &agent.to_hex())
+    )
+    .unwrap()
+    .is_some());
+    assert!(get_retained_event(
+        &conn,
+        KIND_IA_ARCHIVE_REQUEST,
+        &owner.public_key().to_hex(),
+        &agent.to_hex()
+    )
+    .unwrap()
+    .is_some());
+    let original_relay = scope.community.replacen("https://", "wss://", 1);
+    for (relay, signer) in [
+        (switched_relay, owner.public_key()),
+        (original_relay.as_str(), switched_owner.public_key()),
+        (switched_relay, switched_owner.public_key()),
+    ] {
+        assert!(
+            !scoped_retention_db_path(
+                &managed_agents_base_dir(app).unwrap(),
+                relay,
+                &signer.to_hex()
+            )
+            .exists(),
+            "Cleanup leaked into switched retention scope"
+        );
+    }
+    assert!(cleanup::finish(
+        app,
+        state,
+        &context.session,
+        &mut context.device,
+        &intent,
+        None,
+        || panic!("stale session must not finalize")
+    )
+    .is_err());
+    {
+        let _workspace = state.workspace_apply_lock.try_lock().unwrap();
+        let _identity = state.identity_mutation.lock().unwrap();
+        *state.relay_url_override.lock().unwrap() = Some(original_relay);
+        *state.keys.lock().unwrap() = owner.clone();
+    }
+    context.session = Session::capture(state, &scope.community, &scope.owner.to_hex())
+        .await
+        .unwrap();
     let done = run(cleanup::coordinate(
         app,
         state,

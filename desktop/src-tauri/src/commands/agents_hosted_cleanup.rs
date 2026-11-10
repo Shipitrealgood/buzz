@@ -137,7 +137,16 @@ pub(super) async fn coordinate<R: tauri::Runtime>(
     {
         Ok((_, true)) => {
             response.state = "cleanup-local-pending".into();
-            let result = finish(app, state, session, device, &intent, before);
+            let result = finish(
+                app,
+                state,
+                session,
+                device,
+                &intent,
+                before,
+                #[cfg(test)]
+                || Ok(()),
+            );
             match result {
                 Ok(()) => {
                     response.state = "deleted".into();
@@ -178,42 +187,69 @@ pub(super) async fn coordinate<R: tauri::Runtime>(
     Ok(response)
 }
 
-fn finish<R: tauri::Runtime>(
+pub(super) fn finish<R: tauri::Runtime>(
     app: &AppHandle<R>,
     state: &AppState,
     session: &Session<'_>,
     device: &mut Device,
     intent: &Intent,
     before: Option<serde_json::Value>,
+    #[cfg(test)] before_remove: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
-    let _guard = state
-        .managed_agents_store_lock
-        .lock()
+    session.with_local_commit(|keys| {
+        let _guard = state
+            .managed_agents_store_lock
+            .lock()
+            .map_err(|e| e.to_string())?;
+        let a = &intent.protected.authority;
+        let pubkey = a.agent.to_hex();
+        let mut records = load_managed_agents(app)?;
+        let current = records.iter().find(|r| r.pubkey == pubkey);
+        if current
+            .map(|r| serde_json::to_value(r).map_err(|e| e.to_string()))
+            .transpose()?
+            != before
+        {
+            return Err("Saved agent changed during Cleanup; retry local removal".into());
+        }
+        if current.is_some_and(|r| {
+            r.backend
+                != (BackendKind::RegisteredHost {
+                    scope: a.scope.clone(),
+                })
+        }) {
+            return Err("Hosted destination changed".into());
+        }
+        // Both writer guards remain held through record/key removal, enqueue and
+        // phase 4. Derive the destination from the confirmed intent and captured
+        // signer, never from a later read of the globally active workspace.
+        let relay_url = a.scope.community.replacen("https://", "wss://", 1);
+        let scope = crate::managed_agents::retention::RetentionScope {
+            db_path: crate::managed_agents::retention::scoped_retention_db_path(
+                &managed_agents_base_dir(app)?,
+                &relay_url,
+                &keys.public_key().to_hex(),
+            ),
+            relay_url,
+            owner_keys: keys.clone(),
+        };
+        std::fs::create_dir_all(
+            scope
+                .db_path
+                .parent()
+                .ok_or("Missing retention directory")?,
+        )
         .map_err(|e| e.to_string())?;
-    let keys = session.keys().map_err(|e| e.to_string())?;
-    let a = &intent.protected.authority;
-    let pubkey = a.agent.to_hex();
-    let mut records = load_managed_agents(app)?;
-    let current = records.iter().find(|r| r.pubkey == pubkey);
-    if current
-        .map(|r| serde_json::to_value(r).map_err(|e| e.to_string()))
-        .transpose()?
-        != before
-    {
-        return Err("Saved agent changed during Cleanup; retry local removal".into());
-    }
-    if current.is_some_and(|r| {
-        r.backend
-            != (BackendKind::RegisteredHost {
-                scope: a.scope.clone(),
-            })
-    }) {
-        return Err("Hosted destination changed".into());
-    }
-    finalize_managed_agent_deletion(app, state, &pubkey, &mut records, true, |_| Ok(()))?;
-    device
-        .deployment_advance(&a.scope.community, &keys, &a.operation_id, 4)
-        .map_err(|e| e.to_string())?;
+        finalize_managed_agent_deletion(app, state, &pubkey, &mut records, Some(&scope), |_| {
+            #[cfg(test)]
+            before_remove()?;
+            Ok(())
+        })?;
+        device
+            .deployment_advance(&a.scope.community, keys, &a.operation_id, 4)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })?;
     try_regenerate_nest(app);
     Ok(())
 }

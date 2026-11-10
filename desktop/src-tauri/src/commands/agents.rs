@@ -1258,7 +1258,7 @@ pub async fn delete_managed_agent(
             if !records.iter().any(|record| record.pubkey == pubkey) {
                 return Err(format!("agent {pubkey} not found"));
             }
-            finalize_managed_agent_deletion(&app, &state, &pubkey, &mut records, false, |records| {
+            finalize_managed_agent_deletion(&app, &state, &pubkey, &mut records, None, |records| {
                 if let Some(record) = records.iter_mut().find(|record| record.pubkey == pubkey) {
                     stop_managed_agent_process(&app, record, &mut runtimes)?;
                 }

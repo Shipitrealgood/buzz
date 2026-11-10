@@ -81,6 +81,32 @@ impl<'a> Session<'a> {
             .workspace_apply_lock
             .try_lock()
             .map_err(|_| anyhow!("community switch in progress"))?;
+        self.checked_keys()
+    }
+    /// Serialize one finite synchronous local commit with workspace apply and
+    /// identity import/recovery. Acquire these before any managed-agent store
+    /// lock; contention leaves the operation retryable. The callback must not
+    /// await or recursively call `keys()`.
+    pub(crate) fn with_local_commit<T>(
+        &self,
+        commit: impl FnOnce(&Keys) -> std::result::Result<T, String>,
+    ) -> std::result::Result<T, String> {
+        let _workspace = self
+            .state
+            .workspace_apply_lock
+            .try_lock()
+            .map_err(|_| "community switch in progress".to_string())?;
+        let _identity = self
+            .state
+            .identity_mutation
+            .try_lock()
+            .map_err(|_| "identity change in progress".to_string())?;
+        let keys = self.checked_keys().map_err(|e| e.to_string())?;
+        commit(&keys)
+    }
+    // Caller owns the workspace guard. Local commits additionally hold the
+    // identity mutation guard until all effects and their completion mark finish.
+    fn checked_keys(&self) -> Result<Keys> {
         ensure!(
             !self.state.reset_failed.load(Ordering::Acquire),
             "identity reset incomplete"

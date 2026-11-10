@@ -24,7 +24,7 @@ pub(super) fn finalize_managed_agent_deletion<R: tauri::Runtime>(
     state: &AppState,
     pubkey: &str,
     records: &mut Vec<ManagedAgentRecord>,
-    strict: bool,
+    confirmed_scope: Option<&crate::managed_agents::retention::RetentionScope>,
     before_remove: impl FnOnce(&mut Vec<ManagedAgentRecord>) -> Result<(), String>,
 ) -> Result<(), String> {
     let base_dir = managed_agents_base_dir(app)?;
@@ -34,9 +34,9 @@ pub(super) fn finalize_managed_agent_deletion<R: tauri::Runtime>(
         save_managed_agents(app, records)
     })?;
     state.clear_agent_session_caches(pubkey);
-    if strict {
+    if let Some(scope) = confirmed_scope {
         crate::managed_agents::storage::try_delete_agent_key(pubkey)?;
-        pending::try_tombstone_managed_agent_pending(app, state, pubkey)?;
+        pending::tombstone_managed_agent_at(&scope.db_path, &scope.owner_keys, pubkey)?;
     } else {
         crate::managed_agents::delete_agent_key(pubkey);
         if let Err(error) = pending::try_tombstone_managed_agent_pending(app, state, pubkey) {
