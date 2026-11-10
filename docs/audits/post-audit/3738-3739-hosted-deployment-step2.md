@@ -113,3 +113,58 @@ Measured source range: 61 files, +4,621/−299. Executor's hunk classification r
 All review test/build sessions terminated normally, exact disposable resources were removed with the label-verifying `down`, and the source worktree was clean before adding this report. No source fixes, held mutants, live requests, credentials, Claude/Grok/Scout contact, service/account/mount installation, merge, push, PR, deployment or taskctl writes. Return to the same executor for the four bounded repairs, then the same independent reviewer for re-gate of those findings and affected obligations. Do not infer live activation authority from this report.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=bded3a337c4b6defdfddc6815c8c1d4c88a97f1c..3b2acc356a324336bce31d1b66610dce2fe53132 findings=C=0/H=2/M=2/L=0 rework_rounds=0
+
+## Focused re-gate, round 1 — 2026-11-10
+
+**Source verdict: rework.** H-1, H-2, M-1 and M-2 are resolved under the approved bounded-retention clarification. One directly related concurrency regression, M-3, requires fix-in-lane. Current open counts: C=0 / H=0 / M=1 / L=0. Historical findings and the first-review receipt above remain unchanged. Native/platform acceptance remains independently incomplete; this is not a merge/release-ready attestation.
+
+Reviewed repair range `42c88aa8fe6e739e4eb0c966a7fc8106208bbce7..364c61a7b3fce9374d412e63dc41117769457733`. Tested implementation pin `4d8232383ee548bfa1d816f8e9b4a7b4faad0770`; final pin adds documentation only. Same exclusive worktree and reviewer assignment, requested Astra/high; runtime model/effort metadata remains unavailable. Read the repair receipt, bounded re-gate brief and [approved contract clarification](../../executions/2722-hosted-destination-contract.md). Review stayed on the four fixes and their directly affected invariants; no broad audit, source fixes or mutation campaign.
+
+### Original findings at the new pin
+
+| Finding | Current disposition | Independent evidence and limits |
+| --- | --- | --- |
+| H-1 | closed for original starvation defect; M-3 remains fix-in-lane | Relay rotates bounded pages after a cursor (`paired_hosts/deployment.rs:206`); host persists progress before attempts (`buzz-hostd/src/deployment.rs:262–278`), rotates offline units/generations (`:445–498`), and production controller runs at most four independent cleanup jobs (`registration_refresh.rs:87–124`). Actual relay/journal/helper test visits forty failed cleanups beyond page32/pass8 across reopen and later useful work; controller test visits forty retired generations while one helper response is held and registration discovery advances. Both independently passed. |
+| H-2 | closed | Current-binding transaction accepts a fresh Cleanup at the exact next revision while preserving the first cleanup anchor and blocking Deploy (`paired_hosts/deployment.rs:102–142`). Actual journey proves the expired first request has no helper effect and fresh authorization reaches the same stable unit/key. |
+| M-1 | closed | Every applicable early REQ refusal now awaits existing `close::refuse` (`handlers/host_deployment.rs:77–101`). Independently passed positive-holder/negative-replacement controls for disabled, malformed, multifilter, connection-capacity and global-capacity cases; real ConnectionState/dispatcher/topic state is exercised, including blocked late delivery. EVENT and COUNT behavior remains separate. |
+| M-2 | closed | Deploy-only quotas leave existing placements bounded cleanup capacity; transactional replacement retains first anchor plus at most one current row (`paired_hosts/deployment.rs:113–142`). Independent DB test exercised owner and community ceilings, denied another Deploy, admitted Cleanup, six cleanup revisions, immutable retained bytes and a permanent Deploy fence. |
+
+The retained anchor/current scheme is the conductor-approved clarification, not an undisclosed weakening discovered during review. Retired replacement bytes/results are no longer relay-retrievable and return `missing-or-superseded`; no forgotten-envelope-history guarantee is claimed. Reserved `c1ea0001` IDs bind canonical authority, created time and kind with 224 digest bits (`host_deployment/wire.rs:17–27,182–198`). Every prefixed Cleanup validates, including a foreign first cleanup, and Deploy rejects that prefix. Read the five-line native guard: it rejects explicit reserved/invalid Deploy IDs before signer capture/materialization; it was not compiled or executed on Windows. Independent codec/DB negatives cover changed action, agent, revision, expiry, time and retired-ID reuse. No new history mechanism, dependency, schema or service was added.
+
+Read/inferred late-result behavior at the relay remains safe: a deleted replacement has no operation row and cannot accept a result; a retained old anchor's result cannot update the current placement because the update requires matching `last_operation_id` (`paired_hosts/deployment.rs:146–169`). Host Cleanup continues using the same per-agent row and no permit nonce history. The new host overlap, however, has the following unfenced result writers.
+
+### M-3 (Medium) — overlapping cleanup can regress durable completion and publish a stale failure — fix-in-lane
+
+**Confidence: high; read/inferred, not a newly executed interleaving probe.** New independent offline cleanup tasks can overlap the active generation's online cleanup (`crates/buzz-hostd/src/registration_refresh.rs:103–124`). The offline selector captures only `unit_id` (`crates/buzz-hostd/src/deployment.rs:449–454`). After awaiting the helper, its unconditional UPDATE matches only generation/unit and assigns `cleaned=result.is_ok()` and issue (`:460–472`). It does not prove that the selected operation/revision still owns the row or preserve completion that another attempt observed.
+
+Concrete failure: offline attempt A for cleanup revision n waits on its helper response. The active reconciler accepts revision n+1 for the same stable unit and successfully persists a Cleaned receipt with `cleaned=1`. A delayed failed A response then updates that newer row to `cleaned=0` and a stale issue. The terminal receipt and local retry state disagree, and offline scheduling resumes unnecessary obsolete cleanup attempts.
+
+The opposite completion order and same-revision overlap are also affected. Online result persistence at `deployment.rs:431–438` guards by operation but unconditionally assigns `cleaned`, writes its failure receipt, then publishes it. If the offline worker has already observed success for that same operation/revision, a delayed online failure can replace `cleaned=1` and publish CleanupPending instead. Offline success currently records no terminal result, so the pre-attempt UPSERT at `:344` also resets `cleaned=0,result=NULL,issue=NULL` on a later online retry rather than preserving the completed observation. Checking only the offline UPDATE would leave this class open.
+
+**Narrow fix:** bind post-await persistence to the selected operation/revision and preserve observed completion against stale failures, including competing attempts at the same revision. Apply that invariant to the offline UPDATE, online result UPDATE/publication, and pre-attempt UPSERT. A stale failure must neither overwrite newer durable state nor publish a contradictory pending/failure receipt after completion won. Retain actionable failure for the attempt that still owns an incomplete row. No scheduler, protocol or history framework is needed.
+
+**Regression obligation:** use the existing controllable helper seam to hold an old failed response while a newer cleanup succeeds; release it and assert operation/revision, completed state, issue and terminal receipt remain correct. Cover both online/offline completion orders, same-revision overlap and superseded operation/revision. Assert no obsolete retry is re-enabled and no stale failure receipt is published. The current held-helper fairness and sequential replacement tests do not cover these interleavings.
+
+Conductor accepted M-3 and this complete writer/publication scope as **fix-in-lane** during the re-gate. Owner: same #3739 executor, followed by the same reviewer on the bounded repair. No separate task or architectural prerequisite proposed; reviewer made no board changes.
+
+### Re-gate verification and continuity
+
+Measured here under Hermit with `HERMIT_SELF_UPDATE=false`, against the clean repair pin:
+
+| Command | Independent result |
+| --- | --- |
+| `cargo test -p buzz-core host_deployment --lib` | 11 passed, 0 failed/ignored, 0.06s |
+| `cargo test -p buzz-db -p buzz-hostd -p buzz-relay --no-run` | current affected binaries built |
+| proof `run target/debug/deps/buzz_relay-89115045a711bc85 external_infra_deployment_tests --ignored --test-threads=1` | 3 passed, 0 failed/ignored, 11.44s |
+| proof `run target/debug/deps/buzz_hostd-c33faca283336bb7 registration_refresh::tests --test-threads=1` | 9 passed, 0 failed/ignored, 35.46s |
+| proof `run target/debug/deps/buzz_db-417e37ddf5050076 cleanup_reserved_capacity_and_bounded_replacements_preserve_anchor --ignored --test-threads=1` | 1 passed, 0 failed/ignored, 0.62s |
+| proof `run target/debug/deps/buzz_db-417e37ddf5050076 deployment_atomic_replay_placement_permissions_cleanup_and_revocation --ignored --test-threads=1` | 1 passed, 0 failed/ignored, 0.17s |
+| `cargo fmt --all --check`; native `cargo fmt --check`; `git diff --check` | passed |
+
+Total **25 tests passed**, none ignored counted as executed. `proof` is the same `scripts/3720-registration-proof.sh` network-none disposable fixture. No new mutation experiment was assigned or run. The unchanged helper hash remains `8dcef07da2d6e2e0e55467585da02d595da816fd5956c46a3770bc347ffb13cb`, and migration81 remains `7ca03c85b81e1e26af19531fc831bb678a3a914c815999af424254c7cc9446d4` (both remeasured).
+
+Prior first-review evidence is retained where source is unchanged: owner snapshot/native create seam apart from the five-line ID guard, helper executable/root checks, migration/schema/deletion parity, generic privacy paths, TS/UI, and the already-restored helper mutation. Changed wire/admission/scheduling/denial paths were rerun above. Native compilation/main Windows journey, actual systemd/reboot/provider/human acceptance remain **not run**; unchanged GLib/GObject environment failure, strict-Clippy baseline warnings and discovery failure were not rerun or called green. No dependency install or environment bootstrap. The passing isolated tests do not resolve those platform gates.
+
+Repair-only gross delta independently measured: 13 files, +1,101/−64. Executor's classification reconciles to it: production +180/−42 (net138), tests +731/−21, docs +190/−1. No new dependencies/schema/framework. All owned test/build sessions finished; label-verified `down` removed exactly runner/Postgres/Redis; no TLS proxy was started. Source was clean before appending this report. No live systems, services, credentials, provider contact, source fixes, held mutations, merge/push/PR/deployment or taskctl writes. Release this worktree to the same executor for M-3, then re-gate only that fix and directly affected obligations.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=42c88aa8fe6e739e4eb0c966a7fc8106208bbce7..364c61a7b3fce9374d412e63dc41117769457733 findings=C=0/H=0/M=1/L=0 rework_rounds=1
