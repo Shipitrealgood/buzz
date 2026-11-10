@@ -1,5 +1,57 @@
 # Linux paired host
 
+## Ordinary registered-host deployment (source only; activation remains gated)
+
+The `--deployment` route runs under the configured non-root host account and
+uses that account’s normal HOME, native harness logins, tool PATH, workspace and
+networking. It shares the registration journal and owner authority; it has no
+root-helper fallback. Each agent retains its own Buzz identity and protected
+generated artifacts. Same-account agents are trusted and can use that account’s
+files, tools and provider sessions under the existing main chat-access policy.
+
+The private `deployment.json` retains community, relay signing key, label and
+capacity. Its `local` object specifies absolute `home`, `workspace`, `unit_dir`,
+`launcher` (buzz-host-runtime), `systemctl`, `tool_path`, optional normal XDG
+locations in `environment`, and optional `buzz_acp`. With `local.buzz_acp` set,
+`runtimes: {}` automatically discovers main’s builtin/preset candidates using
+that account PATH. No per-provider rows are required. Explicit local rows can
+retain installed IDs and limit candidates when automatic discovery is omitted;
+they still resolve main’s command names and reject unsupported args/config at
+readiness. Remote commands never supply paths, argv or environment.
+
+Main’s catalog and pure classifiers live in `buzz-core::harness`, shared with
+Desktop. Inventory distinguishes missing adapter/CLI and main’s adapter version
+floor. Required normalized configuration outside this hosted projection and
+unknown/custom harnesses remain unsupported. Version is absent unless main
+requires its check. Installed, authenticated, models and provider entitlement
+are separate facts. Claude/Codex use main’s native status probes; Grok’s
+NotApplicable means authentication was not checked. Native sign-in is performed
+externally on the host under the configured account, followed by Refresh in
+Windows Add Agent. There is no Buzz-host login command for this route.
+
+Prepare and Refresh run bounded current readiness and real main ACP model
+discovery. Start rechecks readiness and exact selected model immediately before
+launching main ACP with this agent’s key, policy and the same account context.
+The fixed user service is persistent for the running conversation (`Restart=no`,
+no idle-stop timer); explicit main shutdown is preserved. Automatic reboot
+startup or persistent explicit-stop state is not implemented here. Cleanup
+stops only the recorded unit and removes generated Buzz files, preserving
+HOME, native login/config and repositories even after launch paths move.
+
+Status/Observation optional fields preserve old messages as unknown for new
+readers. Older readers deny new fields: deployment requires a matched
+host/client rollout while hosted creation stays gated off. Existing 8 KiB
+status, 2 KiB observation and 64-entry bounds apply; overflow is unavailable.
+No release flag, service installation, existing placement migration or live
+activation is performed by this source change. See
+`docs/executions/3721-host-discovery-windows.md` for tests and native limitations.
+
+## Legacy provisioning reference
+
+The isolated-account/root-helper instructions below apply only to the separate
+legacy provisioning entrypoint. They are not installation instructions for the
+ordinary registered-host deployment route above.
+
 Run the control plane under a dedicated Linux account with an empty HOME. This account owns one host key and journal, and must be separate from desktop, relay-admin, agent-runtime and operator accounts. Run these commands in that account on a private console:
 
 ```sh

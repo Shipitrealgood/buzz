@@ -84,22 +84,19 @@ impl Execution {
         format!(".buzz-action-{}", self.nonce)
     }
 }
-/// Legacy offline policy and the trusted-account route, still gated on S2 readiness.
+/// Legacy offline policy and the explicitly selected trusted-account route.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NetworkPolicy {
     Disabled,
-    /// Normal trusted-account networking; conversation still awaits S2 readiness.
+    /// Normal trusted-account networking; conversation requires current readiness.
     TrustedAccount,
 }
 impl NetworkPolicy {
     /// The installed conversation entrypoint requires reviewed online networking.
     pub fn require_conversation(self) -> Result<()> {
         ensure!(self != Self::Disabled, "network-disabled");
-        ensure!(
-            self != Self::TrustedAccount,
-            "current readiness unavailable"
-        );
+
         Ok(())
     }
 }
@@ -115,6 +112,10 @@ pub struct ActionResult {
     pub models: Models,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub login_output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<buzz_core::harness::Readiness>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability: Option<buzz_core::harness::AcpAvailabilityStatus>,
 }
 /// Paths come from the fixed unit or operator-configured trusted account.
 pub struct Context {
@@ -165,7 +166,7 @@ impl Context {
         )])
         .collect()
     }
-    fn command(&self, program: &Path) -> Command {
+    pub(crate) fn command(&self, program: &Path) -> Command {
         let mut c = Command::new(program);
         c.env_clear()
             .envs(self.environment())
@@ -211,6 +212,16 @@ pub async fn finite(
     execution: &Execution,
     policy: NetworkPolicy,
 ) -> Result<ActionResult> {
+    finite_inner(context, prepared, catalog, execution, policy, true).await
+}
+async fn finite_inner(
+    context: &Context,
+    prepared: &Prepared,
+    catalog: &Catalog,
+    execution: &Execution,
+    policy: NetworkPolicy,
+    notify_started: bool,
+) -> Result<ActionResult> {
     let i = &prepared.instance;
     execution.validate(i, nostr::Timestamp::now().as_secs())?;
     ensure!(
@@ -223,6 +234,16 @@ pub async fn finite(
         "native login is external"
     );
     ensure!(execution.mode != Mode::Conversation, "finite mode required");
+    let (availability, readiness) = if context.account.is_some() {
+        if notify_started {
+            notify(&context.notify)?;
+        }
+        let facts = crate::discovery::inspect(context, rt).await;
+        let readiness = crate::discovery::readiness(context, rt, &facts).await;
+        (Some(facts.availability), Some(readiness))
+    } else {
+        (None, None)
+    };
     let mut command = match execution.mode {
         Mode::Login => {
             ensure!(
@@ -256,7 +277,22 @@ pub async fn finite(
             reason: UnavailableReason::NetworkDisabled,
         },
         login_output: String::new(),
+        availability,
+        readiness,
     };
+    if context.account.is_some()
+        && result.availability != Some(buzz_core::harness::AcpAvailabilityStatus::Available)
+    {
+        result.finished = true;
+        result.models = Models::Unavailable {
+            reason: UnavailableReason::Execution,
+        };
+        if notify_started {
+            publish(&context.home, &result)?;
+        }
+        return Ok(result);
+    }
+    execution.validate(i, nostr::Timestamp::now().as_secs())?;
     command.process_group(0);
     let mut child = command
         .stdout(Stdio::piped())
@@ -278,7 +314,9 @@ pub async fn finite(
         .ok_or_else(|| anyhow!("stderr missing"))?;
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     // Readiness means supervised action started, not authentication or available models.
-    notify(&context.notify)?;
+    if notify_started {
+        notify(&context.notify)?;
+    }
     let timeout = tokio::time::sleep(Duration::from_secs(
         execution
             .deadline
@@ -369,7 +407,9 @@ pub async fn finite(
     // Terminate descendants before publishing the terminal receipt; systemd also
     // confirms the service cgroup is empty before observe exposes this result.
     drop(_group);
-    publish(&context.home, &result)?;
+    if notify_started {
+        publish(&context.home, &result)?;
+    }
     let live = context.runtime.join(execution.filename());
     if context.runtime != context.home && live.try_exists()? {
         fs::remove_file(live)?;
@@ -431,13 +471,14 @@ pub async fn run() -> Result<()> {
         "selected model unavailable"
     );
     ensure!(catalog.current(&rev)?, "catalog changed before launch");
+    launch(&context, i, rt)
+}
+/// Launch main ACP with this agent's own identity and existing access policy.
+pub(crate) fn launch(context: &Context, i: &Instance, rt: &crate::Runtime) -> Result<()> {
     let mut command = context.command(&rt.harness.path);
     command
         .envs(crate::deployment_environment(i)?)
-        .env(
-            "NOTIFY_SOCKET",
-            env::var_os("NOTIFY_SOCKET").ok_or_else(|| anyhow!("notification socket missing"))?,
-        )
+        .env("NOTIFY_SOCKET", &context.notify)
         .env(
             "BUZZ_PAIRED_STARTUP_CHANNELS",
             serde_json::to_string(&i.channels)?,
@@ -461,7 +502,7 @@ pub async fn run() -> Result<()> {
 }
 
 // The runtime service owns the whole process group even when the direct child exits early.
-struct ProcessGroup(rustix::process::Pid);
+pub(crate) struct ProcessGroup(pub(crate) rustix::process::Pid);
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         let _ = rustix::process::kill_process_group(self.0, rustix::process::Signal::KILL);
@@ -496,8 +537,8 @@ pub async fn run_user(state: &Path, unit: &str) -> Result<()> {
     let (catalog, revision) = service.catalog()?;
     prepared.instance.validate(&catalog, &revision)?;
     ensure!(
-        prepared.instance.unit_id == unit && execution.mode == Mode::Models,
-        "conversation unavailable until current readiness is implemented"
+        prepared.instance.unit_id == unit && execution.mode != Mode::Login,
+        "invalid trusted runtime action"
     );
     execution.validate(&prepared.instance, nostr::Timestamp::now().as_secs())?;
     let rt = &catalog.runtimes[&prepared.instance.runtime_id];
@@ -510,6 +551,30 @@ pub async fn run_user(state: &Path, unit: &str) -> Result<()> {
         notify: env::var_os("NOTIFY_SOCKET").ok_or_else(|| anyhow!("notify socket missing"))?,
     };
     ensure!(catalog.current(&revision)?, "local configuration changed");
+    if execution.mode == Mode::Conversation {
+        let probe = Execution::new(
+            &prepared.instance,
+            Mode::Models,
+            nostr::Timestamp::now().as_secs(),
+        )?;
+        let result = finite_inner(
+            &context,
+            &prepared,
+            &catalog,
+            &probe,
+            NetworkPolicy::TrustedAccount,
+            false,
+        )
+        .await?;
+        // The internal recheck publishes no action artifact; cleanup retains only recorded executions.
+
+        require_ready_selection(&prepared.instance, &result)?;
+        ensure!(
+            catalog.current(&revision)?,
+            "local configuration changed before launch"
+        );
+        return launch(&context, &prepared.instance, rt);
+    }
     finite(
         &context,
         &prepared,
@@ -518,5 +583,34 @@ pub async fn run_user(state: &Path, unit: &str) -> Result<()> {
         NetworkPolicy::TrustedAccount,
     )
     .await?;
+    Ok(())
+}
+/// Final source gate immediately before conversation. Login receipts are intentionally irrelevant.
+pub(crate) fn require_ready_selection(i: &Instance, result: &ActionResult) -> Result<()> {
+    use buzz_core::{harness::AcpAvailabilityStatus, host_deployment::ModelSelection};
+    result
+        .execution
+        .validate(i, nostr::Timestamp::now().as_secs())?;
+    ensure!(
+        result.finished
+            && result.execution.mode == Mode::Models
+            && result.observed_at <= nostr::Timestamp::now().as_secs()
+            && nostr::Timestamp::now().as_secs() < result.observed_at + 120
+            && result.availability == Some(AcpAvailabilityStatus::Available)
+            && result.readiness.is_some_and(|r| r.permits_attempt()),
+        "current readiness unavailable"
+    );
+    let config = &i
+        .deployment
+        .as_ref()
+        .ok_or_else(|| anyhow!("deployment missing"))?
+        .config;
+    let ModelSelection::Selected { id } = &config.model else {
+        return Err(anyhow!("model selection pending"));
+    };
+    ensure!(
+        matches!(&result.models, Models::Available { catalog } if catalog.models.iter().any(|m| &m.id == id)),
+        "selected model unavailable"
+    );
     Ok(())
 }

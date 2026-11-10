@@ -87,6 +87,17 @@ fn native_phases(home: &std::path::Path) {
         .contains("disabled"));
         assert!(load_managed_agents(app.handle()).unwrap().is_empty());
         let status = d::Status {
+            inventory: Some(
+                [(
+                    "native/grok".into(),
+                    buzz_core_pkg::harness::RuntimeFacts {
+                        availability: buzz_core_pkg::harness::AcpAvailabilityStatus::Available,
+                        version: None,
+                        config_supported: true,
+                    },
+                )]
+                .into(),
+            ),
             scope: scope.clone(),
             availability: d::Availability::Current,
             capability: d::Capability::Supported {

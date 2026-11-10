@@ -27,6 +27,7 @@ pub struct HostedSetup {
 pub struct HostedRuntime {
     installed_id: String,
     metadata: Option<crate::managed_agents::AcpRuntimeCatalogEntry>,
+    facts: Option<buzz_core_pkg::harness::RuntimeFacts>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -153,9 +154,27 @@ pub async fn hosted_catalog(
             .iter()
             .map(|id| HostedRuntime {
                 installed_id: id.clone(),
+                facts: create
+                    .status
+                    .inventory
+                    .as_ref()
+                    .and_then(|m| m.get(id))
+                    .cloned(),
                 metadata: harnesses
                     .get(id)
-                    .and_then(|key| crate::managed_agents::hosted_runtime_metadata(key)),
+                    .and_then(|key| crate::managed_agents::hosted_runtime_metadata(key))
+                    .and_then(|mut metadata| {
+                        let facts = create.status.inventory.as_ref()?.get(id)?;
+                        if !facts.config_supported {
+                            return None;
+                        }
+                        metadata.availability = facts.availability.clone();
+                        metadata.auth_status = crate::managed_agents::AuthStatus::Unknown;
+                        if let Some(version) = &facts.version {
+                            metadata.label = format!("{} · {version}", metadata.label);
+                        }
+                        Some(metadata)
+                    }),
             })
             .collect(),
         _ => Vec::new(),

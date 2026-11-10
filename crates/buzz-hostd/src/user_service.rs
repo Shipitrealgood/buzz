@@ -20,6 +20,9 @@ use tokio::{io::AsyncReadExt, process::Command};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalContext {
+    /// Main ACP executable for automatic discovery of compiled main candidates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buzz_acp: Option<PathBuf>,
     /// Normal account HOME, shared with native provider logins.
     pub home: PathBuf,
     /// Locally assigned working directory; cleanup never deletes it.
@@ -233,10 +236,19 @@ impl UserService {
                                 || serde_json::to_vec(&old.instance)? == serde_json::to_vec(&i)?),
                         "prepared identity/revision conflict"
                     );
-                    ensure!(
-                        crate::service_actions::inactive(&show(local, id).await?),
-                        "unit busy"
-                    );
+                    let shape = show(local, id).await?;
+                    if !crate::service_actions::inactive(&shape) {
+                        let e: Execution =
+                            serde_json::from_slice(&private_file(&dir.join("execution"), 4096)?)?;
+                        e.validate(&i, nostr::Timestamp::now().as_secs())?;
+                        ensure!(
+                            e.mode == Mode::Conversation
+                                && serde_json::to_vec(&old.instance)? == serde_json::to_vec(&i)?
+                                && shape.lines().any(|l| l == "ActiveState=active"),
+                            "unit busy"
+                        );
+                        return Ok("prepared\n".into());
+                    }
                     let recorded: LocalContext =
                         serde_json::from_slice(&private_file(&dir.join("context"), 16384)?)?;
                     ensure!(
@@ -266,11 +278,60 @@ impl UserService {
             serde_json::from_slice(&private_file(&dir.join("instance"), 131072)?)?;
         prepared.instance.validate(&cat, &rev)?;
         ensure!(prepared.instance.unit_id == id, "wrong prepared unit");
-        ensure!(
-            verb != "start",
-            "conversation unavailable until current readiness is implemented"
-        );
         let shape = show(local, id).await?;
+        if verb == "start" {
+            ensure!(
+                matches!(
+                    prepared
+                        .instance
+                        .deployment
+                        .as_ref()
+                        .map(|d| &d.config.model),
+                    Some(buzz_core::host_deployment::ModelSelection::Selected { .. })
+                ),
+                "model selection pending"
+            );
+            if !crate::service_actions::inactive(&shape) {
+                let old: Execution =
+                    serde_json::from_slice(&private_file(&dir.join("execution"), 4096)?)?;
+                old.validate(&prepared.instance, nostr::Timestamp::now().as_secs())?;
+                ensure!(
+                    old.mode == Mode::Conversation
+                        && shape.lines().any(|l| l == "ActiveState=active"),
+                    "unit busy"
+                );
+                return Ok("active\n".into());
+            }
+            if dir.join("execution").try_exists()? {
+                let old: Execution =
+                    serde_json::from_slice(&private_file(&dir.join("execution"), 4096)?)?;
+                ensure!(
+                    old.unit == id && crate::id(&old.nonce),
+                    "wrong retained execution"
+                );
+                remove_file(&dir.join(old.filename()))?;
+            }
+            let e = Execution::new(
+                &prepared.instance,
+                Mode::Conversation,
+                nostr::Timestamp::now().as_secs(),
+            )?;
+            write_json(&dir, "execution", &e)?;
+            // Blocking start waits for main ACP READY after the runtime's fresh source guards.
+            // Restart=no preserves explicit agent shutdown; no idle stop or reboot policy added.
+            if let Err(error) = system(local, &["start"], Some(id)).await {
+                stop(local, id).await?;
+                return Err(error);
+            }
+            ensure!(
+                show(local, id)
+                    .await?
+                    .lines()
+                    .any(|l| l == "ActiveState=active"),
+                "conversation start unconfirmed"
+            );
+            return Ok("active\n".into());
+        }
         if verb == "models" {
             ensure!(crate::service_actions::inactive(&shape), "unit busy");
             if dir.join("execution").try_exists()? {
@@ -490,16 +551,19 @@ async fn system(local: &LocalContext, args: &[&str], id: Option<&str>) -> Result
         .take()
         .ok_or_else(|| anyhow!("manager output missing"))?
         .take(16385);
-    let result = tokio::time::timeout(Duration::from_secs(15), async {
-        let mut bytes = Vec::new();
-        out.read_to_end(&mut bytes).await?;
-        ensure!(bytes.len() <= 16384, "manager output exceeded limit");
-        ensure!(
-            child.wait().await?.success(),
-            "user manager operation failed"
-        );
-        Ok::<_, anyhow::Error>(String::from_utf8(bytes)?)
-    })
+    let result = tokio::time::timeout(
+        Duration::from_secs(if args == ["start"] { 80 } else { 15 }),
+        async {
+            let mut bytes = Vec::new();
+            out.read_to_end(&mut bytes).await?;
+            ensure!(bytes.len() <= 16384, "manager output exceeded limit");
+            ensure!(
+                child.wait().await?.success(),
+                "user manager operation failed"
+            );
+            Ok::<_, anyhow::Error>(String::from_utf8(bytes)?)
+        },
+    )
     .await;
     match result {
         Ok(Ok(s)) => Ok(s),

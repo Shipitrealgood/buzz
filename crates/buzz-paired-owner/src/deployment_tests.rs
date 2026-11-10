@@ -28,6 +28,7 @@ fn protected_main_snapshot_same_key_expiry_tamper_and_terminal_receipt() {
         content_sha256: String::new(),
     };
     let status = d::Status {
+        inventory: None,
         scope: scope.clone(),
         availability: d::Availability::Current,
         capability: d::Capability::Supported {
@@ -189,6 +190,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         generation: "ab".repeat(32),
     };
     let status = d::Status {
+        inventory: None,
         scope: scope.clone(),
         availability: d::Availability::Current,
         capability: d::Capability::Supported {
@@ -324,6 +326,8 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             applied_revision: Some(intent.protected.authority.expected_revision + 1),
         },
         observation: Some(Observation {
+            readiness: Some(buzz_core::harness::Readiness::LoggedIn),
+            availability: Some(buzz_core::harness::AcpAvailabilityStatus::Available),
             scope: scope.clone(),
             agent: agent.public_key(),
             runtime_id: config.runtime_id.clone(),
@@ -333,8 +337,8 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             action_id: "de".repeat(32),
             observed_at: now().unwrap(),
             expires_at: now().unwrap() + 120,
-            login: LoginState::Succeeded,
-            login_at: Some(now().unwrap()),
+            login: LoginState::NotObserved,
+            login_at: None,
             models: Models::Available {
                 catalog: catalog.clone(),
             },
@@ -342,11 +346,9 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     };
     let mut initial_body = body_for(&first);
     let initial_observation = initial_body.observation.as_mut().unwrap();
-    initial_observation.login = LoginState::NotObserved;
-    initial_observation.login_at = None;
-    initial_observation.models = Models::Unavailable {
-        reason: d::observation::UnavailableReason::NetworkDisabled,
-    };
+    initial_observation.readiness = Some(buzz_core::harness::Readiness::LoggedOut);
+    initial_observation.login = LoginState::Succeeded;
+    initial_observation.login_at = Some(now().unwrap());
     let receipt = wire::result_body(&host, &initial_body, now().unwrap()).unwrap();
     let current = serde_json::json!({"event":first.event,"result":serde_json::to_string(&receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":1});
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -477,6 +479,23 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         .unwrap();
     assert!(read.current && read.admitted);
     assert_eq!(read.unit.as_deref(), Some("ef".repeat(32).as_str()));
+    let mut stale_login_snapshot = snapshot.clone();
+    stale_login_snapshot["record"]["model"] = "opaque/model:1".into();
+    let refused = management
+        .continue_deployment(
+            &mut device,
+            &signer,
+            &first.protected.authority.operation_id,
+            &status,
+            d::ModelSelection::Selected {
+                id: "opaque/model:1".into(),
+            },
+            stale_login_snapshot,
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(refused.to_string().contains("current host readiness"));
     let refreshed = management
         .continue_deployment(
             &mut device,
@@ -902,6 +921,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     let mut expired_body = body_for(&expired);
     let observation = expired_body.observation.as_mut().unwrap();
     observation.observed_at = now().unwrap() - 60;
+    observation.login = LoginState::Succeeded;
     observation.login_at = Some(now().unwrap() - 60);
     observation.expires_at = now().unwrap() - 1;
     let receipt = wire::result_body(&host, &expired_body, now().unwrap() - 60).unwrap();

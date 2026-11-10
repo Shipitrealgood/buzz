@@ -83,7 +83,7 @@ export function HostedAgentSetup({
     unverified: "Check status to continue",
     unadmitted: "Admission pending",
     pending: "Preparing",
-    "needs-login": "Login and model setup",
+    "needs-login": "Host readiness and model setup",
     applied: "Deployment applied",
     failed: "Deployment failed",
     conflict: "Placement conflict",
@@ -102,11 +102,12 @@ export function HostedAgentSetup({
       {observation ? (
         <div className="space-y-1 text-sm">
           <p>
-            Native login:{" "}
-            {observation.login === "not-observed"
-              ? "Needs login"
-              : observation.login}
+            Host readiness:{" "}
+            {observation.readiness === "not-applicable"
+              ? "Authentication not checked by this harness"
+              : (observation.readiness ?? "Unknown — refresh required")}
           </p>
+          <p>Runtime: {observation.availability ?? "unknown"}</p>
           <p>
             Models:{" "}
             {observation.models.state === "unavailable"
@@ -118,21 +119,16 @@ export function HostedAgentSetup({
         </div>
       ) : (
         <p className="text-sm">
-          Login and models are pending or unavailable. Check status for current
-          evidence.
+          Readiness and models are pending or unavailable. Check status for
+          current evidence.
         </p>
       )}
-      {observation?.login !== "succeeded" ? (
-        <p className="text-sm">
-          Complete native login on this host in this agent’s prepared context,
-          then Refresh models.
-        </p>
-      ) : null}
-      {setup.unit && observation?.login !== "succeeded" ? (
-        <code className="block break-all text-xs">
-          buzz-host-activate --login {setup.unit}
-        </code>
-      ) : null}
+      <p className="text-sm">
+        Install and configure the native harness on {hostLabel ?? "this host"}{" "}
+        using its normal account and native sign-in command, then Refresh. A
+        login check and model list do not establish subscription access or
+        remaining usage.
+      </p>
       <PersonaModelField
         disabled={pending || !catalog}
         isExplicitModelRequired
@@ -147,7 +143,7 @@ export function HostedAgentSetup({
             ? {
                 tone: "warning",
                 message:
-                  "A fresh model observation and successful native login are required to launch.",
+                  "Current host readiness and a fresh model list are required to start.",
               }
             : null
         }
@@ -188,14 +184,14 @@ export function HostedAgentSetup({
           }
           onClick={() => void act({ type: "refresh" })}
         >
-          Refresh models
+          Refresh
         </Button>
         <Button
           type="button"
           disabled={pending || !catalog?.models.some((m) => m.id === model)}
           onClick={() => void act({ type: "launch", model })}
         >
-          Launch
+          Start
         </Button>
         {onClose ? (
           <Button type="button" variant="outline" onClick={onClose}>

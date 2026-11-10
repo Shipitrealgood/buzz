@@ -517,6 +517,8 @@ fn stopped_login_handover_retains_outcome_and_refresh_retires_outputs() {
         )
         .unwrap();
         let result = ActionResult {
+            readiness: None,
+            availability: None,
             execution: e.clone(),
             finished: true,
             observed_at: nostr::Timestamp::now().as_secs(),

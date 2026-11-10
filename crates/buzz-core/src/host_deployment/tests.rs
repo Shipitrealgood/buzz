@@ -110,6 +110,7 @@ fn registration_unsupported_empty_stale_revoked_never_permit_deploy() {
             Availability::Current,
         ] {
             let status = Status {
+                inventory: None,
                 scope: s.clone(),
                 capability: capability.clone(),
                 availability: availability.clone(),

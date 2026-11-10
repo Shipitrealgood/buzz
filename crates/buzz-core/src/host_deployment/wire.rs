@@ -378,6 +378,10 @@ pub fn open_result(keys: &Keys, event: &Event, request: &Authority) -> Result<De
 /// Publish only actual installed catalog evidence while host management is enabled.
 pub fn status(keys: &Keys, value: &Status, now: u64) -> Result<Event> {
     value.capability.validate()?;
+    value.validate_inventory()?;
+    if serde_json::to_vec(value).map_err(|_| Error)?.len() > 8192 {
+        return Err(Error);
+    }
     if keys.public_key() != value.scope.host
         || value.expires_at <= now
         || value.expires_at > now + 120
@@ -405,6 +409,7 @@ pub fn open_status(keys: &Keys, e: &Event, scope: &Scope, now: u64) -> Result<St
     )?;
     let r: Status = decrypted(keys, e, 8192)?;
     r.capability.validate()?;
+    r.validate_inventory()?;
     if keys.public_key() != scope.owner
         || r.scope != *scope
         || h != (Header::Status {

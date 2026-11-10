@@ -73,6 +73,8 @@ impl Helper {
             login: result.login,
             login_at: result.login_at,
             models: result.models,
+            readiness: result.readiness,
+            availability: result.availability,
         };
         if serde_json::to_vec(&o)?.len() > 2048 {
             o.models = Models::Unavailable {
@@ -300,20 +302,17 @@ impl Host {
             catalog.community.as_ref() == Some(&scope.community) && catalog.current(revision)?,
             "catalog changed or wrong community"
         );
-        let runtimes: Vec<String> = catalog
-            .runtimes
-            .iter()
-            .filter(|(_, r)| {
-                r.credential_profile == "none"
-                    && r.harness.available().is_ok()
-                    && r.adapter.available().is_ok()
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
+        let runtimes: Vec<String> = catalog.runtimes.keys().cloned().collect();
+        let inventory = crate::discovery::inventory(catalog).await;
         let now = nostr::Timestamp::now().as_secs();
-        let status = Status {
+        let mut status = Status {
             scope: scope.clone(),
-            availability: Availability::Current,
+            availability: if inventory.is_some() {
+                Availability::Current
+            } else {
+                Availability::Unavailable
+            },
+            inventory,
             capability: Capability::Supported {
                 catalog_revision: revision.into(),
                 harnesses: runtimes
@@ -329,6 +328,11 @@ impl Host {
             },
             expires_at: now + 120,
         };
+        if serde_json::to_vec(&status)?.len() > 8192 {
+            status.inventory = None;
+            status.availability = Availability::Unavailable;
+            status.capability = Capability::Unsupported {};
+        }
         let previous: Option<String> = self
             .store
             .0

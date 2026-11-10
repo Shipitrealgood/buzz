@@ -178,8 +178,8 @@ impl Management {
             let observation = body.observation.as_ref().context("models unavailable")?;
             observation.current(&body.result, &config, now()?)?;
             ensure!(
-                observation.login == observation::LoginState::Succeeded,
-                "native login not complete"
+                observation.permits_attempt(),
+                "current host readiness unavailable"
             );
             let observation::Models::Available { catalog } = &observation.models else {
                 bail!("models unavailable");

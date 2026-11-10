@@ -228,7 +228,9 @@ test("host catalog and model evidence remain exact-scope and freshness bound", a
     operation_id: "operation",
     revision: 2,
     expires_at: 2,
-    login: "succeeded",
+    login: "not-observed",
+    readiness: "logged-in",
+    availability: "available",
     models: { state: "available", catalog: models },
   };
   const setup = {
@@ -251,7 +253,21 @@ test("host catalog and model evidence remain exact-scope and freshness bound", a
       currentHostedModels(
         {
           ...mapped,
-          observation: { ...mapped.observation, login: "not-observed" },
+          observation: { ...mapped.observation, readiness: "not-applicable" },
+        },
+        1000,
+      ),
+      models,
+    );
+    assert.equal(
+      currentHostedModels(
+        {
+          ...mapped,
+          observation: {
+            ...mapped.observation,
+            login: "succeeded",
+            readiness: "logged-out",
+          },
         },
         1000,
       ),
@@ -264,7 +280,9 @@ test("host catalog and model evidence remain exact-scope and freshness bound", a
     ["operation_id", "old"],
     ["revision", 1],
     ["expires_at", 1],
-    ["login", "failed"],
+    ["readiness", "unknown"],
+    ["readiness", undefined],
+    ["availability", "cli_missing"],
     ["models", { state: "empty" }],
     ["scope", { ...scope, owner: "other" }],
   ])

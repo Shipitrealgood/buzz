@@ -34,10 +34,17 @@ elif verb!='daemon-reload': raise AssertionError(verb)
     fs::create_dir(&workspace).unwrap();
     fs::write(home.join("provider-login"), "fixture-only").unwrap();
     fs::write(workspace.join("user-work"), "keep").unwrap();
+    let tools = dir.path().join("tools");
+    fs::create_dir(&tools).unwrap();
+    fs::write(tools.join("grok"), "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(tools.join("grok"), fs::Permissions::from_mode(0o700)).unwrap();
+    catalog.runtimes.get_mut("native/grok").unwrap().args =
+        vec!["agent".into(), "--always-approve".into(), "stdio".into()];
     catalog.local = Some(LocalContext {
+        buzz_acp: None,
         home,
         workspace,
-        tool_path: "/usr/bin:/bin".into(),
+        tool_path: format!("{}:/usr/bin:/bin", tools.display()),
         environment: BTreeMap::new(),
         unit_dir: dir.path().join("units"),
         launcher: "/usr/bin/true".into(),
@@ -101,7 +108,7 @@ async fn prepare_replay_restart_and_identity_fences_precede_effects() {
         .await
         .unwrap_err()
         .to_string()
-        .contains("readiness"));
+        .contains("model selection pending"));
     assert!(!calls(dir.path()).contains(" start "));
     assert!(reopened.action("login", &id).await.is_err());
     assert!(reopened.action("prepare", "../escape").await.is_err());
@@ -242,7 +249,7 @@ import os,sys,json
 assert os.getuid()!=0
 assert os.environ['HOME']=={home:?}
 assert os.getcwd()=={workspace:?}
-assert os.environ['PATH']=='/usr/bin:/bin'
+assert os.environ['PATH']=={tool_path:?}
 assert 'GROK_HOME' not in os.environ
 assert 'BUZZ_PRIVATE_KEY' not in os.environ
 assert 'BUZZ_AUTH_TAG' not in os.environ
@@ -251,7 +258,8 @@ assert os.environ['BUZZ_ACP_AGENT_ARGS']=='locally-configured'
 print(json.dumps({{'unstable':{{'availableModels':[{{'modelId':'synthetic','name':'Synthetic'}}]}}}}))
 "#,
             home = local.home.to_str().unwrap(),
-            workspace = local.workspace.to_str().unwrap()
+            workspace = local.workspace.to_str().unwrap(),
+            tool_path = local.tool_path
         ),
     )
     .unwrap();
@@ -458,4 +466,338 @@ async fn cleanup_after_launch_paths_move_does_not_require_current_catalog() {
         assert!(moved_home.join("provider-login").is_file());
         assert!(moved_repo.join("user-work").is_file());
     }
+}
+
+fn script(path: &Path, source: &str) {
+    fs::write(path, source).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+}
+fn save_catalog(service: &UserService, prepared: &mut Prepared, catalog: &Catalog) -> Catalog {
+    write_json(&service.staging, "deployment.json", catalog).unwrap();
+    let (cat, revision) = service.catalog().unwrap();
+    prepared.instance.revision = revision.clone();
+    prepared
+        .instance
+        .deployment
+        .as_mut()
+        .unwrap()
+        .config
+        .catalog_revision = revision;
+    cat
+}
+fn account_context(service: &UserService, prepared: &Prepared, catalog: &Catalog) -> Context {
+    Context {
+        account: catalog.local.clone(),
+        home: service.dir(&prepared.instance.unit_id),
+        runtime: service.dir(&prepared.instance.unit_id),
+        notify: Default::default(),
+    }
+}
+
+#[tokio::test]
+async fn automatic_main_candidates_resolve_each_account_without_manual_rows() {
+    use buzz_core::harness::{AcpAvailabilityStatus as A, Readiness};
+    let (dir, service, mut prepared, mut cat) = fixture();
+    cat.runtimes.clear();
+    cat.local.as_mut().unwrap().buzz_acp = Some("/usr/bin/true".into());
+    let tools = dir.path().join("tools");
+    script(&tools.join("claude-agent-acp"), "#!/bin/sh\nexit 0\n");
+    script(
+        &tools.join("claude"),
+        "#!/bin/sh\ntest \"$1 $2\" = 'auth status' || exit 3\nexit 0\n",
+    );
+    script(
+        &tools.join("codex-acp"),
+        "#!/bin/sh\necho 'codex-acp 1.10.0'\n",
+    );
+    script(&tools.join("codex"), "#!/bin/sh\nexit 0\n");
+    let cat = save_catalog(&service, &mut prepared, &cat);
+    assert!(cat.runtimes.contains_key("main/claude"));
+    assert!(cat.runtimes.contains_key("main/grok"));
+    let ctx = account_context(&service, &prepared, &cat);
+    let inventory = crate::discovery::inventory(&cat).await.unwrap();
+    assert_eq!(inventory["main/claude"].availability, A::Available);
+    assert_eq!(inventory["main/codex"].version.as_deref(), Some("1.10.0"));
+    assert_eq!(
+        crate::discovery::readiness(
+            &ctx,
+            &cat.runtimes["main/claude"],
+            &inventory["main/claude"]
+        )
+        .await,
+        Readiness::LoggedIn
+    );
+    assert_eq!(
+        crate::discovery::readiness(&ctx, &cat.runtimes["main/grok"], &inventory["main/grok"])
+            .await,
+        Readiness::NotApplicable
+    );
+    fs::remove_file(tools.join("claude")).unwrap();
+    assert_eq!(
+        crate::discovery::inspect(&ctx, &cat.runtimes["main/claude"])
+            .await
+            .availability,
+        A::CliMissing
+    );
+    script(&tools.join("claude"), "#!/bin/sh\nexit 0\n");
+    fs::remove_file(tools.join("claude-agent-acp")).unwrap();
+    assert_eq!(
+        crate::discovery::inspect(&ctx, &cat.runtimes["main/claude"])
+            .await
+            .availability,
+        A::AdapterMissing
+    );
+    script(
+        &tools.join("codex-acp"),
+        "#!/bin/sh\necho 'codex-acp 1.6.2'\n",
+    );
+    assert_eq!(
+        crate::discovery::inspect(&ctx, &cat.runtimes["main/codex"])
+            .await
+            .availability,
+        A::AdapterOutdated
+    );
+    let mut other = cat;
+    let empty = dir.path().join("empty-tools");
+    fs::create_dir(&empty).unwrap();
+    other.local.as_mut().unwrap().tool_path = empty.display().to_string();
+    let other = save_catalog(&service, &mut prepared, &other);
+    let inventory = crate::discovery::inventory(&other).await.unwrap();
+    assert_eq!(inventory["main/grok"].availability, A::NotInstalled);
+    assert_eq!(inventory["main/claude"].availability, A::NotInstalled);
+    assert!(!inventory["main/goose"].config_supported);
+}
+
+#[tokio::test]
+async fn current_native_status_is_independent_of_history_models_and_entitlement() {
+    use buzz_core::harness::{AcpAvailabilityStatus as A, Readiness};
+    let (dir, service, mut prepared, mut cat) = fixture();
+    let tools = dir.path().join("tools");
+    script(&tools.join("claude-agent-acp"), "#!/bin/sh\nexit 0\n");
+    let mut rt = cat.runtimes.remove("native/grok").unwrap();
+    rt.harness_id = Some("claude".into());
+    rt.args.clear();
+    cat.runtimes.insert("native/claude".into(), rt);
+    prepared.instance.runtime_id = "native/claude".into();
+    let config = &mut prepared.instance.deployment.as_mut().unwrap().config;
+    config.runtime_id = "native/claude".into();
+    config.model = buzz_core::host_deployment::ModelSelection::Selected {
+        id: "chosen".into(),
+    };
+    script(&tools.join("claude"), "#!/bin/sh\nexit 0\n");
+    let cat = save_catalog(&service, &mut prepared, &cat);
+    let ctx = account_context(&service, &prepared, &cat);
+    let rt = &cat.runtimes["native/claude"];
+    let facts = crate::discovery::inspect(&ctx, rt).await;
+    let mut result = ActionResult {
+        execution: Execution::new(
+            &prepared.instance,
+            Mode::Models,
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap(),
+        finished: true,
+        observed_at: nostr::Timestamp::now().as_secs(),
+        login: buzz_core::host_deployment::observation::LoginState::NotObserved,
+        login_at: None,
+        login_output: String::new(),
+        availability: Some(A::Available),
+        readiness: Some(crate::discovery::readiness(&ctx, rt, &facts).await),
+        models: buzz_core::host_deployment::observation::Models::Available {
+            catalog: buzz_core::agent_models::normalize_agent_models(
+                &serde_json::json!({"unstable":{"availableModels":[{"modelId":"chosen"}]}}),
+                None,
+            ),
+        },
+    };
+    assert_eq!(result.readiness, Some(Readiness::LoggedIn));
+    crate::runtime_context::require_ready_selection(&prepared.instance, &result).unwrap();
+    result.login = buzz_core::host_deployment::observation::LoginState::Succeeded;
+    result.login_at = Some(result.observed_at);
+    for (body, expected) in [
+        ("#!/bin/sh\nexit 1\n", Readiness::LoggedOut),
+        (
+            "#!/bin/sh\necho 'Error loading configuration: unknown variant SECRET' >&2\nexit 1\n",
+            Readiness::ConfigInvalid,
+        ),
+        ("#!/bin/sh\nsleep 10\n", Readiness::Unknown),
+        ("#!/usr/bin/python3\nprint('x'*9000)\n", Readiness::Unknown),
+    ] {
+        script(&tools.join("claude"), body);
+        result.readiness = Some(crate::discovery::readiness(&ctx, rt, &facts).await);
+        assert_eq!(result.readiness, Some(expected));
+        assert!(
+            crate::runtime_context::require_ready_selection(&prepared.instance, &result).is_err()
+        );
+        assert!(!serde_json::to_string(&result).unwrap().contains("SECRET"));
+    }
+    result.readiness = Some(Readiness::LoggedIn);
+    result.execution.catalog = "ff".repeat(32);
+    assert!(crate::runtime_context::require_ready_selection(&prepared.instance, &result).is_err());
+}
+
+#[tokio::test]
+#[ignore = "requires built BUZZ_TEST_RUNTIME and BUZZ_TEST_ACP; synthetic executables only"]
+async fn actual_user_runtime_prepare_refresh_selected_conversation_and_cleanup() {
+    use buzz_core::{
+        harness::Readiness,
+        host_deployment::{observation::Models, ModelSelection},
+    };
+    let (dir, service, mut prepared, mut cat) = fixture();
+    let runtime = PathBuf::from(std::env::var_os("BUZZ_TEST_RUNTIME").unwrap());
+    let acp = PathBuf::from(std::env::var_os("BUZZ_TEST_ACP").unwrap());
+    let tools = dir.path().join("tools");
+    let workspace = cat.local.as_ref().unwrap().workspace.clone();
+    script(
+        &tools.join("claude"),
+        "#!/bin/sh\ntest \"$1 $2\" = 'auth status' || exit 3\ntest ! -f logged-out\n",
+    );
+    script(
+        &tools.join("claude-agent-acp"),
+        r#"#!/usr/bin/python3
+import json,os,sys
+assert 'BUZZ_PRIVATE_KEY' not in os.environ
+for line in sys.stdin:
+ m=json.loads(line)
+ if m.get('method')=='initialize': r={'protocolVersion':1,'agentInfo':{'name':'synthetic','version':'1'},'agentCapabilities':{}}
+ elif m.get('method')=='session/new':
+  assert m['params'].get('mcpServers',[])==[]
+  r={'sessionId':'s','configOptions':[{'category':'model','id':'model','currentValue':'chosen','type':'select','options':[{'value':'chosen','name':'Chosen'}]}]}
+ else: raise AssertionError(str(m.get('method')))
+ print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)
+"#,
+    );
+    let harness = tools.join("fixture-buzz-acp");
+    script(
+        &harness,
+        &format!(
+            r#"#!/usr/bin/python3
+import os,sys,json,socket
+if sys.argv[1:]==['models','--json']:
+ os.execv({acp:?},[{acp:?},'models','--json'])
+assert sys.argv[1:]==[]
+assert os.getcwd()=={workspace:?}
+assert os.environ['HOME']=={home:?}
+assert os.environ['PATH']=={path:?}
+assert os.environ['BUZZ_PRIVATE_KEY']=={secret:?}
+assert os.environ['BUZZ_AUTH_TAG']=={auth:?}
+assert os.environ['BUZZ_ACP_AGENT_OWNER']=={owner:?}
+assert os.environ['BUZZ_ACP_AGENT_COMMAND']=={adapter:?}
+assert os.environ['BUZZ_ACP_AGENT_ARGS']==''
+assert os.environ['BUZZ_ACP_RESPOND_TO']=='owner-only'
+assert os.environ['BUZZ_ACP_MODEL']=='chosen'
+assert os.environ['BUZZ_ACP_STRICT_MODEL']=='true'
+assert os.environ['BUZZ_ACP_EXIT_AFTER_INACTIVITY']=='0'
+assert os.environ['BUZZ_RELAY_URL']=='wss://fixture.test'
+assert 'GROK_HOME' not in os.environ
+open('conversation-invoked','w').write('checked')
+s=socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM);s.connect(os.environ['NOTIFY_SOCKET']);s.send(b'READY=1')
+"#,
+            acp = acp.display().to_string(),
+            workspace = workspace.display().to_string(),
+            home = cat.local.as_ref().unwrap().home.display().to_string(),
+            path = cat.local.as_ref().unwrap().tool_path,
+            secret = prepared.instance.secret,
+            auth = prepared.instance.oa,
+            owner = prepared.instance.scope.owner.to_hex(),
+            adapter = tools.join("claude-agent-acp").display().to_string()
+        ),
+    );
+    cat.runtimes.clear();
+    cat.local.as_mut().unwrap().buzz_acp = Some(harness);
+    prepared.instance.runtime_id = "main/claude".into();
+    prepared
+        .instance
+        .deployment
+        .as_mut()
+        .unwrap()
+        .config
+        .runtime_id = "main/claude".into();
+    let cat = save_catalog(&service, &mut prepared, &cat);
+    let id = prepared.instance.unit_id.clone();
+    let id = id.as_str();
+    service.stage(&prepared.instance).unwrap();
+    service.action("prepare", id).await.unwrap();
+    let notify = dir.path().join("notify-user-runtime");
+    let socket = std::os::unix::net::UnixDatagram::bind(&notify).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let run = || {
+        let mut c = tokio::process::Command::new(&runtime);
+        c.args([
+            std::ffi::OsStr::new("--user-service"),
+            service.staging.as_os_str(),
+            std::ffi::OsStr::new(id),
+        ])
+        .env_clear()
+        .env("CREDENTIALS_DIRECTORY", service.dir(id))
+        .env("NOTIFY_SOCKET", &notify)
+        .kill_on_drop(true);
+        c
+    };
+    let action: Execution =
+        serde_json::from_str(&service.action("models", id).await.unwrap()).unwrap();
+    let status = run().status().await.unwrap();
+    assert!(status.success());
+    fs::remove_file(dir.path().join("active")).unwrap();
+    let result: ActionResult = serde_json::from_str(
+        &service
+            .request("observe", id, Some(&action.nonce))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result.readiness, Some(Readiness::LoggedIn));
+    assert!(
+        matches!(result.models,Models::Available { ref catalog } if catalog.models.iter().any(|m| m.id=="chosen"))
+    );
+    assert_eq!(
+        result.login,
+        buzz_core::host_deployment::observation::LoginState::NotObserved
+    );
+    prepared.instance.deployment.as_mut().unwrap().revision += 1;
+    prepared.instance.deployment.as_mut().unwrap().config.model = ModelSelection::Selected {
+        id: "chosen".into(),
+    };
+    service.stage(&prepared.instance).unwrap();
+    service.action("prepare", id).await.unwrap();
+    assert_eq!(service.action("start", id).await.unwrap(), "active\n");
+    let mut buf = [0; 32];
+    while socket.recv(&mut buf).is_ok() {}
+    assert!(run().status().await.unwrap().success());
+    assert_eq!(
+        fs::read_to_string(workspace.join("conversation-invoked")).unwrap(),
+        "checked"
+    );
+    assert_eq!(socket.recv(&mut buf).unwrap(), 7);
+    assert!(
+        socket.recv(&mut buf).is_err(),
+        "internal recheck must not notify READY before main launch"
+    );
+    // Exact retry retains identity and execution; never emits another start or probe.
+    let before = calls(dir.path());
+    service.stage(&prepared.instance).unwrap();
+    service.action("prepare", id).await.unwrap();
+    assert_eq!(service.action("start", id).await.unwrap(), "active\n");
+    assert_eq!(
+        before.matches(" start").count(),
+        calls(dir.path()).matches(" start").count()
+    );
+    // Same runtime entry rechecks native login immediately before launch, ignoring earlier success.
+    fs::remove_file(workspace.join("conversation-invoked")).unwrap();
+    fs::write(workspace.join("logged-out"), "").unwrap();
+    assert!(!run().status().await.unwrap().success());
+    assert!(!workspace.join("conversation-invoked").exists());
+    assert!(socket.recv(&mut buf).is_err());
+    fs::remove_file(workspace.join("logged-out")).unwrap();
+    // Selected model membership is checked by the same production entry.
+    prepared.instance.deployment.as_mut().unwrap().config.model = ModelSelection::Selected {
+        id: "absent".into(),
+    };
+    write_json(&service.dir(id), "instance", &prepared).unwrap();
+    assert!(!run().status().await.unwrap().success());
+    assert!(!workspace.join("conversation-invoked").exists());
+    service.action("cleanup", id).await.unwrap();
+    assert!(!service.dir(id).exists());
+    assert!(cat.local.unwrap().home.join("provider-login").is_file());
+    assert!(workspace.join("user-work").is_file());
 }

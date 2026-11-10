@@ -57,11 +57,11 @@ pub enum Models {
 pub struct Observation {
     /// Existing enrollment and owner scope.
     pub scope: Scope,
-    /// Agent whose private HOME supplied the observation.
+    /// Agent whose configured execution context supplied the observation.
     pub agent: PublicKey,
     /// Installed runtime identifier.
     pub runtime_id: String,
-    /// Hash of the approved catalog bytes.
+    /// Revision of local configuration and resolved main candidates.
     pub catalog_revision: String,
     /// Exact preparation/refresh operation.
     pub operation_id: String,
@@ -77,6 +77,12 @@ pub struct Observation {
     pub login: LoginState,
     /// Native login outcome timestamp, absent only when not observed.
     pub login_at: Option<u64>,
+    /// Current same-account readiness; old observations remain unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<crate::harness::Readiness>,
+    /// Current main runtime classification, independent of models/authentication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability: Option<crate::harness::AcpAvailabilityStatus>,
     /// Independent complete model observation.
     pub models: Models,
 }
@@ -106,6 +112,13 @@ pub fn validate_models(c: &AgentModelsResponse) -> Result<()> {
     Ok(())
 }
 impl Observation {
+    /// Current runtime/readiness permits an attempt, never proves entitlement.
+    pub fn permits_attempt(&self) -> bool {
+        self.availability == Some(crate::harness::AcpAvailabilityStatus::Available)
+            && self
+                .readiness
+                .is_some_and(crate::harness::Readiness::permits_attempt)
+    }
     /// Validate historical binding. Freshness is checked separately at consumption.
     pub fn validate(&self, r: &DeploymentResult) -> Result<()> {
         r.validate(&r.request)?;

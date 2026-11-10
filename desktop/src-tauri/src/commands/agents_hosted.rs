@@ -236,6 +236,19 @@ impl Create<'_> {
                 nostr::Timestamp::now().as_secs(),
             )
             .map_err(|e| e.to_string())?;
+        if !self
+            .status
+            .inventory
+            .as_ref()
+            .and_then(|facts| facts.get(&self.runtime))
+            .is_some_and(|facts| {
+                facts.config_supported
+                    && facts.availability
+                        == buzz_core_pkg::harness::AcpAvailabilityStatus::Available
+            })
+        {
+            return Err("Current supported host runtime inventory unavailable".into());
+        }
         let metadata = harnesses
             .get(&self.runtime)
             .and_then(|id| crate::managed_agents::hosted_runtime_metadata(id))

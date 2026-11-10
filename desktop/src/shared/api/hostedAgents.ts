@@ -20,6 +20,14 @@ export type HostedObservation = {
   revision: number;
   action_id: string;
   expires_at: number;
+  readiness?:
+    | "logged-in"
+    | "logged-out"
+    | "not-applicable"
+    | "unknown"
+    | "config-invalid"
+    | "unsupported";
+  availability?: string;
   login: "not-observed" | "in-progress" | "succeeded" | "cancelled" | "failed";
   models:
     | { state: "available"; catalog: AgentModelsResponse }
@@ -118,7 +126,8 @@ export function currentHostedModels(
     o.runtime_id !== setup.runtime ||
     o.revision !== setup.revision ||
     !sameHostScope(o.scope, setup.scope) ||
-    o.login !== "succeeded" ||
+    o.availability !== "available" ||
+    !["logged-in", "not-applicable"].includes(o.readiness ?? "unknown") ||
     o.models.state !== "available"
   )
     return null;

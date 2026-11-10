@@ -106,8 +106,15 @@ impl Catalog {
         let bytes = bounded(path, 16384)?;
         let mut cat: Self = serde_json::from_slice(&bytes)?;
         cat.validate()?;
+        crate::discovery::resolve_catalog(&mut cat)?;
+        cat.validate()?;
+        let resolved = if cat.local.is_some() {
+            serde_json::to_vec(&cat)?
+        } else {
+            Vec::new()
+        };
         cat.source = Some(path.into());
-        Ok((cat, hex::encode(Sha256::digest(bytes))))
+        Ok((cat, hex::encode(Sha256::digest([bytes, resolved].concat()))))
     }
     pub fn current(&self, revision: &str) -> Result<bool> {
         let path = self
@@ -120,7 +127,8 @@ impl Catalog {
         ensure!(
             display_name(&self.label)
                 && self.capacity > 0
-                && !self.runtimes.is_empty()
+                && (!self.runtimes.is_empty()
+                    || self.local.as_ref().is_some_and(|l| l.buzz_acp.is_some()))
                 && self.runtimes.len() <= 64,
             "invalid catalog"
         );
@@ -458,3 +466,6 @@ pub mod service_actions;
 
 /// Fixed trusted-account user services for registered-host deployment.
 pub mod user_service;
+
+/// Main registry discovery in the configured account context.
+pub mod discovery;

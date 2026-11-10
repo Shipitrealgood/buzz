@@ -120,15 +120,35 @@ pub struct Status {
     pub availability: Availability,
     /// Explicit supported protocol/catalog evidence.
     pub capability: Capability,
+    /// Main candidate facts from this host, absent on older hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory: Option<std::collections::BTreeMap<String, crate::harness::RuntimeFacts>>,
     /// Exclusive freshness deadline of this observation.
     pub expires_at: u64,
 }
 impl Status {
+    /// Validate bounded facts without accepting paths, output or unknown runtime IDs.
+    pub fn validate_inventory(&self) -> Result<()> {
+        if let Some(inventory) = &self.inventory {
+            let Capability::Supported { runtimes, .. } = &self.capability else {
+                return Err(Error);
+            };
+            if inventory.len() > 64
+                || inventory
+                    .iter()
+                    .any(|(id, fact)| !runtimes.contains(id) || !fact.valid())
+            {
+                return Err(Error);
+            }
+        }
+        Ok(())
+    }
     /// Validate current scope and approved catalog for a prospective deployment.
     /// This is data validation, not a signature/membership/revocation check.
     pub fn permits(&self, scope: &Scope, catalog: &str, runtime: &str, now: u64) -> Result<()> {
         validate_scope(scope)?;
         self.capability.validate()?;
+        self.validate_inventory()?;
         if self.scope != *scope
             || self.availability != Availability::Current
             || now >= self.expires_at

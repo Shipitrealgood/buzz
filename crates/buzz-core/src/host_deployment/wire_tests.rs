@@ -109,6 +109,7 @@ fn result_binding_and_permit_challenge_are_not_interchangeable() {
 fn status_is_host_signed_scoped_and_expires() {
     let (owner, host, a) = input();
     let s = Status {
+        inventory: None,
         scope: a.scope,
         availability: Availability::Current,
         capability: Capability::Supported {
@@ -238,6 +239,8 @@ fn private_observation_is_bound_bounded_historical_and_legacy_compatible() {
         applied_revision: Some(2),
     };
     let o = Observation {
+        readiness: Some(crate::harness::Readiness::LoggedIn),
+        availability: Some(crate::harness::AcpAvailabilityStatus::Available),
         scope: a.scope.clone(),
         agent: a.agent,
         runtime_id: "native/grok".into(),
@@ -259,6 +262,12 @@ fn private_observation_is_bound_bounded_historical_and_legacy_compatible() {
             ),
         },
     };
+    let mut legacy_json = serde_json::to_value(&o).unwrap();
+    legacy_json.as_object_mut().unwrap().remove("readiness");
+    legacy_json.as_object_mut().unwrap().remove("availability");
+    let legacy_observation: Observation = serde_json::from_value(legacy_json).unwrap();
+    assert!(!legacy_observation.permits_attempt());
+    assert!(o.permits_attempt());
     let body = ResultBody {
         result: result.clone(),
         observation: Some(o.clone()),
@@ -360,4 +369,69 @@ fn private_observation_is_bound_bounded_historical_and_legacy_compatible() {
         .sign_with_keys(&host)
         .unwrap();
     assert!(open_result_body(&owner, &forged, &a).is_err());
+}
+
+#[test]
+fn optional_host_facts_are_bounded_and_old_messages_stay_unknown() {
+    use crate::harness::{AcpAvailabilityStatus, RuntimeFacts};
+    let (owner, host, a) = input();
+    let mut s = Status {
+        scope: a.scope,
+        availability: Availability::Current,
+        expires_at: 200,
+        capability: Capability::Supported {
+            catalog_revision: "cc".repeat(32),
+            runtimes: vec!["main/claude".into()],
+            harnesses: [("main/claude".into(), "claude".into())].into(),
+        },
+        inventory: None,
+    };
+    let old = serde_json::to_value(&s).unwrap();
+    assert!(old.get("inventory").is_none());
+    assert!(serde_json::from_value::<Status>(old)
+        .unwrap()
+        .inventory
+        .is_none());
+    s.inventory = Some(
+        [(
+            "main/claude".into(),
+            RuntimeFacts {
+                availability: AcpAvailabilityStatus::CliMissing,
+                version: None,
+                config_supported: true,
+            },
+        )]
+        .into(),
+    );
+    let event = status(&host, &s, 100).unwrap();
+    assert_eq!(open_status(&owner, &event, &s.scope, 100).unwrap(), s);
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    #[allow(dead_code)]
+    struct OldStatus {
+        scope: Scope,
+        availability: Availability,
+        capability: Capability,
+        expires_at: u64,
+    }
+    assert!(serde_json::from_value::<OldStatus>(serde_json::to_value(&s).unwrap()).is_err());
+    s.inventory
+        .as_mut()
+        .unwrap()
+        .get_mut("main/claude")
+        .unwrap()
+        .version = Some("secret/path".into());
+    assert!(status(&host, &s, 100).is_err());
+    s.inventory.as_mut().unwrap().clear();
+    for index in 0..65 {
+        s.inventory.as_mut().unwrap().insert(
+            format!("main/c{index}"),
+            RuntimeFacts {
+                availability: AcpAvailabilityStatus::Available,
+                version: None,
+                config_supported: true,
+            },
+        );
+    }
+    assert!(status(&host, &s, 100).is_err());
 }
