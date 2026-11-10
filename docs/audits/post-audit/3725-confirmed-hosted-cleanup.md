@@ -1,8 +1,12 @@
 # #3725 confirmed hosted Cleanup — independent post-audit
 
-**Verdict: merge-block.** Two High correctness findings require fixes in lane.
-Supported-platform native execution is also still a required pending gate.
-This is round 0, reviewed 2026-11-10; C=0 / H=2 / M=0 / L=0.
+**Current verdict: merge-block pending required Windows native verification.**
+Round 1 accepts both source repairs; no remaining source findings or introduced
+defects were found (C=0 / H=0 / M=0 / L=0). H-1 is independently measured fixed;
+H-2's source correction is accepted but its native fixture remains unrun.
+See [round 1](#round-1--h-1h-2-source-re-gate) for the current pin and evidence.
+The round-0 findings and receipts below are preserved as history and their source
+line references describe implementation `6038d0981`, before repair.
 
 ## Pin, contract and exclusions
 
@@ -185,3 +189,65 @@ authority. The reviewer restores all temporary test edits and releases exclusive
 write/test ownership at the signed audit commit after all owned commands finish.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=ee3bbc8d5f77f45634040e41dafa3e6dfb7b159a..6038d09813a664dc5c4aac2a7a47c87a7d0dfa18 findings=C=0/H=2/M=0/L=0 rework_rounds=0
+
+## Round 1 — H-1/H-2 source re-gate
+
+**2026-11-10. Source repairs accepted; required native verification pending.**
+Same reviewer and worktree. Clean handoff pin
+`ee43656e4750183a659d20f0b9839c5cc3ca0972`; repair implementation range
+`6d7ca47d2d00560a7c6a221e475a52c107c0aab1..faf59a0b3421c5410f807428d768a2e353e32396`.
+Commits `356b1b7b3c321c89e6b4ae8f1e3294ca87582477` and
+`faf59a0b3421c5410f807428d768a2e353e32396` repair H-1/H-2 respectively;
+`ee43656e4` changes only handoff documentation. Read the updated brief and receipt,
+full repair diff, repaired control flow and relevant workspace/import writers.
+Scope is prior findings and defects introduced by these fixes, not a new broad
+review. No additional source finding was supported.
+
+| Finding | Current disposition and evidence |
+|---|---|
+| H-1 — closed | **Measured fixed.** [cleanup.rs:186](../../../crates/buzz-paired-owner/src/deployment/cleanup.rs#L186) now reads older Cleanup candidates instead of confusing retained order with current admission. A missing previously admitted Cleanup is tolerated only behind a fresh strictly later admitted revision at [:222](../../../crates/buzz-paired-owner/src/deployment/cleanup.rs#L222), consistent with the unchanged relay's replacement pruning. The existing fixture now exercises retained B → reopen → Check and Retry both reuse B's exact event/ID → admission → Cleaned, then expired B → Check preserves B / explicit Retry renews only from current A ([cleanup_tests.rs:238](../../../crates/buzz-paired-owner/src/deployment/cleanup_tests.rs#L238)). I ran the repaired owner suite independently: 2 passed, 0 failed, 14 filtered. Existing transaction winner checks and permanent fence remain. |
+| H-2 — source fix accepted; native proof pending | **Read-derived correction.** [Session::with_local_commit:90](../../../desktop/src-tauri/src/commands/paired_hosts.rs#L90) takes workspace then identity-mutation guards, validates the captured generation/origin/signer through `checked_keys` without recursive workspace locking, and retains both guards across its synchronous callback. [finish:199](../../../desktop/src-tauri/src/commands/agents_hosted_cleanup.rs#L199) acquires the store lock inside that callback and keeps all guards through phase 4. The captured intent origin and signer form the retention scope at [:226](../../../desktop/src-tauri/src/commands/agents_hosted_cleanup.rs#L226); [shared finalizer:37](../../../desktop/src-tauri/src/commands/agents_deletion.rs#L37) enqueues using that scope directly. Nest regeneration is after guard release. Workspace apply and identity import/recovery use the respective writer locks; initial contention refuses rather than blocking while holding the other guard. No network await occurs in the guarded region. Ordinary local/provider callers pass `None` and retain best-effort behavior. |
+
+The new native fixture was inspected for thread/channel lifetimes and lock order
+([cleanup_tests.rs:258](../../../desktop/src-tauri/src/commands/agents_hosted_cleanup_tests.rs#L258)).
+It separately tests contention refusal, then launches workspace and identity
+writers at the actual shared finalizer's before-remove boundary. Assertions bind
+guard contention, phase 3 during effects, phase 4 before writers enter, original
+retention destination and subsequent stale-session refusal. Scoped threads are
+joined; coordination receives have five-second deadlines. The identity writer
+uses `commit_imported_identity` with synthetic persistence. These assertions are
+**authored and read, not compiled or executed here**. They remain no proof of real
+keyring failure, full Tauri command dispatch, or a human native workflow.
+
+Independent round-1 verification, with Hermit activated and self-update disabled:
+
+- `cargo test --offline --locked -p buzz-paired-owner deployment -- --test-threads=1`:
+  **PASS, 2 cases / 0 failed / 14 filtered, 14.68s**, existing loopback permission.
+- `cargo fmt --package buzz-paired-owner --check`: **PASS**.
+- `rustfmt --edition 2021 --config skip_children=true --check` on the five changed
+  native files (`agents.rs`, `agents_deletion.rs`, `agents_hosted_cleanup.rs`,
+  `agents_hosted_cleanup_tests.rs`, `paired_hosts.rs`): **PASS**, formatting only.
+- `git diff --check`: **PASS**. Verified no UI/API/browser-fixture delta from
+  `6038d0981`; round-0 independent 32 Node/4 browser results carry forward only
+  for that unchanged surface. No rerun or new native inference from those tests.
+
+**Still NOT RUN:** supported Windows native suites/new exact case, canary
+build/artifact association, real native workflow, real keyring-failure test and
+human acceptance. Known Linux GLib/GIO compilation block was not repeated. No
+additional mutant campaign, dependency installation, source export, workflow
+dispatch, build artifact or live operation was performed by this reviewer.
+
+Conductor now records explicit human authorization for the exact fork export and
+Windows workflow; this supersedes the earlier authorization hold, but not the
+required gate itself. Recommended routing: original executor resumes the approved
+Windows verification after this ownership release, then this reviewer assesses
+that evidence and any native fixes. No further source repair is requested on this
+pin. All review commands are terminal, no source/test changes were retained, and
+the clean signed audit commit releases exclusive write/test ownership.
+
+Requested reviewer configuration remains **gpt-6-astra / high**; served identity
+and reasoning remain unknown. Current open source counts C=0/H=0/M=0/L=0;
+historical findings total H=2. Overall merge-safe status is withheld because the
+required native gate is unrun.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=6d7ca47d2d00560a7c6a221e475a52c107c0aab1..faf59a0b3421c5410f807428d768a2e353e32396 findings=C=0/H=0/M=0/L=0 rework_rounds=1
