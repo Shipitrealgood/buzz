@@ -117,8 +117,9 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
         Management::from_authenticated(true, &scope.community, owner.public_key(), relay_key, ws)
             .unwrap();
     let run = |result: Result<HostedSetup, String>| result.unwrap();
-    // No admitted placement preserves the original identity and recovery.
-    assert!(cleanup::coordinate(
+    // The shared fixture has an unadmitted, unexpired follow-on Deploy. Its
+    // competing-admission refusal preserves the original identity and recovery.
+    let error = cleanup::coordinate(
         app,
         state,
         &context.session,
@@ -126,11 +127,11 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
         &mut management,
         &scope,
         &operation,
-        false
+        false,
     )
     .await
-    .unwrap_err()
-    .contains("Admission"));
+    .unwrap_err();
+    assert_eq!(error, "competing setup admission unresolved");
     assert_eq!(
         serde_json::to_value(load_managed_agents(app).unwrap()).unwrap(),
         before

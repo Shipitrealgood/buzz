@@ -1,6 +1,6 @@
 # #3725 confirmed hosted Cleanup execution
 
-Status: H-1/H-2 source repairs handed back for independent re-gate; Windows gate held.
+Status: H-1/H-2 source repairs accepted; authorized Windows verification active.
 Executor releases exclusive write/test ownership with the final documentation commit in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
 `proof/3720-host-registration-events`. Starting clean pin
@@ -188,3 +188,57 @@ sessions are terminal; no detached build/server/test processes were started.
 Exclusive write/test ownership is released at the following documentation commit
 for the **same reviewer** to re-gate H-1/H-2 and introduced defects. Independent
 acceptance and supported-platform native execution remain outstanding.
+
+## Authorized Windows verification — launched
+
+Same reviewer accepted the H-1/H-2 repairs with C=0/H=0/M=0/L=0 and released
+clean `8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21`. The executor resumed exclusive
+write/test ownership for this same assignment. Explicit human approval quoted
+above covers the exact source export, workflow and download; the automatic
+approval review accepted this now-authorized action. No rejection was bypassed.
+
+Fresh fork head was `23d2dc15c6c45554181938b7956b59c085980455`, verified ancestor
+of the accepted source. All 31 workflow documents were parsed: push branch
+filters exclude the canary branch, tag-only workflows cannot match a branch push,
+and there is no `workflow_run` trigger. Existing Windows workflow ID `323279417`
+is active. Generated Git hooks remain absent; no hook was disabled or rewritten.
+
+Normal fast-forward updated only `Shipitrealgood/buzz:build/paired-hosts-canary`
+to `8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21`. `gh workflow run windows-canary.yml
+--repo Shipitrealgood/buzz --ref build/paired-hosts-canary` launched
+[run 42862238726](https://github.com/Shipitrealgood/buzz/actions/runs/42862238726).
+The existing exact Cleanup native case and all prior native/ACL gates remain.
+Owned monitor: `gh run watch 42862238726 --repo Shipitrealgood/buzz --exit-status
+--interval 45`. Executor retains ownership until **both** jobs are terminal and
+source/artifact receipts are checked. No successful native result is claimed yet.
+
+### First native result and bounded fixture correction
+
+Run `42862238726`, source `8cec4d7cf`, native job `129991147892` completed
+**FAILURE** after 14m28s. Native application/tests compiled. Owner 16, shared
+harness 9, conversion 73, directory 7, registration 3 and exact hosted-create 1
+passed: **109 passed outer cases**, zero ignored in those suites. Exact Cleanup
+then failed (0 passed/1 failed), so the later exact metadata case did not run.
+The isolated SQLite ACL check passed and failure receipts uploaded successfully.
+
+Measured failure: `agents_hosted_cleanup_tests.rs:121` expected a refusal containing
+capitalized “Admission.” Source inspection shows the shared create fixture also
+retains an unexpired, unadmitted follow-on Deploy at expected revision 1; the
+existing production guard refuses that earlier as “competing setup admission
+unresolved.” The failed assertion did not print the returned error. The narrow
+correction asserts that exact expected refusal and includes actual/expected values
+on failure. Identity/record/no-effects and all subsequent Cleanup assertions are
+preserved; production is unchanged. Conductor approved this fixture-only repair.
+Scoped rustfmt initially requested its usual trailing comma; applied formatter,
+then rustfmt check and whitespace check passed. Supported-platform rerun is still
+required; this source explanation alone is not a green test result.
+
+Failure evidence root:
+`/home/bryce/services/buzz-agents/releases/3725-windows-canary/8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21/42862238726/`.
+Native artifact `13786727514`, 5,320 bytes, expires `2026-11-17T17:25:17Z`;
+ZIP SHA-256 `f7b3a1dd8b2a97fe4be44ead43b5f4714e0fda87885caf9a311b42a6256bc38e`
+matches GitHub metadata. Nine flat members inspected and extracted to `tests/`.
+Original job metadata and raw/ANSI-stripped logs retained. Initial log retrieval
+refused terminal escapes; file-only retry allowed them and inspection used the
+stripped copy. Installer job `129991147255` remains monitored to terminal; this
+failed source/run will not be discarded or represented as native acceptance.
