@@ -718,6 +718,16 @@ pub fn run() {
             #[cfg(windows)]
             paired_host_list,
             #[cfg(windows)]
+            hosted_catalog,
+            #[cfg(windows)]
+            hosted_prepare,
+            #[cfg(windows)]
+            hosted_setup_action,
+            #[cfg(windows)]
+            hosted_setup_list,
+            #[cfg(windows)]
+            hosted_setup_token,
+            #[cfg(windows)]
             paired_host_pair,
             #[cfg(windows)]
             paired_host_refresh,

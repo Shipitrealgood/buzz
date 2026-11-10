@@ -143,7 +143,7 @@ pub struct UpdatePersonaRequest {
     pub behavior: Option<PersonaBehaviorRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateManagedAgentRequest {
     /// Create-only registered-host destination; rejected before side effects until deployment ships.

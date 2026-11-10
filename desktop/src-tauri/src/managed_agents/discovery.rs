@@ -1029,40 +1029,67 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
         && resolve("npm").is_none()
         && resolve("node").is_none();
 
-    PartialEntry {
-        runtime,
-        entry: AcpRuntimeCatalogEntry {
-            id: runtime.id.to_string(),
-            label: runtime.label.to_string(),
-            avatar_url: runtime.avatar_url.to_string(),
-            availability,
-            command,
-            binary_path,
-            default_args,
-            mcp_command: runtime.mcp_command.map(str::to_string),
-            model_env_var: runtime.model_env_var.map(str::to_string),
-            provider_env_var: runtime.provider_env_var.map(str::to_string),
-            thinking_env_var: runtime.thinking_env_var.map(str::to_string),
-            effort_canonical_values: runtime
-                .effort_normalization
-                .map(|norm| norm.canonical.iter().map(|s| s.to_string()).collect()),
-            max_tokens_env_var: runtime.max_tokens_env_var.map(str::to_string),
-            context_limit_env_var: runtime.context_limit_env_var.map(str::to_string),
-            max_rounds_env_var: runtime.max_rounds_env_var.map(str::to_string),
-            install_hint,
-            install_instructions_url: install_instructions_url.to_string(),
-            can_auto_install,
-            requires_external_cli: runtime.underlying_cli.is_some(),
-            underlying_cli_path,
-            node_required,
-            // Filled in by the auth-probe phase in full catalog discovery.
-            auth_status: AuthStatus::Unknown,
-            login_hint: None,
-            source: HarnessSource::Builtin,
-            definition_env: Default::default(),
-            max_parallelism: super::parallelism::harness_max_parallelism(runtime.id),
-        },
+    let mut entry = builtin_metadata(runtime);
+    entry.availability = availability;
+    entry.command = command;
+    entry.binary_path = binary_path;
+    entry.default_args = default_args;
+    entry.install_hint = install_hint;
+    entry.install_instructions_url = install_instructions_url.to_string();
+    entry.can_auto_install = can_auto_install;
+    entry.underlying_cli_path = underlying_cli_path;
+    entry.node_required = node_required;
+    PartialEntry { runtime, entry }
+}
+
+fn builtin_metadata(runtime: &KnownAcpRuntime) -> AcpRuntimeCatalogEntry {
+    AcpRuntimeCatalogEntry {
+        id: runtime.id.to_string(),
+        label: runtime.label.to_string(),
+        avatar_url: runtime.avatar_url.to_string(),
+        availability: AcpAvailabilityStatus::Available,
+        command: runtime.commands.first().map(|s| (*s).into()),
+        binary_path: None,
+        default_args: runtime
+            .commands
+            .first()
+            .map(|c| normalize_agent_args(c, Vec::new()))
+            .unwrap_or_default(),
+        mcp_command: runtime.mcp_command.map(str::to_string),
+        model_env_var: runtime.model_env_var.map(str::to_string),
+        provider_env_var: runtime.provider_env_var.map(str::to_string),
+        thinking_env_var: runtime.thinking_env_var.map(str::to_string),
+        effort_canonical_values: runtime
+            .effort_normalization
+            .map(|norm| norm.canonical.iter().map(|s| s.to_string()).collect()),
+        max_tokens_env_var: runtime.max_tokens_env_var.map(str::to_string),
+        context_limit_env_var: runtime.context_limit_env_var.map(str::to_string),
+        max_rounds_env_var: runtime.max_rounds_env_var.map(str::to_string),
+        install_hint: String::new(),
+        install_instructions_url: String::new(),
+        can_auto_install: false,
+        requires_external_cli: runtime.underlying_cli.is_some(),
+        underlying_cli_path: None,
+        node_required: false,
+        // Filled in by the auth-probe phase in full catalog discovery.
+        auth_status: AuthStatus::Unknown,
+        login_hint: None,
+        source: HarnessSource::Builtin,
+        definition_env: Default::default(),
+        max_parallelism: super::parallelism::harness_max_parallelism(runtime.id),
     }
+}
+
+/// Pure canonical metadata for an approved host mapping; no local probes or paths.
+pub(crate) fn hosted_runtime_metadata(harness: &str) -> Option<AcpRuntimeCatalogEntry> {
+    known_acp_runtime_exact(harness)
+        .map(builtin_metadata)
+        .or_else(|| {
+            PRESET_HARNESSES
+                .iter()
+                .find(|p| p.id == harness)
+                .map(presets::preset_metadata)
+        })
 }
 
 /// Discover one runtime's filesystem availability without running any auth probes.

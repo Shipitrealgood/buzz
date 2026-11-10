@@ -67,6 +67,23 @@ impl Device {
         status: &Status,
         snapshot: Value,
     ) -> Result<Intent> {
+        ensure!(
+            authority.expected_revision == 0,
+            "create requires absent placement"
+        );
+        self.retain_deployment(selected, keys, authority, command, status, snapshot, None)
+    }
+    fn retain_deployment(
+        &mut self,
+        selected: &str,
+        keys: &Keys,
+        authority: Authority,
+        command: &Command,
+        status: &Status,
+        snapshot: Value,
+        previous: Option<&str>,
+    ) -> Result<Intent> {
+        self.deployment_schema()?;
         session(&authority.scope, selected, keys)?;
         let wall = now()?;
         self.check_time(wall)?;
@@ -79,10 +96,6 @@ impl Device {
             &config.runtime_id,
             wall,
         )?;
-        ensure!(
-            authority.expected_revision == 0,
-            "create requires absent placement"
-        );
         // Main omits the key from this snapshot; it lives only in host ciphertext.
         ensure!(
             snapshot
@@ -91,18 +104,46 @@ impl Device {
                 .is_none(),
             "recovery snapshot must omit agent key"
         );
-        if let Some(old) = self.deployment_intent(selected, keys, &authority.operation_id)? {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row(
+            "SELECT data FROM deployment_intents WHERE community=? AND owner=? AND operation_id=?",
+            params![selected, keys.public_key().to_hex(), authority.operation_id],
+            |r| r.get(0),
+        ).optional()?;
+        if let Some(raw) = raw {
+            let old: Intent = serde_json::from_str(&raw)?;
             let old_command =
                 wire::restore_command(keys, &old.protected.authority, &old.protected.ciphertext)?;
-            let old_snapshot = self.restore_materialization(selected, keys, &old)?;
             ensure!(
                 old.protected.authority.scope == authority.scope
                     && old.protected.authority.agent == authority.agent
+                    && old.protected.authority.expected_revision == authority.expected_revision
                     && old_command == *command
-                    && old_snapshot == snapshot,
+                    && restore_snapshot(keys, &old)? == snapshot,
                 "operation inputs changed"
             );
             return Ok(old);
+        }
+        if let Some(previous) = previous {
+            let mut stmt = tx.prepare(
+                "SELECT data FROM deployment_intents WHERE community=? AND owner=? LIMIT 1025",
+            )?;
+            let rows = stmt.query_map(params![selected, keys.public_key().to_hex()], |r| {
+                r.get::<_, String>(0)
+            })?;
+            for raw in rows {
+                let other: Intent = serde_json::from_str(&raw?)?;
+                let a = &other.protected.authority;
+                ensure!(
+                    a.operation_id == previous
+                        || a.scope != authority.scope
+                        || a.agent != authority.agent
+                        || a.expected_revision < authority.expected_revision,
+                    "newer setup intent exists"
+                );
+            }
         }
         let (authority, event) = wire::seal_command(keys, authority, command, wall)?;
         let plain = Zeroizing::new(serde_json::to_vec(&Snapshot {
@@ -122,9 +163,6 @@ impl Device {
             phase: 0,
             result: None,
         };
-        let tx = self
-            .db
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let count: i64 = tx.query_row(
             "SELECT count(*) FROM deployment_intents WHERE community=? AND owner=?",
             params![selected, keys.public_key().to_hex()],
@@ -150,33 +188,7 @@ impl Device {
         keys: &Keys,
         intent: &Intent,
     ) -> Result<Value> {
-        let a = &intent.protected.authority;
-        session(&a.scope, selected, keys)?;
-        let (_, header) = wire::verify(intent.event.as_bytes(), selected, keys.public_key())?;
-        ensure!(
-            header
-                == (wire::Header::Command {
-                    authority: a.clone()
-                }),
-            "intent changed"
-        );
-        let event: Event = serde_json::from_str(&intent.event)?;
-        ensure!(
-            event.content.as_bytes() == intent.protected.ciphertext,
-            "ciphertext changed"
-        );
-        wire::restore_command(keys, a, &intent.protected.ciphertext)?;
-        let plain = Zeroizing::new(nip44::decrypt(
-            keys.secret_key(),
-            &keys.public_key(),
-            &intent.materialization,
-        )?);
-        let snapshot: Snapshot = buzz_core::host_registry::object(plain.as_bytes(), 48 * 1024)?;
-        ensure!(
-            snapshot.authority == *a,
-            "materialization belongs to another operation"
-        );
-        Ok(snapshot.data)
+        validate_materialization(selected, keys, intent)
     }
     /// Advance only after the caller observed the corresponding main effect.
     pub fn deployment_advance(
@@ -187,16 +199,23 @@ impl Device {
         phase: u8,
     ) -> Result<()> {
         ensure!(phase <= 4, "invalid intent phase");
-        let mut intent = self
-            .deployment_intent(selected, keys, operation)?
-            .context("missing intent")?;
-        self.restore_materialization(selected, keys, &intent)?;
+        self.deployment_schema()?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let raw: String = tx.query_row(
+            "SELECT data FROM deployment_intents WHERE community=? AND owner=? AND operation_id=?",
+            params![selected, keys.public_key().to_hex(), operation],
+            |r| r.get(0),
+        )?;
+        let mut intent: Intent = serde_json::from_str(&raw)?;
+        validate_materialization(selected, keys, &intent)?;
         ensure!(
             phase >= intent.phase && phase <= intent.phase + 1,
             "nonmonotonic intent phase"
         );
         intent.phase = phase;
-        self.db.execute(
+        tx.execute(
             "UPDATE deployment_intents SET data=? WHERE community=? AND owner=? AND operation_id=?",
             params![
                 serde_json::to_string(&intent)?,
@@ -205,6 +224,7 @@ impl Device {
                 operation
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
     /// Retain verified host evidence; pending/error responses never erase recovery.
@@ -215,9 +235,17 @@ impl Device {
         operation: &str,
         event: &Event,
     ) -> Result<DeploymentResult> {
-        let mut intent = self
-            .deployment_intent(selected, keys, operation)?
-            .context("missing intent")?;
+        self.deployment_schema()?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let raw: String = tx.query_row(
+            "SELECT data FROM deployment_intents WHERE community=? AND owner=? AND operation_id=?",
+            params![selected, keys.public_key().to_hex(), operation],
+            |r| r.get(0),
+        )?;
+        let mut intent: Intent = serde_json::from_str(&raw)?;
+        validate_materialization(selected, keys, &intent)?;
         let r = wire::open_result(keys, event, &intent.protected.authority)?;
         if let Some(raw) = &intent.result {
             let old: Event = serde_json::from_str(raw)?;
@@ -236,7 +264,7 @@ impl Device {
             }
         }
         intent.result = Some(serde_json::to_string(event)?);
-        self.db.execute(
+        tx.execute(
             "UPDATE deployment_intents SET data=? WHERE community=? AND owner=? AND operation_id=?",
             params![
                 serde_json::to_string(&intent)?,
@@ -245,6 +273,7 @@ impl Device {
                 operation
             ],
         )?;
+        tx.commit()?;
         Ok(r)
     }
 }
@@ -342,21 +371,14 @@ impl Management {
             .deployment_intent(&self.community, &keys, operation)?
             .context("missing intent")?;
         let request = &intent.protected.authority;
-        let query = wire::Query {
-            v: 1,
-            scope: request.scope.clone(),
-            view: "operation".into(),
-            nonce: hex::encode(rand::random::<[u8; 32]>()),
-            operation_id: Some(operation.into()),
-        };
-        let reply = self.query(signer, &query).await?;
-        let Some(raw) = reply.data["result"].as_str() else {
+        let operation = self.operation(device, signer, operation).await?;
+        ensure!(
+            operation.current,
+            "placement advanced; observation is historical"
+        );
+        let Some(body) = operation.body else {
             return Ok(None);
         };
-        let event: Event = serde_json::from_str(raw)?;
-        let keys = signer()?;
-        session(&request.scope, &self.community, &keys)?;
-        let body = wire::open_result_body(&keys, &event, request)?;
         let Some(observation) = body.observation else {
             return Ok(None);
         };
@@ -366,7 +388,6 @@ impl Management {
             bail!("not a preparation operation");
         };
         observation.current(&body.result, &config, now()?)?;
-        device.deployment_result(&self.community, &keys, operation, &event)?;
         Ok(Some(observation))
     }
     /// Send the exact journaled command only after main materialization/publication.
@@ -390,7 +411,17 @@ impl Management {
             &self.community,
             &signer()?,
         )?;
-        ensure!(now()?<intent.protected.authority.expires_at,"original deployment command expired; exact intent and agent identity retained; explicit new operation required");
+        // Reply loss must be reconciled before interpreting command expiry.
+        let evidence = self.operation(device, signer, operation).await?;
+        ensure!(
+            !evidence.admitted || evidence.current,
+            "placement conflict; exact old intent retained"
+        );
+        if now()? >= intent.protected.authority.expires_at {
+            ensure!(evidence.admitted && matches!(evidence.state.as_str(), "needs-login" | "applied" | "failed"),
+                "original deployment command expired; identity retained; explicit new operation required");
+            return Ok(());
+        }
         let ok = self
             .ws
             .send_event(serde_json::from_str(&intent.event)?)
@@ -408,3 +439,40 @@ impl Management {
 #[cfg(test)]
 #[path = "deployment_tests.rs"]
 mod tests;
+
+fn restore_snapshot(keys: &Keys, intent: &Intent) -> Result<Value> {
+    let plain = Zeroizing::new(nip44::decrypt(
+        keys.secret_key(),
+        &keys.public_key(),
+        &intent.materialization,
+    )?);
+    let snapshot: Snapshot = buzz_core::host_registry::object(plain.as_bytes(), 48 * 1024)?;
+    ensure!(
+        snapshot.authority == intent.protected.authority,
+        "materialization belongs to another operation"
+    );
+    Ok(snapshot.data)
+}
+
+mod continuation;
+pub use continuation::Operation;
+
+fn validate_materialization(selected: &str, keys: &Keys, intent: &Intent) -> Result<Value> {
+    let a = &intent.protected.authority;
+    session(&a.scope, selected, keys)?;
+    let (_, header) = wire::verify(intent.event.as_bytes(), selected, keys.public_key())?;
+    ensure!(
+        header
+            == (wire::Header::Command {
+                authority: a.clone()
+            }),
+        "intent changed"
+    );
+    let event: Event = serde_json::from_str(&intent.event)?;
+    ensure!(
+        event.content.as_bytes() == intent.protected.ciphertext,
+        "ciphertext changed"
+    );
+    wire::restore_command(keys, a, &intent.protected.ciphertext)?;
+    restore_snapshot(keys, intent)
+}

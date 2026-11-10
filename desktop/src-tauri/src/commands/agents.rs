@@ -418,6 +418,10 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
 #[cfg(windows)]
 #[path = "agents_hosted.rs"]
 pub(crate) mod hosted;
+#[cfg(windows)]
+pub use hosted::{
+    hosted_catalog, hosted_prepare, hosted_setup_action, hosted_setup_list, hosted_setup_token,
+};
 
 async fn create_managed_agent_phases<R: tauri::Runtime>(
     input: CreateManagedAgentRequest,
@@ -425,6 +429,10 @@ async fn create_managed_agent_phases<R: tauri::Runtime>(
     state: &AppState,
     #[cfg(windows)] mut hosted: Option<&mut hosted::Create<'_>>,
 ) -> Result<CreateManagedAgentResponse, String> {
+    #[cfg(windows)]
+    if let Some(hosted) = hosted.as_deref() {
+        hosted.check()?;
+    }
     let name = input.name.trim().to_string();
     let requested_persona_id = input
         .persona_id
@@ -861,6 +869,10 @@ async fn create_managed_agent_phases<R: tauri::Runtime>(
     }
     profile_sync_error =
         super::agent_models::flush_managed_agent_policy(&app, state, profile_sync_error).await;
+    #[cfg(windows)]
+    if let Some(hosted) = hosted.as_deref() {
+        hosted.check()?;
+    }
 
     let spawn_error = if input.spawn_after_create && input.backend != BackendKind::Local {
         if let BackendKind::Provider { ref id, ref config } = input.backend {

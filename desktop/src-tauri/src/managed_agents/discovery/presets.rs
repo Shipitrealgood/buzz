@@ -66,14 +66,26 @@ pub(super) fn preset_catalog_entry(
         _ => def.install_instructions_url,
     };
 
+    let mut entry = preset_metadata(def);
+    entry.availability = availability;
+    entry.command = command;
+    entry.binary_path = binary_path;
+    entry.install_hint = install_hint;
+    entry.install_instructions_url = install_instructions_url.to_string();
+    entry.underlying_cli_path = underlying_cli_path;
+    entry
+}
+
+/// Canonical static preset facts, independent of this computer's installation.
+pub(super) fn preset_metadata(def: &PresetHarness) -> AcpRuntimeCatalogEntry {
     AcpRuntimeCatalogEntry {
         id: def.id.to_string(),
         label: def.label.to_string(),
         // No remote URL — all preset icons are bundled assets.
         avatar_url: String::new(),
-        availability,
-        command,
-        binary_path,
+        availability: AcpAvailabilityStatus::Available,
+        command: Some(def.command.into()),
+        binary_path: None,
         default_args: normalize_agent_args(
             def.command,
             def.args.iter().map(|arg| arg.to_string()).collect(),
@@ -86,11 +98,11 @@ pub(super) fn preset_catalog_entry(
         max_tokens_env_var: None,
         context_limit_env_var: None,
         max_rounds_env_var: None,
-        install_hint,
-        install_instructions_url: install_instructions_url.to_string(),
+        install_hint: String::new(),
+        install_instructions_url: String::new(),
         can_auto_install: false,
         requires_external_cli: def.underlying_cli.is_some(),
-        underlying_cli_path,
+        underlying_cli_path: None,
         node_required: false,
         auth_status: AuthStatus::NotApplicable,
         login_hint: None,
@@ -600,5 +612,31 @@ mod tests {
             entry.max_parallelism, None,
             "uncapped preset (devin) must have max_parallelism: None"
         );
+    }
+}
+
+#[cfg(test)]
+mod hosted_metadata_tests {
+    use super::*;
+    #[test]
+    fn hosted_grok_metadata_uses_static_preset_without_local_binary() {
+        let preset = PRESET_HARNESSES.iter().find(|p| p.id == "grok").unwrap();
+        assert_eq!(
+            preset_catalog_entry(preset, |_| None).availability,
+            AcpAvailabilityStatus::NotInstalled
+        );
+        let hosted = super::super::hosted_runtime_metadata("grok").unwrap();
+        assert_eq!(hosted.source, HarnessSource::Preset);
+        assert_eq!(hosted.command.as_deref(), Some("grok"));
+        assert_eq!(
+            hosted.default_args,
+            vec!["agent", "--always-approve", "stdio"]
+        );
+        assert_eq!(hosted.availability, AcpAvailabilityStatus::Available);
+        assert!(hosted.binary_path.is_none());
+        assert!(hosted.login_hint.is_none());
+        assert!(hosted.underlying_cli_path.is_none());
+        assert!(!hosted.can_auto_install);
+        assert!(super::super::hosted_runtime_metadata("unknown-harness").is_none());
     }
 }
