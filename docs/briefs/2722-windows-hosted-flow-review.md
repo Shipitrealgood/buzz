@@ -1,5 +1,58 @@
 # Independent review scope: Windows hosted Add Agent (#2722)
 
+## Same-reviewer re-gate — rework round 1
+
+**Current repair baseline:** `d16609625383c4ddd01934e89555e319374fbf76`.
+**Current functional source:** `99ad536bfef295f5dc11daa6249e0d759bc3c35e`.
+Two signed-off repair commits: M-2 `d55d1c67e`, M-1 `99ad536bf`.
+The subsequent documentation-only commit supplies the final clean release pin.
+Use the same `/home/bryce/services/buzz-wt-3720-host-registration` worktree and
+`proof/3720-host-registration-events` branch. No owned process remains.
+
+Review only M-1/M-2 closure and defects introduced by these repairs, under
+[the first review](../audits/post-audit/2722-windows-hosted-flow.md). The original
+review brief below is historical context; do not restart its accepted broad review.
+No new product/architecture decision is being requested. Source acceptance remains
+held until your re-gate; native/full-CI/human readiness is still unproved.
+
+**M-1 probes:** `desktop/src/features/agents/ui/AgentDialog.tsx:364` now rejects
+exact installed-ID/scope/destination conflicts for a submitted draft before
+calling the handler. It intentionally rejects rather than silently changing or
+locking the visible picker, and offers restoration/reopen guidance. In
+`lib/prepareHostedDefinition.ts:40`, exact scope/runtime guard precedes effects;
+the frozen input also retains those bindings before canonicalization. Check that
+`second/grok` cannot replay `native/grok`, changing scope cannot borrow the old
+token, and restoring the original choice retains one definition/token. The added
+steps are inside the existing contextual real-form journey; the helper table at
+`lib/instanceInputForDefinition.test.mjs:362` covers all four scope components.
+
+**M-2 probes:** `crates/buzz-paired-owner/src/deployment/continuation.rs:123`
+now handles verified-absent expired nonzero attempts by reading existing exact
+predecessors. A predecessor must be current at the attempted expected revision,
+in an allowed setup state, with the same protected identity and configuration
+apart from model. The returned admitted revision is used; the old number alone
+is not authority. Existing absent-peer verification and insertion transaction are
+unchanged. Check unknown/newer placement and lost pending admission refuse;
+a lost terminal reply must instead advance from its actual admitted revision.
+The existing owner journey's table at `deployment_tests.rs:643` covers both
+PendingLogin and Selected attempts in those five cases and observes the same
+unit after successful replacement. Existing scoped agent/placement binding is
+reused; no unit field/store/protocol was added. History reads remain bounded by
+the 1,024-intent cap and existing per-query deadline, without a global deadline.
+
+**Evidence:** owner **2/2**, focused Node **33/33**, hosted browser **3/3**,
+TypeScript/Vite, scoped formatting/size/diff checks PASS. Exact commands and
+counts are in the [current receipt](../executions/2722-windows-hosted-flow.md).
+No broad 89-test rerun, native Windows test/build, full CI or human/live test.
+Production repair **+70/-6**, tests **+218/-0**, no new source/test files.
+Requested executor Astra/high; actual runtime identity unavailable.
+
+Return your re-gate findings and exact final pin to the conductor. Preserve the
+first review artifact's history when recording closure. Executor verification
+is evidence, never the independent gate.
+
+## Original first-review brief — historical candidate context
+
 **Date:** 2026-11-10 UTC. **Requester:** conductor `/root`.
 **Next owner:** fresh independent reviewer; executor cannot supply the gate.
 **Requested executor configuration:** gpt-6-astra / high; runtime identity unavailable.

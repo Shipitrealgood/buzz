@@ -1,5 +1,67 @@
 # #2722 Windows hosted flow execution
 
+## Rework round 1 — current source status
+
+M-1/M-2 repairs are complete; **same-reviewer re-gate pending**, not independently
+accepted. Clean repair baseline: `d16609625383c4ddd01934e89555e319374fbf76`
+(the report-only review commit above the first candidate). Same worktree/branch,
+exclusive source/test ownership; no unrelated edits or processes were inherited.
+Requested Astra/high; actual runtime identity remains unavailable.
+
+Source repair pins:
+- `d55d1c67e45ea8c258ebde7d09cd21ad514428a1` — M-2 nonzero expiry recovery.
+- `99ad536bfef295f5dc11daa6249e0d759bc3c35e` — M-1 exact submitted destination.
+
+The [independent findings](../audits/post-audit/2722-windows-hosted-flow.md)
+are the entire repair scope. No new specification, persistence, protocol or
+coordinator was needed. The following current results supersede the historical
+first-pass source pin and gate counts below for this narrow delta.
+
+**M-1:** after any submitted attempt, the form rejects a changed exact installed
+ID, host scope or destination before invoking either create handler. The error
+names the retained installed ID and explains restoring the original selection
+or closing/reopening Continue setup. The helper separately checks exact binding
+before effects, and its frozen input includes scope and installed ID before
+canonical harness normalization can collapse aliases. The original token and
+definition remain retained. The real contextual journey now loses the first
+reply, selects `second/grok`, observes rejection with one definition/prepare,
+restores `native/grok`, and retries successfully on the same setup. A focused
+helper table rejects a changed installed ID or any scope component before effects.
+
+**M-2:** an expired nonzero attempt must first be verified absent. Existing exact
+predecessor reads must then prove the current admitted nonzero revision and
+validated unit for the same scoped agent. Protected identity and configuration
+must agree (only model selection may differ). Unknown/newer placement and unresolved
+admission refuse recovery; an admitted terminal reply uses its own newer revision.
+Replacement is PendingLogin with the original protected snapshot/identity and the
+proven revision, through the existing verified-absent-peer transaction. No reset
+to zero, inferred admission or new durable marker. Per-query five-second deadlines
+and the 1,024-intent cap remain; no aggregate action deadline was added.
+
+| Affected check | Current measured result |
+|---|---|
+| `cargo test -p buzz-paired-owner deployment -- --test-threads=1` | **2 passed**, 0 failed, 6.22s. Existing journey adds PendingLogin and Selected expiry × unknown predecessor/newer placement/lost pending admission/lost terminal admission/verified absence. Recovery preserves key/auth-tag command, snapshot, revision and unit; negative cases retain only the original two intents. |
+| From desktop: `node --import ./test-loader.mjs --experimental-strip-types --test src/features/agents/lib/instanceInputForDefinition.test.mjs src/features/agents/ui/whereToRunIntent.test.mjs` | **33 passed**, 0 failed, 578.7ms. Includes exact-scope/runtime pre-effect rejection. |
+| `pnpm --dir desktop build:e2e` | **PASS**: TypeScript compilation plus Vite fixture build (3.84s Vite), existing chunk warnings only. |
+| `pnpm --dir desktop exec playwright test --project=smoke hosted-agent-setup.spec.ts` | **3 passed**, 0 failed, 20.0s. Existing real forms/handlers, IPC boundary only. |
+| Scoped `biome check` on four changed TS/TSX/MJS files; `rustfmt --edition 2021 --check crates/buzz-paired-owner/src/deployment.rs`; `CHECK_FILE_SIZES_BASE=d16609625383c4ddd01934e89555e319374fbf76 node desktop/scripts/check-file-sizes.mjs`; `git diff --check` | **PASS**, no ceiling changes. |
+
+All checks used activated Hermit with `HERMIT_SELF_UPDATE=false`; isolated socket,
+browser and Node child-process checks used approved escalation. No repair check
+failed. The earlier independent 89-test result and first-pass broad regression
+receipts are carried as historical evidence, not claimed reruns. Windows/native,
+full CI, human and live acceptance remain **NOT RUN**; no tool installation or
+live flag/service/provider/pairing action occurred.
+
+Measured repair delta: **+70/-6 production** across three existing files;
+**+218/-0 tests** across three existing files; contributor guide **+3/-1**.
+No new source/test sibling. Cumulative production against the original dispatch
+baseline is **+2,186/-278** excluding the embedded metadata test. The evidence
+commit updates this receipt and the same-reviewer brief only. All owned fixture
+and browser processes are stopped before clean pinned release.
+
+## Original execution record — historical first candidate
+
 Status: source packet complete; independent review pending. Windows/native, full CI
 and human acceptance remain NOT RUN. Executor owns source/tests exclusively in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
