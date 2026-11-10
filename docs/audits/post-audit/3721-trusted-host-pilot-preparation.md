@@ -1,5 +1,88 @@
 # #3721 trusted netcup pilot preparation — independent review
 
+## Re-gate round 1 — M-1 closed; preparation accepted
+
+2026-11-10 UTC. **Merge-safe for the bounded preparation packet only.**
+Open findings C=0 / H=0 / M=0 / L=0. No remaining preparation blocker or new
+repair-introduced defect found. **Not ready to activate:** the relay deployment
+capability and owner-confirmed Cleanup holds remain unchanged.
+
+Same reviewer and assignment; requested Astra/high, actual served model/effort
+unknown. Clean repair pin `463104b201097d8101d781fa95521077feb79583` confirmed in
+the same worktree. Re-gate delta:
+`c6c1ae869b7d41545f48fe851ca20c107a85223b..463104b201097d8101d781fa95521077feb79583`.
+Only execution packet and review brief changed. Reviewed the full repair and
+[updated bounded brief](../../briefs/3721-trusted-host-pilot-review.md); did not
+repeat prior source/native reviews or expand the verification scope.
+
+**Read/inferred:** [rollback section 1](../../executions/3721-trusted-host-pilot-preparation.md#L474)
+classifies actual system-unit state as original/moved/masked and validates the
+correct original unit before stop or any restoration. An early archive failure
+can use the installed original; it no longer requires a nonexistent saved unit
+or mask. The moved branch restores into an absent destination, while the masked
+branch verifies the saved unit before unlinking. All run in one `set -eu` root
+shell, so a failed restore does not proceed to start.
+
+[Section 2](../../executions/3721-trusted-host-pilot-preparation.md#L536)
+distinguishes absent user installation, exact files installed before reload, and
+cached loaded units after file removal. It stops the controller and verifies
+quiescence before any custody change. The optional exact opaque-ID pilot stop
+follows controller stop; unknown state or surviving descendants refuse recovery.
+An incomplete/mismatched file remains an explicit stopped assessment condition.
+
+[Section 3](../../executions/3721-trusted-host-pilot-preparation.md#L608)
+validates canonical private state, rejects symlinks/special files/hardlinks,
+accepts only the two expected UID/GID pairs and private modes, and snapshots
+CURRENT stopped state before partial-custody restoration. Numeric `988:988`
+chown, explicit `0700`/`0600` modes and post-validation are present. The unchanged
+early prefix needs no successful archive; changed custody cannot bypass snapshot
+failure. No archive is extracted over the database/journal.
+
+[Section 4](../../executions/3721-trusted-host-pilot-preparation.md#L683)
+removes only exact owned user-unit/template bytes under the instance condition,
+reloads and rechecks controller inactivity, restores through the matching unit
+branch, rechecks the original unit and current `de056550…` binary hash, then
+restores the recorded enabled/active system service. Interrupted rollback between
+unlink/move re-enters the moved branch; restoration before start re-enters the
+original branch. Existing Claude/Grok/Scout, shared login files and real host
+pairing remain outside these commands. These are source/control-flow conclusions,
+not a measured native rollback.
+
+| Independent re-gate check | Result |
+| --- | --- |
+| New manifest hash and `sha256sum -c MANIFEST.sha256` | PASS, 8/8 entries; manifest `f8a53553ca83eb4fe56481d9a257d9226840d1908ccbb888c9d4e8829cb94898`. |
+| Historical manifest and six binary/config/template hashes | PASS; historical hash remains `02e2ffe9adcb06a8c83b51b51921c0c83e93654de6ad0b222f2b4318b1655490`; all three binaries and three config/template files unchanged from initial review. |
+| Exact staged OPERATOR/config/unit text vs committed packet | PASS. |
+| All nine shell fences through `bash -n`; both Python heredocs through `ast.parse` | PASS. No runbook command or Python state-validation body executed. |
+| Seven named interruption prefixes and custody ordering | READ/INFERRED, all covered by the explicit branches above; no fault injection. |
+| Local linked-file existence; repair `git diff --check` | PASS. |
+
+Prior package/source and blocker conclusions remain applicable through the
+measured unchanged executable/config hashes. The initial sandbox systemd syntax
+failure remains disclosed below, not converted into a pass; those unit bytes are
+unchanged and this re-gate neither requires nor claims a repeat native check.
+No live queries/actions, help/provider invocation, rebuild, test suite, private
+state/key read, SSH or fault campaign ran. All native activation/provider/cleanup,
+rollback, reboot, full-CI and human pilot outcomes remain **NOT RUN** here.
+
+| Finding / hold | Disposition |
+| --- | --- |
+| M-1 | **closed** by this independent read/syntax/artifact re-gate. No further preparation repair requested. |
+| Relay capability | Still an activation hold; separate serving-source/schema/config verification and compatible activation required. Public absence is not proof of old code versus a disabled flag. |
+| Confirmed Cleanup | Still an activation hold under #3724/#3725. Emergency exact-unit stop with retained state is containment, not completed teardown; #3767 remains unrelated. |
+
+Recommend conductor acceptance of preparation only, then continue those existing
+prerequisites before requesting precise live approval. Minimalism, elegance and
+correctness: 9/10 each for this bounded packet. Only this report was updated;
+all reviewer commands finished and none was detached. Exclusive write/test
+ownership is released at the signed report commit after a clean-status check.
+
+## Initial review — historical at a28772c9c
+
+The remaining initial findings, line citations and checks describe
+`a28772c9c9d88a109837f19ac60c177f2c7edf7f`; use that pin for historical locations.
+The round-1 disposition above governs the repaired packet.
+
 2026-11-10 UTC. **Rework: one Medium preparation defect, M-1.**
 C=0 / H=0 / M=1 / L=0. The package matches its recorded source and bytes, but
 the operator rollback must cover incomplete cutover prefixes before preparation
@@ -146,4 +229,6 @@ terminal; no background build/test/provider process was launched. Exclusive
 write/test ownership returns to the conductor with the signed report commit and
 clean checkout; keep the same worktree for repair.
 
-quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=c97256e20893b2688c1cc1c6bc2e23361aab707e..a28772c9c9d88a109837f19ac60c177f2c7edf7f findings=C=0/H=0/M=1/L=0 rework_rounds=0
+Initial quality record: `quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=c97256e20893b2688c1cc1c6bc2e23361aab707e..a28772c9c9d88a109837f19ac60c177f2c7edf7f findings=C=0/H=0/M=1/L=0 rework_rounds=0`
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=c6c1ae869b7d41545f48fe851ca20c107a85223b..463104b201097d8101d781fa95521077feb79583 findings=C=0/H=0/M=0/L=0 rework_rounds=1
