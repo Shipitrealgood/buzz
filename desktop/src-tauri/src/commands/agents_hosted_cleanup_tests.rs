@@ -40,7 +40,9 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
             };
             let msg: serde_json::Value = serde_json::from_str(text).unwrap();
             if msg[0] == "EVENT" {
-                let raw = serde_json::to_string(&msg[1]).unwrap();
+                // Like the real relay, retain the incoming element verbatim.
+                let parts: Vec<&serde_json::value::RawValue> = serde_json::from_str(text).unwrap();
+                let raw = parts[1].get();
                 let event: nostr::Event = serde_json::from_value(msg[1].clone()).unwrap();
                 let (_, wire::Header::Command { authority }) =
                     wire::verify(raw.as_bytes(), &server_community, event.pubkey).unwrap()
@@ -177,7 +179,7 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
         true,
     )
     .await);
-    assert_eq!(pending.state, "cleanup-pending");
+    assert_eq!(pending.state, "cleanup-pending", "{:?}", pending.error);
     assert_eq!(
         serde_json::to_value(load_managed_agents(app).unwrap()).unwrap(),
         before
@@ -236,7 +238,7 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
         false,
     )
     .await);
-    assert_eq!(failed.state, "cleanup-local-pending");
+    assert_eq!(failed.state, "cleanup-local-pending", "{:?}", failed.error);
     assert!(failed
         .error
         .unwrap()
@@ -440,7 +442,7 @@ pub(super) async fn exercise<'a, R: tauri::Runtime>(
         false,
     )
     .await);
-    assert_eq!(done.state, "deleted");
+    assert_eq!(done.state, "deleted", "{:?}", done.error);
     assert_eq!(done.phase, 4);
     let public = serde_json::to_string(&done).unwrap();
     for secret in [

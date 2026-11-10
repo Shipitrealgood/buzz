@@ -355,7 +355,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     let addr = listener.local_addr().unwrap();
     let responses = std::sync::Arc::new(std::sync::Mutex::new(current));
     let served = responses.clone();
-    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let published = sent.clone();
     let deny_send = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let denied_send = deny_send.clone();
@@ -369,7 +369,9 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             };
             let msg: Value = serde_json::from_str(text).unwrap();
             if msg[0] == "EVENT" {
-                published.lock().unwrap().push(msg[1].clone());
+                // Match the real relay's exact event storage, including ordering.
+                let parts: Vec<&serde_json::value::RawValue> = serde_json::from_str(text).unwrap();
+                published.lock().unwrap().push(parts[1].get().to_owned());
                 socket
                     .send(tokio_tungstenite::tungstenite::Message::Text(
                         serde_json::json!([
@@ -461,7 +463,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         .unwrap();
     assert_eq!(sent.lock().unwrap().len(), 3);
     for event in sent.lock().unwrap().iter() {
-        assert_eq!(*event, serde_json::from_str::<Value>(&first.event).unwrap());
+        assert_eq!(*event, first.event);
     }
     *responses.lock().unwrap() = serde_json::json!({"denied":true});
     assert!(management

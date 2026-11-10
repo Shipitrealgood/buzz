@@ -178,7 +178,11 @@ impl NostrWsConnection {
     /// Sends a signed event to the relay and waits for the OK response.
     pub async fn send_event(&mut self, event: Event) -> Result<OkResponse, WsClientError> {
         let event_id = event.id.to_hex();
-        self.send_raw(&json!(["EVENT", event])).await?;
+        // Preserve the typed event's serialized bytes: private operation journals
+        // compare the relay's stored event exactly, including field ordering.
+        let text = serde_json::to_string(&("EVENT", &event))?;
+        debug!("→ relay: {text}");
+        self.ws.send(Message::Text(text.into())).await?;
         self.wait_for_ok(&event_id, Duration::from_secs(PUBLISH_OK_TIMEOUT_SECS))
             .await
     }
