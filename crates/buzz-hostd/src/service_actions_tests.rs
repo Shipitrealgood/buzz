@@ -469,3 +469,136 @@ for line in sys.stdin:
     assert_eq!(methods.lines().filter(|m| *m == "session/new").count(), 3);
     assert!(!methods.contains("session/prompt"));
 }
+
+#[test]
+fn stopped_login_handover_retains_outcome_and_refresh_retires_outputs() {
+    let (_dir, layout, mut prepared, _cat, ctx) = fixture();
+    let id = prepared.instance.unit_id.clone();
+    let mut system = |_: &[&str], _: &str| Ok(output(idle()));
+    for refresh in [false, true, true] {
+        let e: Execution = serde_json::from_str(
+            &apply(&layout, &id, "login", None, true, &idle(), &mut system).unwrap(),
+        )
+        .unwrap();
+        let result = ActionResult {
+            execution: e.clone(),
+            finished: true,
+            observed_at: nostr::Timestamp::now().as_secs(),
+            login: LoginState::Succeeded,
+            login_at: None,
+            models: buzz_core::host_deployment::observation::Models::Unsupported,
+            login_output: String::new(),
+        };
+        fs::write(
+            ctx.home.join(e.filename()),
+            serde_json::to_vec(&result).unwrap(),
+        )
+        .unwrap();
+        fs::set_permissions(
+            ctx.home.join(e.filename()),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        if refresh {
+            let d = prepared.instance.deployment.as_mut().unwrap();
+            d.revision += 1;
+            d.operation_id = format!("{:064x}", d.revision);
+            let stage = layout.staging.join(format!("{id}.cred"));
+            fs::write(&stage, serde_json::to_vec(&prepared.instance).unwrap()).unwrap();
+            fs::set_permissions(stage, fs::Permissions::from_mode(0o600)).unwrap();
+            crate::activation::apply(
+                &layout,
+                layout.root_uid,
+                &format!("prepare {id}"),
+                &mut |_, _| {
+                    let drop = dropin(&layout, &id).unwrap();
+                    Ok(output(format!(
+                        "{}FragmentPath={}\nDropInPaths={}\n",
+                        idle(),
+                        layout.template.display(),
+                        if drop.exists() {
+                            drop.display().to_string()
+                        } else {
+                            String::new()
+                        }
+                    )))
+                },
+            )
+            .unwrap();
+        } else {
+            apply(&layout, &id, "models", None, false, &idle(), &mut system).unwrap();
+        }
+        let (state, at): (LoginState, u64) =
+            serde_json::from_slice(&fs::read(path(&layout, &id, "login")).unwrap()).unwrap();
+        assert_eq!(state, LoginState::Succeeded);
+        assert_eq!(at, result.observed_at);
+        assert_eq!(fs::read_dir(&ctx.home).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(&ctx.runtime).unwrap().count(), 0);
+        assert!(apply(
+            &layout,
+            &id,
+            "observe",
+            Some(&e.nonce),
+            true,
+            &idle(),
+            &mut system
+        )
+        .is_err());
+    }
+    // An interrupted unlink/reload retains the finite descriptor; stale manager
+    // advertisement is recoverable only when stopped, and retry finishes restore.
+    apply(&layout, &id, "models", None, false, &idle(), &mut system).unwrap();
+    let advertised = format!(
+        "{}DropInPaths={}\n",
+        idle(),
+        dropin(&layout, &id).unwrap().display()
+    );
+    assert!(
+        restore(&layout, &prepared.instance, &mut |_, _| Err(anyhow!(
+            "reload interrupted"
+        )))
+        .is_err()
+    );
+    assert!(shape(&layout, &id, &advertised).is_ok());
+    assert!(shape(&layout, &id, &advertised.replace("inactive", "active")).is_err());
+    restore(&layout, &prepared.instance, &mut system).unwrap();
+    clear(&layout, &id, &mut system).unwrap();
+    assert_eq!(fs::read_dir(&ctx.home).unwrap().count(), 0);
+    assert!(!path(&layout, &id, "execution").exists());
+}
+
+#[test]
+fn failed_login_start_and_missing_terminal_output_never_stay_in_progress() {
+    let (_dir, layout, prepared, _cat, _ctx) = fixture();
+    let id = &prepared.instance.unit_id;
+    for transport_error in [false, true] {
+        assert!(
+            apply(&layout, id, "login", None, true, &idle(), &mut |args, _| {
+                if args[0] == "start" {
+                    if transport_error {
+                        return Err(anyhow!("manager unavailable"));
+                    }
+                    let mut r = output(String::new());
+                    r.status = std::process::ExitStatus::from_raw(256);
+                    return Ok(r);
+                }
+                Ok(output(idle()))
+            })
+            .is_err()
+        );
+        let state: (LoginState, u64) =
+            serde_json::from_slice(&fs::read(path(&layout, id, "login")).unwrap()).unwrap();
+        assert_eq!(state.0, LoginState::Failed);
+    }
+    apply(&layout, id, "login", None, true, &idle(), &mut |_, _| {
+        Ok(output(idle()))
+    })
+    .unwrap();
+    apply(&layout, id, "models", None, false, &idle(), &mut |_, _| {
+        Ok(output(idle()))
+    })
+    .unwrap();
+    let state: (LoginState, u64) =
+        serde_json::from_slice(&fs::read(path(&layout, id, "login")).unwrap()).unwrap();
+    assert_eq!(state.0, LoginState::Failed);
+}

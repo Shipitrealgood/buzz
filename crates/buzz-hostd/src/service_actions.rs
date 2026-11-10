@@ -5,6 +5,7 @@ use crate::{
     Prepared,
 };
 use anyhow::{anyhow, ensure, Result};
+use buzz_core::host_deployment::observation::LoginState;
 use rustix::fs::{open, openat, Mode as FileMode, OFlags};
 use std::{
     fs,
@@ -56,10 +57,18 @@ pub fn shape(layout: &Layout, id: &str, output: &str) -> Result<String> {
             m.is_dir() && m.uid() == layout.root_uid && m.mode() & 0o022 == 0,
             "unsafe drop-in directory"
         );
-        ensure!(
-            owned_file(&expected, layout.root_uid, 128)? == FINITE_DROPIN,
-            "foreign mode override"
-        );
+        // A stopped restore may have unlinked the file before manager reload.
+        // Keep that exact prefix recoverable; other missing/foreign artifacts fail.
+        match fs::symlink_metadata(&expected) {
+            Ok(_) => ensure!(
+                owned_file(&expected, layout.root_uid, 128)? == FINITE_DROPIN,
+                "foreign mode override"
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                ensure!(inactive(output), "missing active mode override");
+            }
+            Err(e) => return Err(e.into()),
+        }
         let e: Execution = serde_json::from_slice(&owned_file(
             &path(layout, id, "execution"),
             layout.root_uid,
@@ -143,7 +152,12 @@ fn set_mode(
             owned_file(&file, layout.root_uid, 128)? == FINITE_DROPIN,
             "foreign drop-in"
         );
-        fs::remove_file(file)?;
+        fs::remove_file(&file)?;
+        fs::File::open(
+            file.parent()
+                .ok_or_else(|| anyhow!("missing drop-in parent"))?,
+        )?
+        .sync_all()?;
     }
     // Manager adapter omits the unit argument for this one fixed operation.
     ensure!(
@@ -158,8 +172,10 @@ pub fn restore(
     i: &crate::Instance,
     system: &mut impl FnMut(&[&str], &str) -> Result<Output>,
 ) -> Result<()> {
-    conversation(layout, i)?;
-    set_mode(layout, &i.unit_id, false, system)
+    retire(layout, &i.unit_id)?;
+    // Keep the old finite descriptor until its drop-in is removed and reloaded.
+    set_mode(layout, &i.unit_id, false, system)?;
+    conversation(layout, i)
 }
 /// Anchored, non-following output read. Neither the filename nor its parents come from an agent.
 fn read_output(anchor: &Path, id: &str, e: &Execution) -> Result<Option<ActionResult>> {
@@ -233,9 +249,55 @@ fn remove_output(anchor: &Path, id: &str, e: &Execution) -> Result<()> {
         Err(e) => return Err(e.into()),
     };
     match rustix::fs::unlinkat(&dir, e.filename(), rustix::fs::AtFlags::empty()) {
-        Ok(()) | Err(rustix::io::Errno::NOENT) => Ok(()),
+        Ok(()) => {
+            fs::File::from(dir).sync_all()?;
+            Ok(())
+        }
+        Err(rustix::io::Errno::NOENT) => Ok(()),
         Err(e) => Err(e.into()),
     }
+}
+// Caller holds the helper lock and has confirmed inactivity. Preserve the terminal
+// login fact before deleting the only correlated result or replacing its descriptor.
+fn retire(layout: &Layout, id: &str) -> Result<()> {
+    if !path(layout, id, "execution").try_exists()? {
+        return Ok(());
+    }
+    let e: Execution = serde_json::from_slice(&owned_file(
+        &path(layout, id, "execution"),
+        layout.root_uid,
+        4096,
+    )?)?;
+    ensure!(e.unit == id, "wrong retired execution");
+    if e.mode == Mode::Login {
+        if let Some(result) = read_output(&layout.state_root, id, &e)? {
+            ensure!(
+                result.finished
+                    && matches!(
+                        result.login,
+                        LoginState::Succeeded | LoginState::Failed | LoginState::Cancelled
+                    ),
+                "nonterminal login result"
+            );
+            save(layout, id, "login", &(result.login, result.observed_at))?;
+        } else {
+            let (state, _): (LoginState, u64) = serde_json::from_slice(&owned_file(
+                &path(layout, id, "login"),
+                layout.root_uid,
+                256,
+            )?)?;
+            if state == LoginState::InProgress {
+                save(
+                    layout,
+                    id,
+                    "login",
+                    &(LoginState::Failed, nostr::Timestamp::now().as_secs()),
+                )?;
+            }
+        }
+    }
+    remove_output(&layout.state_root, id, &e)?;
+    remove_output(&layout.runtime_root, id, &e)
 }
 /// Clear only owned mode/output artifacts after the caller confirmed cgroup stop/disable.
 pub fn clear(
@@ -306,15 +368,8 @@ pub fn apply(
             system(&["disable"], &unit)?.status.success(),
             "disable failed"
         );
-        if path(layout, id, "execution").try_exists()? {
-            let old: Execution = serde_json::from_slice(&owned_file(
-                &path(layout, id, "execution"),
-                layout.root_uid,
-                4096,
-            )?)?;
-            remove_output(&layout.state_root, id, &old)?;
-            remove_output(&layout.runtime_root, id, &old)?;
-        }
+        retire(layout, id)?;
+        save(layout, id, "execution", &e)?;
         if e.mode == Mode::Login {
             save(
                 layout,
@@ -326,10 +381,17 @@ pub fn apply(
                 ),
             )?;
         }
-        save(layout, id, "execution", &e)?;
         set_mode(layout, id, true, system)?;
-        if !system(&["start", "--no-block"], &unit)?.status.success() {
+        if !system(&["start", "--no-block"], &unit).is_ok_and(|r| r.status.success()) {
             crate::activation::abort(system, &unit)?;
+            if e.mode == Mode::Login {
+                save(
+                    layout,
+                    id,
+                    "login",
+                    &(LoginState::Failed, nostr::Timestamp::now().as_secs()),
+                )?;
+            }
             return Err(anyhow!("finite start failed"));
         }
         return Ok(serde_json::to_string(&e)?);

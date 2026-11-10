@@ -90,6 +90,13 @@ impl Execution {
 pub enum NetworkPolicy {
     Disabled,
 }
+impl NetworkPolicy {
+    /// The installed conversation entrypoint requires reviewed online networking.
+    pub fn require_conversation(self) -> Result<()> {
+        ensure!(self != Self::Disabled, "network-disabled");
+        Ok(())
+    }
+}
 /// Fixed local action result. Raw login bytes exist only in the unit runtime directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -367,7 +374,7 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
     // N1 must add a reviewed online policy and native evidence before this can launch.
-    ensure!(policy != NetworkPolicy::Disabled, "network-disabled");
+    policy.require_conversation()?;
     let (login, at): (LoginState, u64) =
         serde_json::from_slice(&crate::bounded(&creds.join("native-login"), 256)?)?;
     ensure!(

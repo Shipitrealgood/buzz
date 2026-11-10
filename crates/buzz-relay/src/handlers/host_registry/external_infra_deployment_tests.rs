@@ -2,6 +2,210 @@ mod external_infra_deployment_tests {
     use super::*;
     #[tokio::test]
     #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn discovery_login_refresh_and_production_offline_refusal() {
+        use buzz_core::host_deployment::{
+            self as d,
+            observation::{LoginState, Models, UnavailableReason},
+            wire,
+        };
+        let f = Fixture::with_deployment(true).await;
+        let owner = Keys::generate();
+        f.member(&owner).await;
+        let journal = tempfile::tempdir().unwrap();
+        let mut device = Device::at(&journal.path().join("owner.sqlite")).unwrap();
+        let mut registration = f.owner(&owner).await;
+        let (host_dir, mut host) = host();
+        let (scope, mut host_ws, _, _) =
+            pair(&f, &owner, &mut device, &mut host, &mut registration).await;
+        let installation = ExecutionInstallation::with_offline_policy(
+            host_dir.path(),
+            &scope,
+            f.state.relay_keypair.public_key(),
+            true,
+        )
+        .await;
+        host.reconcile_deployments(
+            &mut host_ws,
+            f.state.relay_keypair.public_key(),
+            &scope.generation,
+            &installation.catalog,
+            &installation.revision,
+            &installation.helper,
+        )
+        .await
+        .unwrap();
+        let mut owner_ws = f.socket().await;
+        owner_ws.authenticate(&owner, None).await.unwrap();
+        let mut query_ws = f.socket().await;
+        query_ws.authenticate(&owner, None).await.unwrap();
+        let mut management = buzz_paired_owner::deployment::Management::from_authenticated(
+            true,
+            &f.origin(),
+            owner.public_key(),
+            f.state.relay_keypair.public_key(),
+            query_ws,
+        )
+        .unwrap();
+        let agent = Keys::generate();
+        let first = "ac".repeat(32);
+        let unit = buzz_hostd::unit_id(&scope, &first);
+        let home = installation
+            .layout
+            .state_root
+            .join(format!("buzz-agent-{unit}"));
+        let mut command = installation.command(&owner, &agent);
+        let mut original_identity = None;
+        for revision in 0..3 {
+            let operation = if revision == 0 {
+                first.clone()
+            } else {
+                format!("{:064x}", revision + 100)
+            };
+            if revision == 2 {
+                if let d::Command::Deploy { config, .. } = &mut command {
+                    config.model = d::ModelSelection::Selected {
+                        id: "synthetic-model".into(),
+                    };
+                }
+            }
+            let authority = d::Authority {
+                v: 1,
+                scope: scope.clone(),
+                agent: agent.public_key(),
+                action: d::Action::Deploy,
+                operation_id: operation.clone(),
+                expected_revision: revision,
+                expires_at: nostr::Timestamp::now().as_secs() + 500,
+                content_sha256: String::new(),
+            };
+            let (authority, event) = wire::seal_command(
+                &owner,
+                authority,
+                &command,
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            assert!(owner_ws.send_event(event).await.unwrap().accepted);
+            host.reconcile_deployments(
+                &mut host_ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            let row = management
+                .query(
+                    &|| Ok(owner.clone()),
+                    &deployment_query(&scope, "operation", Some(&operation)),
+                )
+                .await
+                .unwrap();
+            let event: Event = serde_json::from_str(row.data["result"].as_str().unwrap()).unwrap();
+            let result = wire::open_result_body(&owner, &event, &authority).unwrap();
+            let prepared: buzz_hostd::Prepared = serde_json::from_slice(
+                &std::fs::read(installation.layout.private.join(format!("{unit}.cred"))).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(prepared.instance.unit_id, unit);
+            assert_eq!(prepared.instance.agent, agent.public_key().to_hex());
+            let identity = (prepared.instance.secret, prepared.instance.oa);
+            if let Some(ref original) = original_identity {
+                assert_eq!(&identity, original);
+            } else {
+                original_identity = Some(identity);
+            }
+            assert!(!installation.effects.lock().unwrap().1);
+            let count = std::fs::read_dir(&home)
+                .unwrap()
+                .filter(|p| {
+                    p.as_ref()
+                        .unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".buzz-action-")
+                })
+                .count();
+            if revision < 2 {
+                assert_eq!(result.result.outcome, d::Outcome::NeedsLogin);
+                let observation = result.observation.unwrap();
+                assert_eq!(
+                    observation.login,
+                    if revision == 0 {
+                        LoginState::NotObserved
+                    } else {
+                        LoginState::Succeeded
+                    }
+                );
+                assert_eq!(
+                    observation.models,
+                    Models::Unavailable {
+                        reason: UnavailableReason::NetworkDisabled
+                    }
+                );
+                assert_eq!(
+                    count, 1,
+                    "only the current correlated result survives refresh"
+                );
+            } else {
+                assert_eq!(result.result.outcome, d::Outcome::Failed);
+                assert!(result.observation.is_none());
+                assert_eq!(count, 0);
+            }
+            if revision == 0 {
+                // Root-local entry, never the controller socket. Do not poll observe:
+                // the next pending revision must reconcile the completed login itself.
+                let login = buzz_hostd::activation::apply_local(
+                    &installation.layout,
+                    installation.layout.root_uid,
+                    &format!("login {unit}"),
+                    true,
+                    &mut |args, unit| {
+                        ExecutionInstallation::system(
+                            &installation.layout,
+                            &installation.effects,
+                            true,
+                            args,
+                            unit,
+                        )
+                    },
+                )
+                .unwrap();
+                let execution: buzz_hostd::runtime_context::Execution =
+                    serde_json::from_str(&login).unwrap();
+                assert_eq!(execution.unit, unit);
+                assert_eq!(
+                    std::fs::read_to_string(home.join("native-login-state")).unwrap(),
+                    home.to_str().unwrap()
+                );
+                let summary: (LoginState, u64) = serde_json::from_slice(
+                    &std::fs::read(installation.layout.private.join(format!("{unit}.login")))
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(summary.0, LoginState::InProgress);
+            }
+            if revision > 0 {
+                assert_eq!(
+                    std::fs::read_to_string(home.join("native-login-state")).unwrap(),
+                    home.to_str().unwrap()
+                );
+                let summary: (LoginState, u64) = serde_json::from_slice(
+                    &std::fs::read(installation.layout.private.join(format!("{unit}.login")))
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(summary.0, LoginState::Succeeded);
+            }
+        }
+        installation.task.abort();
+        let _ = installation.task.await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
     async fn deployment_denied_same_id_retires_holder_and_topic() {
         for case in [
             "disabled",
@@ -120,6 +324,7 @@ mod external_infra_deployment_tests {
     // Included in the existing external_infra_tests fixture; no alternate relay.
     struct ExecutionInstallation {
         root: tempfile::TempDir,
+        layout: Arc<buzz_hostd::activation::Layout>,
         helper: buzz_hostd::deployment::Helper,
         catalog: buzz_hostd::Catalog,
         revision: String,
@@ -141,9 +346,16 @@ mod external_infra_deployment_tests {
             scope: &buzz_core::paired_message::Scope,
             relay: PublicKey,
         ) -> Self {
+            Self::with_offline_policy(staging, scope, relay, false).await
+        }
+        async fn with_offline_policy(
+            staging: &std::path::Path,
+            scope: &buzz_core::paired_message::Scope,
+            relay: PublicKey,
+            offline: bool,
+        ) -> Self {
             use sha2::{Digest, Sha256};
             use std::os::unix::fs::MetadataExt;
-            use std::os::unix::process::ExitStatusExt;
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             let root = tempfile::tempdir().unwrap();
             let private = root.path().join("private");
@@ -151,9 +363,29 @@ mod external_infra_deployment_tests {
             std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
             let template = root.path().join("buzz-paired-agent@.service");
             let catalog_path = root.path().join("catalog.json");
+            let executable = if offline {
+                let p = root.path().join("synthetic-grok");
+                std::fs::write(&p, r#"#!/bin/sh
+set -eu
+[ "$PWD" = "$HOME" ]
+[ "$GROK_HOME" = "$HOME/.grok" ]
+[ "$XDG_CONFIG_HOME" = "$HOME/.config" ]
+[ -z "${BUZZ_PRIVATE_KEY+x}" ]
+[ -z "${BUZZ_AUTH_TAG+x}" ]
+case "$*" in
+  'login --device-auth') printf '%s' "$HOME" > native-login-state ;;
+  'models --json') [ ! -f native-login-state ] || [ "$(cat native-login-state)" = "$HOME" ]; printf '{}';;
+  *) exit 42;;
+esac
+"#).unwrap();
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700)).unwrap();
+                p
+            } else {
+                "/usr/bin/true".into()
+            };
             let exe = buzz_hostd::Executable {
-                path: "/usr/bin/true".into(),
-                sha256: hex::encode(Sha256::digest(std::fs::read("/usr/bin/true").unwrap())),
+                sha256: hex::encode(Sha256::digest(std::fs::read(&executable).unwrap())),
+                path: executable,
             };
             let catalog = buzz_hostd::Catalog {
                 community: Some(scope.community.clone()),
@@ -164,7 +396,7 @@ mod external_infra_deployment_tests {
                 runtimes: [(
                     "acp/codex".into(),
                     buzz_hostd::Runtime {
-                        harness_id: None,
+                        harness_id: offline.then(|| "grok".into()),
                         harness: exe.clone(),
                         adapter: exe,
                         args: vec![],
@@ -190,6 +422,8 @@ mod external_infra_deployment_tests {
             };
             std::fs::create_dir(&layout.state_root).unwrap();
             std::fs::create_dir(&layout.runtime_root).unwrap();
+            let layout = Arc::new(layout);
+            let task_layout = layout.clone();
             let effects = Arc::new(std::sync::Mutex::new((0, false, false)));
             let state = effects.clone();
             let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -202,6 +436,7 @@ mod external_infra_deployment_tests {
             ));
             let held = held_reply.clone();
             let task = tokio::spawn(async move {
+                let layout = task_layout;
                 let mut delayed = tokio::task::JoinSet::new();
                 loop {
                     let (mut socket, _) = listener.accept().await.unwrap();
@@ -217,19 +452,54 @@ mod external_infra_deployment_tests {
                         &layout,
                         layout.root_uid,
                         &request,
-                        &mut |args, _unit| {
-                            let mut state = state.lock().unwrap();
-                            state.0 += 1;
-                            let mut ok = true;
-                            let mut stdout = String::new();
-                            match args[0] {
+                        &mut |args, unit| Self::system(&layout, &state, offline, args, unit),
+                    )
+                    .unwrap_or_else(|_| "failed\n".into());
+                    let pause = held.lock().unwrap().take();
+                    if let Some((reached, release)) = pause {
+                        let _ = reached.send(());
+                        delayed.spawn(async move {
+                            let _ = release.await;
+                            let _ = socket.write_all(reply.as_bytes()).await;
+                        });
+                    } else {
+                        socket.write_all(reply.as_bytes()).await.unwrap();
+                    }
+                }
+            });
+            Self {
+                root,
+                layout,
+                helper,
+                catalog,
+                revision,
+                effects,
+                requests,
+                task,
+                held_reply,
+            }
+        }
+        fn system(
+            layout: &buzz_hostd::activation::Layout,
+            effects: &std::sync::Mutex<(usize, bool, bool)>,
+            offline: bool,
+            args: &[&str],
+            unit: &str,
+        ) -> anyhow::Result<std::process::Output> {
+            use std::os::unix::process::ExitStatusExt;
+
+            let mut state = effects.lock().unwrap();
+            state.0 += 1;
+            let mut ok = true;
+            let mut stdout = String::new();
+            match args[0] {
                                 "show" => {
                                     stdout = format!(
                                 "ActiveState={}\nUnitFileState={}\nFragmentPath={}\nDropInPaths={}\nMainPID=0\nControlPID=0\nTasksCurrent=0\n",
                                 if state.1 { "active" } else { "inactive" },
                                 if state.1 { "enabled" } else { "disabled" },
                                 layout.template.display(),
-                                {let id=request.split(' ').nth(1).unwrap();let path=layout.template.parent().unwrap().join(format!("buzz-paired-agent@{id}.service.d/50-buzz-execution-mode.conf"));if path.exists(){path.display().to_string()}else{String::new()}}
+                                {let id=unit.strip_prefix("buzz-paired-agent@").unwrap().strip_suffix(".service").unwrap();let path=layout.template.parent().unwrap().join(format!("buzz-paired-agent@{id}.service.d/50-buzz-execution-mode.conf"));if path.exists(){path.display().to_string()}else{String::new()}}
                             )
                                 }
                                 "disable" => {
@@ -241,7 +511,7 @@ mod external_infra_deployment_tests {
                                 "daemon-reload" => {},
                                 "start" => {
                                     // Production finite supervisor; injected manager is not native isolation evidence.
-                                    let id=request.split(' ').nth(1).unwrap();
+                                    let id=unit.strip_prefix("buzz-paired-agent@").unwrap().strip_suffix(".service").unwrap();
                                     let prepared:buzz_hostd::Prepared=serde_json::from_slice(&std::fs::read(layout.private.join(format!("{id}.cred"))).unwrap()).unwrap();
                                     let execution:buzz_hostd::runtime_context::Execution=serde_json::from_slice(&std::fs::read(layout.private.join(format!("{id}.execution"))).unwrap()).unwrap();
                                     let (catalog,_)=buzz_hostd::Catalog::read(&layout.catalog).unwrap();
@@ -259,44 +529,21 @@ mod external_infra_deployment_tests {
                                     std::thread::spawn(move||tokio::runtime::Runtime::new().unwrap().block_on(
                                         buzz_hostd::runtime_context::finite(&context,&prepared,&catalog,&execution,buzz_hostd::runtime_context::NetworkPolicy::Disabled))).join().unwrap().unwrap();
                                 },
-                                "enable" => state.1 = true,
+                                "enable" => {
+                                    if offline {
+                                        let refusal = buzz_hostd::runtime_context::NetworkPolicy::Disabled.require_conversation().unwrap_err();
+                                        assert_eq!(refusal.to_string(), "network-disabled");
+                                        ok = false;
+                                    } else { state.1 = true; }
+                                },
                                 "is-active" | "is-enabled" => ok = state.1,
                                 _ => panic!("unexpected fixed operation"),
                             }
-                            Ok(std::process::Output {
-                                status: std::process::ExitStatus::from_raw(if ok {
-                                    0
-                                } else {
-                                    256
-                                }),
-                                stdout: stdout.into_bytes(),
-                                stderr: vec![],
-                            })
-                        },
-                    )
-                    .unwrap_or_else(|_| "failed\n".into());
-                    let pause = held.lock().unwrap().take();
-                    if let Some((reached, release)) = pause {
-                        let _ = reached.send(());
-                        delayed.spawn(async move {
-                            let _ = release.await;
-                            let _ = socket.write_all(reply.as_bytes()).await;
-                        });
-                    } else {
-                        socket.write_all(reply.as_bytes()).await.unwrap();
-                    }
-                }
-            });
-            Self {
-                root,
-                helper,
-                catalog,
-                revision,
-                effects,
-                requests,
-                task,
-                held_reply,
-            }
+            Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(if ok { 0 } else { 256 }),
+                stdout: stdout.into_bytes(),
+                stderr: vec![],
+            })
         }
         fn hold_reply(
             &self,

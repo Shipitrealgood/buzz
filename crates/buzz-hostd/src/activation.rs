@@ -373,6 +373,7 @@ pub fn apply_local(
     }
     let stored: Prepared = serde_json::from_slice(&crate::bounded(&dest, 131072)?)?;
     if stored.instance.deployment.is_some() {
+        ensure!(crate::service_actions::inactive(&shape), "unit busy");
         crate::service_actions::restore(layout, &stored.instance, system)?;
     }
     // Keep the root transaction serialized through systemctl and cleanup.
