@@ -42,15 +42,23 @@ fn native_phases(home: &std::path::Path) {
     let app_data = home.join("app-data");
     context.config_mut().identifier = app_data.to_str().unwrap().to_owned();
     let mut state = crate::app_state::build_app_state();
+    // Observe attempted publications only for the rejected drafts, then close
+    // the fixture endpoint before the existing valid-create/recovery assertions.
+    let publication_probe = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    publication_probe.set_nonblocking(true).unwrap();
+    let publication_address = publication_probe.local_addr().unwrap();
+    let community = format!("https://localhost:{}", publication_address.port());
+    let relay = format!("wss://localhost:{}", publication_address.port());
     // Deployment scopes require a canonical HTTPS domain, not an IP literal.
     // Keep that valid fixture domain pinned to loopback, without proxy/redirects.
     state.http_client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .resolve("localhost", ([127, 0, 0, 1], 9).into())
+        .resolve("localhost", publication_address)
+        .timeout(std::time::Duration::from_secs(1))
         .build()
         .unwrap();
-    *state.relay_url_override.lock().unwrap() = Some("wss://localhost:9".into());
+    *state.relay_url_override.lock().unwrap() = Some(relay.clone());
     let app = tauri::test::mock_builder()
         .manage(state)
         .build(context)
@@ -60,7 +68,7 @@ fn native_phases(home: &std::path::Path) {
         let state = app.state::<AppState>();
         let owner = state.signing_keys().unwrap();
         let scope = buzz_core_pkg::paired_message::Scope {
-            community: "https://localhost:9".into(),
+            community: community.clone(),
             owner: owner.public_key(),
             host: Keys::generate().public_key(),
             generation: "ab".repeat(32),
@@ -69,7 +77,7 @@ fn native_phases(home: &std::path::Path) {
         let input = || {
             serde_json::from_value::<CreateManagedAgentRequest>(json!({
             "name":"Isolated hosted agent", "personaId":"one-definition", "systemPrompt":"A safe fixture prompt", "agentCommand":"grok", "agentArgs":["agent","--always-approve","stdio"],
-            "backend":{"type":"registered_host","scope":scope}, "relayUrl":"wss://localhost:9",
+            "backend":{"type":"registered_host","scope":scope}, "relayUrl":relay,
             "spawnAfterCreate":false, "startOnAppLaunch":false
         })).unwrap()
         };
@@ -124,8 +132,90 @@ fn native_phases(home: &std::path::Path) {
             status,
             draft: serde_json::to_value(input()).unwrap(),
         };
-        // Network boundary is the same closed loopback endpoint used by existing
-        // main-create tests. No host/provider process or live endpoint is reached.
+        let valid_status = context.status.clone();
+        let retention_scope =
+            crate::managed_agents::retention::active_retention_scope(app.handle(), &state).unwrap();
+        let retention =
+            crate::managed_agents::retention::open_retention_db(&retention_scope.db_path).unwrap();
+        assert!(
+            crate::managed_agents::retention::get_pending_sync(&retention)
+                .unwrap()
+                .is_empty()
+        );
+        for scenario in [
+            "missing-inventory",
+            "missing-runtime",
+            "unavailable",
+            "unsupported",
+        ] {
+            context.status = valid_status.clone();
+            match scenario {
+                "missing-inventory" => context.status.inventory = None,
+                "missing-runtime" => context.status.inventory.as_mut().unwrap().clear(),
+                "unavailable" => {
+                    context
+                        .status
+                        .inventory
+                        .as_mut()
+                        .unwrap()
+                        .get_mut("native/grok")
+                        .unwrap()
+                        .availability = buzz_core_pkg::harness::AcpAvailabilityStatus::NotInstalled
+                }
+                "unsupported" => {
+                    context
+                        .status
+                        .inventory
+                        .as_mut()
+                        .unwrap()
+                        .get_mut("native/grok")
+                        .unwrap()
+                        .config_supported = false
+                }
+                _ => unreachable!(),
+            }
+            let error = create_managed_agent_phases(
+                input(),
+                app.handle().clone(),
+                &state,
+                Some(&mut context),
+            )
+            .await
+            .err()
+            .unwrap();
+            assert!(
+                error.contains("Current supported host runtime inventory unavailable"),
+                "{scenario}: {error}"
+            );
+            assert!(
+                context
+                    .device
+                    .deployment_intents(&scope.community, &owner)
+                    .unwrap()
+                    .is_empty(),
+                "{scenario}: retained intent"
+            );
+            assert!(
+                load_managed_agents(app.handle()).unwrap().is_empty(),
+                "{scenario}: saved agent"
+            );
+            assert!(
+                crate::managed_agents::retention::get_pending_sync(&retention)
+                    .unwrap()
+                    .is_empty(),
+                "{scenario}: queued publication"
+            );
+            assert_eq!(
+                publication_probe.accept().err().unwrap().kind(),
+                std::io::ErrorKind::WouldBlock,
+                "{scenario}: publication attempted"
+            );
+            assert!(state.managed_agent_processes.lock().unwrap().is_empty());
+        }
+        context.status = valid_status;
+        drop(publication_probe);
+        // The valid case keeps the existing closed-loopback publication failure
+        // boundary. No host/provider process or live endpoint is reached.
         let first =
             create_managed_agent_phases(input(), app.handle().clone(), &state, Some(&mut context))
                 .await

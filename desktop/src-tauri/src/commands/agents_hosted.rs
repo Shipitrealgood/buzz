@@ -218,8 +218,11 @@ impl Create<'_> {
             )
             .map_err(|e| e.to_string())
     }
-    fn check_runtime(&self) -> Result<(), String> {
-        let record = self.record()?;
+    /// Validate the selected host facts without requiring a generated identity or record.
+    pub(super) fn check_inventory(
+        &self,
+    ) -> Result<crate::managed_agents::AcpRuntimeCatalogEntry, String> {
+        self.check()?;
         let d::Capability::Supported {
             harnesses,
             catalog_revision,
@@ -253,6 +256,11 @@ impl Create<'_> {
             .get(&self.runtime)
             .and_then(|id| crate::managed_agents::hosted_runtime_metadata(id))
             .ok_or("Host harness mapping unavailable")?;
+        Ok(metadata)
+    }
+    fn check_runtime(&self) -> Result<(), String> {
+        let metadata = self.check_inventory()?;
+        let record = self.record()?;
         if metadata.command.as_deref() != Some(&record.agent_command)
             || metadata.default_args != record.agent_args
         {

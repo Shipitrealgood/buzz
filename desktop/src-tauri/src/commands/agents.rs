@@ -431,7 +431,8 @@ async fn create_managed_agent_phases<R: tauri::Runtime>(
 ) -> Result<CreateManagedAgentResponse, String> {
     #[cfg(windows)]
     if let Some(hosted) = hosted.as_deref() {
-        hosted.check()?;
+        // Reject changed/unknown host facts before key generation, persistence or publication.
+        hosted.check_inventory()?;
     }
     let name = input.name.trim().to_string();
     let requested_persona_id = input
