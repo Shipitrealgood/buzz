@@ -58,3 +58,39 @@ sudo -u buzz-hostd /usr/local/libexec/buzz-hostd --state-dir /var/lib/buzz-hostd
 ```
 
 The bootstrap installs its ephemeral CA on that disposable VM, a digest-pinned `local/fixture` ACP adapter and the isolated service units. If scripting the private console enrollment for E2E, use a nonlogged pseudo-terminal redirected into a 0600 file under the private test directory. Disable shell tracing. After a successful create, check the exact signed result, each channel roster, `systemctl is-active` and `systemctl is-enabled` for the opaque instance, and an eligible and denied message from independent clients. Studio/UI tests, OS sandbox tests and production rollout are separate gates.
+
+### Checkpoint 2 source layout (not activated)
+
+The opt-in `deploy/buzz-host-registration.service.d/50-deployment.conf` keeps
+`StateDirectory=buzz-host-registration` and the existing key/database. A later
+approved installation must stop the old controller, transition that directory's
+ownership to the fixed `buzz-hostd` account, and mount the same physical directory
+at `/var/lib/buzz-hostd` in both controller and helper namespaces (helper read-only).
+Verify the staged inode agrees in both namespaces before enabling `--deployment`.
+Keep the socket root:buzz-hostd 0660. Rollback removes the opt-in drop-in and restores
+registration-only ownership with the controller stopped, preserving that same journal.
+Do not enable the legacy `buzz-hostd.service` alongside registration.
+
+The canonical agent unit uses an empty `/var/lib/buzz-agent-root` mount view,
+explicit runtime/library/CA/identity binds and systemd-owned per-unit state/runtime
+and credential mounts. It does not copy a rootfs. Before installation, pin the
+runtime dependency closure in `/opt/buzz-runtime` and review the bound library
+paths as runtime-only material. Missing dependencies fail; they do not authorize
+broad host mounts. Existing operator/sibling homes are never an input.
+
+Install the reviewed `execution-policy.json` as a root-owned file: its only accepted
+value is `"disabled"`. `PrivateNetwork=yes` is the source default. This policy is
+configuration, not native-isolation evidence. Login/models still execute the real
+fixed commands offline; model results cannot authorize online launch. Conversation
+refuses network-disabled. N1 (#3719) must supply a reviewed online policy variant,
+namespace/network configuration and native denial/positive evidence before rollout.
+
+Fixed finite actions run in `buzz-paired-agent@<unit>.service`, with the same HOME,
+GROK_HOME, XDG directories and cwd as conversation. Root generates the execution
+credential and exact `50-buzz-execution-mode.conf` (`Restart=no`); no caller supplies
+argv, environment or paths. Active units refuse finite actions. Raw device-login
+output is only polled by the root-local `buzz-host-activate --login UNIT` terminal
+from RuntimeDirectory, which systemd removes on stop; terminal state is sanitized.
+The socket peer can invoke models but cannot invoke login or obtain raw login output.
+Native login success is a command outcome, never proven subscription entitlement.
+See `docs/executions/3721-host-service-discovery.md` for measured and unrun gates.

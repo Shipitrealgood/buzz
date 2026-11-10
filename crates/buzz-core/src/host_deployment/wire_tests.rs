@@ -112,9 +112,9 @@ fn status_is_host_signed_scoped_and_expires() {
         scope: a.scope,
         availability: Availability::Current,
         capability: Capability::Supported {
-            harnesses: Default::default(),
+            harnesses: [("native/grok".into(), "grok".into())].into(),
             catalog_revision: "ff".repeat(32),
-            runtimes: vec![],
+            runtimes: vec!["native/grok".into()],
         },
         expires_at: 120,
     };

@@ -31,7 +31,16 @@ impl Helper {
     /// Refuse the shipped registration-only sandbox before any helper effect.
     pub fn installed(state_dir: &Path) -> Result<Self> {
         ensure!(state_dir == Path::new("/var/lib/buzz-hostd"), "deployment installation incompatible: existing host journal must be mounted at /var/lib/buzz-hostd; registration-only sandbox has no execution boundary");
-        Self::at(state_dir, Path::new("/run/buzz-hostd-activate.sock"))
+        let socket = Path::new("/run/buzz-hostd-activate.sock");
+        let m = fs::symlink_metadata(socket)?;
+        ensure!(
+            m.uid() == 0
+                && m.gid() == rustix::process::getegid().as_raw()
+                && m.mode() & 0o777 == 0o660,
+            "fixed helper socket owner/group/mode mismatch"
+        );
+        crate::trusted(Path::new(crate::OPERATOR_CATALOG))?;
+        Self::at(state_dir, socket)
     }
     /// Bind an existing private staging directory and Unix helper socket.
     /// The production executable never accepts overrides for either path.

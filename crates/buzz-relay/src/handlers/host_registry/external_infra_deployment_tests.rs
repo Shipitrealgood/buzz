@@ -185,7 +185,11 @@ mod external_infra_deployment_tests {
                 template,
                 catalog: catalog_path,
                 root_uid: std::fs::metadata(staging).unwrap().uid(),
+                state_root: root.path().join("agent-state"),
+                runtime_root: root.path().join("agent-runtime"),
             };
+            std::fs::create_dir(&layout.state_root).unwrap();
+            std::fs::create_dir(&layout.runtime_root).unwrap();
             let effects = Arc::new(std::sync::Mutex::new((0, false, false)));
             let state = effects.clone();
             let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -221,7 +225,7 @@ mod external_infra_deployment_tests {
                             match args[0] {
                                 "show" => {
                                     stdout = format!(
-                                "ActiveState={}\nUnitFileState={}\nFragmentPath={}\nDropInPaths=\n",
+                                "ActiveState={}\nUnitFileState={}\nFragmentPath={}\nDropInPaths=\nMainPID=0\nControlPID=0\nTasksCurrent=0\n",
                                 if state.1 { "active" } else { "inactive" },
                                 if state.1 { "enabled" } else { "disabled" },
                                 layout.template.display()
@@ -233,6 +237,7 @@ mod external_infra_deployment_tests {
                                         state.1 = false;
                                     }
                                 }
+                                "daemon-reload" => {},
                                 "enable" => state.1 = true,
                                 "is-active" | "is-enabled" => ok = state.1,
                                 _ => panic!("unexpected fixed operation"),

@@ -3,6 +3,7 @@ ExecStart=/usr/local/libexec/buzz-host-activate
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal
+BindReadOnlyPaths=/var/lib/buzz-host-registration:/var/lib/buzz-hostd
 StateDirectory=buzz-paired-units
 StateDirectoryMode=0700
 UMask=0077

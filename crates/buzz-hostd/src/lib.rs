@@ -116,7 +116,10 @@ impl Catalog {
         for (id, rt) in &self.runtimes {
             ensure!(
                 runtime_id(id)
-                    && rt.harness_id.as_deref().is_none_or(runtime_id)
+                    && rt
+                        .harness_id
+                        .as_deref()
+                        .is_none_or(buzz_core::host_deployment::harness_id)
                     && token(&rt.credential_profile)
                     && rt.args.len() <= 32
                     && rt.args.iter().all(|a| !a.contains(',')
@@ -428,3 +431,9 @@ pub fn deployment_environment(i: &Instance) -> Result<BTreeMap<String, String>> 
     }
     Ok(env)
 }
+
+/// Fixed same-unit execution context and finite native modes.
+pub mod runtime_context;
+
+/// Same-unit fixed action transactions; no second controller.
+pub mod service_actions;

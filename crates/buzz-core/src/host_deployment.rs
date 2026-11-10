@@ -76,13 +76,22 @@ impl Capability {
                 || runtimes.windows(2).any(|w| w[0] >= w[1])
                 || harnesses
                     .iter()
-                    .any(|(id, harness)| !runtimes.contains(id) || !runtime_id(harness))
+                    .any(|(id, harness)| !runtimes.contains(id) || !harness_id(harness))
             {
                 return Err(Error);
             }
         }
         Ok(())
     }
+}
+
+/// Canonical main harness key, distinct from the installed runtime's namespaced ID.
+pub fn harness_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_".contains(&b))
 }
 
 /// Freshness/authority of a private status observation, never relay presence.

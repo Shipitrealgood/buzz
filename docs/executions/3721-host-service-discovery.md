@@ -38,3 +38,30 @@ Root reads output using anchored no-follow file descriptors, never runtime paths
 V1–V5, source integration, strict ACP, native service/network/reboot/provider/Windows,
 full CI and human testing are NOT RUN at this checkpoint. PID 1 is not systemd.
 No host-manager/provider/live-relay actions or existing-agent credentials used.
+
+## Service/context checkpoint
+
+Added the real fixed finite supervisor and short existing-lock helper transactions,
+shared per-unit context, root-local login frontend, exact finite-mode override,
+anchored output custody, opt-in same-journal binding and offline unit filesystem
+configuration. Live raw login output is confined to RuntimeDirectory; terminal
+StateDirectory results omit it. The existing conversation construction is retained
+behind the offline refusal and fresh-selection gate.
+
+Corrections found by tests: canonical `grok` harness keys are not namespaced runtime
+IDs (separate bounded key validator); owned drop-in directory creation now sets 0700
+explicitly rather than depending on caller umask. Initial local socket tests returned
+sandbox EPERM, so the exact compiled synthetic suite ran with approved local socket
+access. No manager, provider, installed service or existing-agent credential was used.
+
+- `cargo check -p buzz-hostd --all-targets`: passed.
+- `target/debug/deps/buzz_hostd-0d871f539b36364e service_actions --test-threads=1`:
+  4 passed, 1.08s. Covers fixed artifacts, busy/correlation/root-only login,
+  symlink/hardlink refusal, real finite login subprocess, same HOME persistence,
+  inherited-provider/Buzz-key exclusion, combined output cap and deadline.
+- These tests inject manager responses and use disposable context paths. They do
+  not prove systemd mounts, cgroups, native login or installed-entrypoint startup.
+
+Conductor clarification: V4's source selected-start leg must end in truthful
+network-disabled refusal. Online selected-start is N1/native NOT RUN; an injected
+manager cannot prove it. The spec now records this boundary explicitly.

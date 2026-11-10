@@ -21,6 +21,10 @@ pub struct Layout {
     pub catalog: PathBuf,
     /// OS ownership boundary; zero in production.
     pub root_uid: u32,
+    /// Root-protected physical DynamicUser state parent.
+    pub state_root: PathBuf,
+    /// Root-protected per-unit runtime directory parent.
+    pub runtime_root: PathBuf,
 }
 impl Layout {
     /// Fixed paths; there is no CLI or protocol override.
@@ -31,6 +35,8 @@ impl Layout {
             template: "/etc/systemd/system/buzz-paired-agent@.service".into(),
             catalog: OPERATOR_CATALOG.into(),
             root_uid: 0,
+            state_root: "/var/lib/private".into(),
+            runtime_root: "/run".into(),
         }
     }
 }
@@ -78,19 +84,38 @@ fn has_capacity(root: &Path, capacity: u32) -> Result<bool> {
     }
     Ok(capacity > 0)
 }
-fn abort(system: &mut impl FnMut(&[&str], &str) -> Result<Output>, unit: &str) -> Result<()> {
+pub(crate) fn abort(
+    system: &mut impl FnMut(&[&str], &str) -> Result<Output>,
+    unit: &str,
+) -> Result<()> {
     ensure!(
         system(&["disable", "--now"], unit)?.status.success(),
         "unit cleanup incomplete"
     );
-    let result = system(&["show", "-p", "ActiveState", "-p", "UnitFileState"], unit)?;
+    let result = system(
+        &[
+            "show",
+            "-p",
+            "ActiveState",
+            "-p",
+            "UnitFileState",
+            "-p",
+            "MainPID",
+            "-p",
+            "ControlPID",
+            "-p",
+            "TasksCurrent",
+        ],
+        unit,
+    )?;
     let output = std::str::from_utf8(&result.stdout)?;
     ensure!(
         result.status.success()
             && output
                 .lines()
                 .any(|s| matches!(s, "ActiveState=inactive" | "ActiveState=failed"))
-            && output.lines().any(|s| s == "UnitFileState=disabled"),
+            && output.lines().any(|s| s == "UnitFileState=disabled")
+            && crate::service_actions::inactive(output),
         "unit cleanup unconfirmed"
     );
     Ok(())
@@ -104,11 +129,36 @@ pub fn apply(
     request: &str,
     system: &mut impl FnMut(&[&str], &str) -> Result<Output>,
 ) -> Result<String> {
-    let (verb, id) = request
-        .split_once(' ')
-        .ok_or_else(|| anyhow!("invalid action"))?;
+    apply_local(layout, uid, request, false, system)
+}
+/// Root-local frontend shares the same transaction; socket callers never set local.
+pub fn apply_local(
+    layout: &Layout,
+    uid: u32,
+    request: &str,
+    local: bool,
+    system: &mut impl FnMut(&[&str], &str) -> Result<Output>,
+) -> Result<String> {
+    let parts: Vec<_> = request.split(' ').collect();
+    ensure!((2..=3).contains(&parts.len()), "invalid action");
+    let (verb, id) = (parts[0], parts[1]);
+    let nonce = parts.get(2).copied();
     ensure!(
-        matches!(verb, "prepare" | "start" | "abort" | "settle" | "cleanup") && crate::id(id),
+        matches!(
+            verb,
+            "prepare"
+                | "start"
+                | "abort"
+                | "settle"
+                | "cleanup"
+                | "models"
+                | "login"
+                | "observe"
+                | "cancel"
+        ) && crate::id(id)
+            && nonce.is_none_or(crate::id)
+            && (matches!(verb, "observe" | "cancel") == nonce.is_some())
+            && (verb != "login" || local),
         "invalid action"
     );
     let root = layout.private.as_path();
@@ -148,19 +198,25 @@ pub fn apply(
             "FragmentPath",
             "-p",
             "DropInPaths",
+            "-p",
+            "MainPID",
+            "-p",
+            "ControlPID",
+            "-p",
+            "TasksCurrent",
         ],
         &unit,
     )?;
     ensure!(shape.status.success(), "cannot inspect system unit");
-    if !owned_shape(
-        std::str::from_utf8(&shape.stdout)?,
-        existing,
-        &layout.template,
-    ) {
+    let shape = crate::service_actions::shape(layout, id, std::str::from_utf8(&shape.stdout)?)?;
+    if !owned_shape(&shape, existing, &layout.template) {
         if !existing && verb != "abort" {
             return Ok("failed\n".into());
         }
         return Err(anyhow!("foreign unit; operator reconciliation required"));
+    }
+    if matches!(verb, "models" | "login" | "observe" | "cancel") {
+        return crate::service_actions::apply(layout, id, verb, nonce, local, &shape, system);
     }
     let fence = root.join(format!("{id}.closed"));
     let sealed = root.join(format!("{id}.settled"));
@@ -181,6 +237,7 @@ pub fn apply(
         fs::File::create(&fence)?.sync_all()?;
         lock.sync_all()?;
         abort(system, &unit)?;
+        crate::service_actions::clear(layout, id, system)?;
         if dest.try_exists()? {
             fs::remove_file(&dest)?;
         }
@@ -239,7 +296,14 @@ pub fn apply(
                 );
                 let (catalog, revision) = Catalog::read(&layout.catalog)?;
                 submitted.validate(&catalog, &revision)?;
+                if matches!(
+                    next.config.model,
+                    buzz_core::host_deployment::ModelSelection::PendingLogin {}
+                ) {
+                    ensure!(crate::service_actions::inactive(&shape), "unit busy");
+                }
                 abort(system, &unit)?;
+                crate::service_actions::restore(layout, &submitted, system)?;
                 let mut temp = tempfile::NamedTempFile::new_in(root)?;
                 serde_json::to_writer(
                     &mut temp,
@@ -282,6 +346,9 @@ pub fn apply(
     }
     let rt = &catalog.runtimes[&parsed.runtime_id];
     if !existing {
+        if parsed.deployment.is_some() {
+            crate::service_actions::conversation(layout, &parsed)?;
+        }
         if !has_capacity(root, catalog.capacity)? {
             return Ok("failed\n".into());
         }
@@ -303,6 +370,10 @@ pub fn apply(
     }
     if verb == "prepare" {
         return Ok("prepared\n".into());
+    }
+    let stored: Prepared = serde_json::from_slice(&crate::bounded(&dest, 131072)?)?;
+    if stored.instance.deployment.is_some() {
+        crate::service_actions::restore(layout, &stored.instance, system)?;
     }
     // Keep the root transaction serialized through systemctl and cleanup.
     // Last catalog check before start. Worker independently repeats it on every boot.
