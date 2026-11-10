@@ -1,3 +1,4 @@
+import type { HostedDraft } from "./prepareHostedDefinition";
 import type {
   AcpRuntime,
   AcpRuntimeCatalogEntry,
@@ -84,7 +85,7 @@ export function resolveStartRuntimeForDefinition(
  *   definition's runtime preference.
  */
 export type BackendIntent =
-  | RegisteredHostDestination
+  | (RegisteredHostDestination & { setup?: HostedDraft })
   | {
       type: "provider";
       id: string;
@@ -117,9 +118,6 @@ export async function buildInstanceInputForDefinition(
   backendIntent?: BackendIntent,
   effortLevel?: string | null,
 ): Promise<CreateManagedAgentInput> {
-  if (backendIntent?.type === "registered-host") {
-    throw new Error("Registered-host creation is not available yet.");
-  }
   const avatarUrl = await resolveManagedAgentAvatarUrl(
     persona.avatarUrl,
     upload,
@@ -132,6 +130,21 @@ export async function buildInstanceInputForDefinition(
     avatarUrl,
   };
 
+  if (backendIntent?.type === "registered-host") {
+    return {
+      ...base,
+      destination: { type: "registered-host", scope: backendIntent.scope },
+      backend: { type: "registered_host", scope: backendIntent.scope },
+      acpCommand: persona.acpCommand || "buzz-acp",
+      agentCommand: runtime.command,
+      agentArgs: runtime.defaultArgs,
+      harnessOverride: true,
+      spawnAfterCreate: false,
+      startOnAppLaunch: false,
+      model: persona.model ?? undefined,
+      provider: persona.provider ?? undefined,
+    };
+  }
   if (backendIntent?.type === "provider") {
     return {
       ...base,

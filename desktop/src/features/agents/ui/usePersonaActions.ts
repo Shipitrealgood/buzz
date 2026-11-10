@@ -1,3 +1,8 @@
+import {
+  prepareHostedDefinition,
+  type AgentSubmitResult,
+} from "../lib/prepareHostedDefinition";
+import { listManagedAgents } from "@/shared/api/tauri";
 import * as React from "react";
 import { isRelayRemovedError } from "@/features/agents/managedAgentRelayCleanup";
 import { useQueryClient } from "@tanstack/react-query";
@@ -125,6 +130,7 @@ export function usePersonaActions() {
   const [personaFeedbackSurface, setPersonaFeedbackSurface] =
     React.useState<PersonaFeedbackSurface>("library");
   const createdAgentAttachment = useCreatedAgentChannelAttachment();
+  const submitLatch = React.useRef(false);
   const [isPersonaSubmitPending, setIsPersonaSubmitPending] =
     React.useState(false);
 
@@ -179,11 +185,12 @@ export function usePersonaActions() {
     effortLevel?: string | null,
     targetChannel?: Pick<Channel, "id" | "name"> | null,
     options?: { publishCatalogUpdates?: boolean },
-  ): Promise<boolean> {
-    if (isPersonaSubmitPending) {
+  ): Promise<AgentSubmitResult> {
+    if (submitLatch.current) {
       return false;
     }
 
+    submitLatch.current = true;
     clearFeedback("library");
     setIsPersonaSubmitPending(true);
     try {
@@ -207,6 +214,28 @@ export function usePersonaActions() {
           setPersonaNoticeMessage(personaSaveNotice(input.displayName, null));
         }
       } else {
+        if (backendIntent?.type === "registered-host") {
+          if (!backendIntent.setup)
+            throw new Error("Host setup token and catalog are required.");
+          const result = await prepareHostedDefinition(
+            input,
+            backendIntent,
+            backendIntent.setup,
+            createPersonaMutation.mutateAsync,
+          );
+          await queryClient.invalidateQueries({
+            queryKey: managedAgentsQueryKey,
+          });
+          const agent = (await listManagedAgents()).find(
+            (item) => item.pubkey === result.hosted.pubkey,
+          );
+          if (agent)
+            await createdAgentAttachment.presentCreatedAgent(
+              { agent, spawnError: null },
+              targetChannel,
+            );
+          return result;
+        }
         const runtime = availableRuntimes.find(
           (candidate) => candidate.id === input.runtime,
         );
@@ -222,10 +251,6 @@ export function usePersonaActions() {
           resolveCreateIntent(intent) === "definition_start"
             ? (backendIntent ?? null)
             : null;
-
-        if (backendIntent?.type === "registered-host") {
-          throw new Error("Registered-host creation is not available yet.");
-        }
 
         const avatarUrl = await resolveManagedAgentAvatarUrl(
           input.avatarUrl,
@@ -282,6 +307,7 @@ export function usePersonaActions() {
       );
       return false;
     } finally {
+      submitLatch.current = false;
       setIsPersonaSubmitPending(false);
     }
   }

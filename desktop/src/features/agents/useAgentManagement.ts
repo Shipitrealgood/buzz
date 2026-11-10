@@ -1,3 +1,8 @@
+import {
+  prepareHostedDefinition,
+  type AgentSubmitResult,
+} from "./lib/prepareHostedDefinition";
+import { listManagedAgents } from "@/shared/api/tauri";
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -35,6 +40,7 @@ import type {
 } from "@/shared/api/types";
 
 export function useAgentManagement() {
+  const submitLatch = React.useRef(false);
   const queryClient = useQueryClient();
   const personasQuery = usePersonasQuery();
   const managedAgentsQuery = useManagedAgentsQuery();
@@ -157,13 +163,36 @@ export function useAgentManagement() {
     intent: AgentCreateIntent,
     backendIntent: BackendIntent | null,
     effortLevel: string | null,
-  ): Promise<boolean> {
-    if (request?.action !== "create" || "id" in input) {
+  ): Promise<AgentSubmitResult> {
+    if (submitLatch.current || request?.action !== "create" || "id" in input) {
       return false;
     }
+    submitLatch.current = true;
     setError(null);
     try {
       assertAgentCanActFromOrigin(request.request.channelId);
+      if (backendIntent?.type === "registered-host") {
+        if (!backendIntent.setup)
+          throw new Error("Host setup token and catalog are required.");
+        const result = await prepareHostedDefinition(
+          input,
+          backendIntent,
+          backendIntent.setup,
+          createPersonaMutation.mutateAsync,
+        );
+        await queryClient.invalidateQueries({
+          queryKey: managedAgentsQueryKey,
+        });
+        const agent = (await listManagedAgents()).find(
+          (item) => item.pubkey === result.hosted.pubkey,
+        );
+        if (agent)
+          await createdAgentAttachment.presentCreatedAgent(
+            { agent, spawnError: null },
+            { id: request.request.channelId, name: "this channel" },
+          );
+        return result;
+      }
       const runtimes = await availableRuntimesForStart(runtimesQuery);
       const runtime = runtimes.find(
         (candidate) => candidate.id === input.runtime,
@@ -213,6 +242,8 @@ export function useAgentManagement() {
         cause instanceof Error ? cause.message : "Could not save this agent.",
       );
       return false;
+    } finally {
+      submitLatch.current = false;
     }
   }
 

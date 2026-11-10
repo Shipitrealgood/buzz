@@ -78,6 +78,15 @@ export function WhereToRunFields({
   const selectedHost = hosts.find(
     (host) => hostDestinationValue(host) === draft.runOn,
   );
+  const hostAvailable =
+    !!selectedHost &&
+    selectedHost.state === "paired" &&
+    selectedHost.fresh &&
+    directory.data?.available === true;
+  React.useEffect(() => {
+    if (isHostMode && draft.hostAvailable !== hostAvailable)
+      onDraftChange({ ...draft, hostAvailable });
+  }, [isHostMode, hostAvailable, draft, onDraftChange]);
   const [probeError, setProbeError] = React.useState<string | null>(null);
   const runOnOptions = [
     { label: "This computer", value: "local" },
@@ -197,8 +206,8 @@ export function WhereToRunFields({
               {selectedHost
                 ? hostRegistrationStatus(selectedHost)
                 : "Selected host is unavailable in this workspace."}{" "}
-              Registered-host creation is not available yet. Models will remain
-              pending until the new agent signs in.
+              Host runtime metadata is checked separately. Models remain pending
+              until this new agent signs in on its host.
             </p>
           ) : null}
         </div>

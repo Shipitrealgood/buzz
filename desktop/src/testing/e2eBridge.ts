@@ -14141,6 +14141,12 @@ export function maybeInstallE2eTauriMocks() {
           (payload as Parameters<typeof handleGetAgentMemory>[0]) ?? {},
           activeConfig,
         );
+      case "hosted_setup_token":
+      case "hosted_catalog":
+      case "hosted_prepare":
+      case "hosted_setup_list":
+      case "hosted_setup_action":
+        throw new Error("Native host deployment disabled");
       case "create_managed_agent":
         return handleCreateManagedAgent(
           payload as Parameters<typeof handleCreateManagedAgent>[0],

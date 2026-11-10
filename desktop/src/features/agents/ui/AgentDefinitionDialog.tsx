@@ -1,3 +1,7 @@
+import {
+  LOCAL_CONFIGURATION,
+  type AgentConfigurationSource,
+} from "@/shared/api/hostedAgents";
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -97,6 +101,7 @@ import {
   usePendingHarnessSelection,
 } from "./addCustomHarness";
 type AgentDefinitionDialogProps = {
+  configurationSource?: AgentConfigurationSource;
   open: boolean;
   embedded?: boolean;
   title: string;
@@ -126,6 +131,7 @@ export type AgentDefinitionSubmitOptions = {
   effortOptions?: EffortOptions;
 };
 export function AgentDefinitionDialog({
+  configurationSource = LOCAL_CONFIGURATION,
   open,
   embedded = false,
   title,
@@ -143,8 +149,10 @@ export function AgentDefinitionDialog({
   createRunSection,
   createSubmitBlocked = false,
 }: AgentDefinitionDialogProps) {
+  const hosted = configurationSource.type === "hosted";
+  const sourceKey = hosted ? configurationSource.key : "local";
   const runtimesLoading = runtimeCatalogStatus === "loading";
-  const acpCommandsQuery = useAcpCommandsQuery({ enabled: open });
+  const acpCommandsQuery = useAcpCommandsQuery({ enabled: open && !hosted });
   const [displayName, setDisplayName] = React.useState("");
   const [descriptionDraft, setDescriptionDraft] = React.useState("");
   const [aiDefaultsOpen, setAiDefaultsOpen] = React.useState(false);
@@ -190,7 +198,7 @@ export function AgentDefinitionDialog({
       model: inheritedModelDefault,
     },
     inheritedEnvVars: inheritedEnvVarsForAdvanced,
-  } = useAgentDialogDefaults({ open });
+  } = useAgentDialogDefaults({ open: open && !hosted });
   const defaultRuntime = React.useMemo(
     () => getDefaultPersonaRuntime(runtimes, globalConfig.preferred_runtime),
     [globalConfig.preferred_runtime, runtimes],
@@ -298,6 +306,18 @@ export function AgentDefinitionDialog({
       setAiConfigurationMode("custom");
     }
   }, [defaultRuntime, isCreateMode, open, runtime, runtimesLoading]);
+  const previousSource = React.useRef(sourceKey);
+  React.useEffect(() => {
+    if (previousSource.current === sourceKey) return;
+    previousSource.current = sourceKey;
+    setRuntime("");
+    setModel("");
+    setProvider("");
+    setIsCustomModelEditing(false);
+    setIsCustomProviderEditing(false);
+    setAiConfigurationMode(sourceKey === "local" ? "defaults" : "custom");
+    hasSeededForOpenRef.current = false;
+  }, [sourceKey]);
   function handleOpenChange(next: boolean) {
     // The catalog may veto embedded close requests; preserve the draft until unmount.
     if (!next && !embedded) {
@@ -395,12 +415,13 @@ export function AgentDefinitionDialog({
     runtimeSupportsLlmProviderSelection(runtime) ||
     blankRuntimeModelProviderEditable;
   const llmProviderFieldVisible =
-    (runtime.trim().length > 0 && runtimeCanChooseLlmProvider) ||
-    blankRuntimeModelProviderEditable;
+    !hosted &&
+    ((runtime.trim().length > 0 && runtimeCanChooseLlmProvider) ||
+      blankRuntimeModelProviderEditable);
   const trimmedProvider = provider.trim();
   // Required credential env keys and file-layer config; silences requirements satisfied in the file layer.
   const { data: runtimeFileConfig } = useRuntimeFileConfigQuery(runtime, {
-    enabled: open,
+    enabled: open && !hosted,
   });
   function handleAiConfigurationModeChange(nextMode: AgentAiConfigurationMode) {
     setHasUserChanges(true);
@@ -421,7 +442,9 @@ export function AgentDefinitionDialog({
     setProvider(nextPair.provider);
     setModel(nextPair.model);
   }
-  const { data: bakedEnvKeys } = useBakedBuildEnvKeysQuery({ enabled: open });
+  const { data: bakedEnvKeys } = useBakedBuildEnvKeysQuery({
+    enabled: open && !hosted,
+  });
   const localModeGate = React.useMemo(
     () =>
       computeLocalModeGate({
@@ -451,7 +474,7 @@ export function AgentDefinitionDialog({
   // requiredEnvKeys: the gate already handles baked-, global-, and file-
   // satisfied keys so no further filtering is needed.
   const { requiredEnvKeys } = localModeGate;
-  const localModeSatisfied = localModeGate.satisfied;
+  const localModeSatisfied = hosted || localModeGate.satisfied;
   // Effective provider: agent value → global fallback → file fallback.
   // Mirrors the chain inside computeLocalModeGate so model-option scoping and
   // model requiredness are consistent with the readiness gate.
@@ -501,7 +524,7 @@ export function AgentDefinitionDialog({
     // D1: localModeSatisfied covers both missingNormalizedFields AND
     // missingEnvKeys — credential env keys now block submit, not just display.
     localModeSatisfied &&
-    customAiPairSatisfied &&
+    (hosted || customAiPairSatisfied) &&
     !isAvatarUploadPending;
 
   // Merge global env as the base layer so credential keys satisfied via global
@@ -516,6 +539,7 @@ export function AgentDefinitionDialog({
     modelDiscoveryStatus,
     agentDefaultModel,
   } = usePersonaModelDiscovery({
+    source: configurationSource,
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
     modelFieldVisible,
@@ -528,8 +552,12 @@ export function AgentDefinitionDialog({
       : "",
     selectedRuntime,
   });
-  const staticModelOptions = getPersonaModelOptions(runtime, effectiveProvider);
-  const runtimeModelOptions = getRuntimePersonaModelOptions(runtime);
+  const staticModelOptions = hosted
+    ? []
+    : getPersonaModelOptions(runtime, effectiveProvider);
+  const runtimeModelOptions = hosted
+    ? []
+    : getRuntimePersonaModelOptions(runtime);
   const {
     isCustom: isModelCustom,
     isRelayMesh,
@@ -578,7 +606,7 @@ export function AgentDefinitionDialog({
       runtimes,
       runtimesLoading,
     });
-  runtimeDropdownOptions.push(ADD_CUSTOM_HARNESS_OPTION);
+  if (!hosted) runtimeDropdownOptions.push(ADD_CUSTOM_HARNESS_OPTION);
   const runtimeSummaryLabel = selectedRuntime
     ? formatRuntimeOptionLabel(selectedRuntime)
     : runtime.trim() || "Not configured";
@@ -593,7 +621,7 @@ export function AgentDefinitionDialog({
   ];
   const modelDropdownOptions: PersonaDropdownOption[] =
     buildModelDropdownOptions({
-      allowCustom: !isRelayMesh,
+      allowCustom: !hosted && !isRelayMesh,
       globalModel: undefined,
       loading: modelDiscoveryLoading && discoveredModelOptions === null,
       loadingValue: MODEL_DISCOVERY_LOADING_VALUE,
@@ -797,7 +825,7 @@ export function AgentDefinitionDialog({
           </div>
         </div>
 
-        {modelFieldVisible ? (
+        {modelFieldVisible && !hosted ? (
           <AgentAiConfigurationModeField
             mode={aiConfigurationMode}
             needsProviderSelection={runtimeCanChooseLlmProvider}
@@ -820,15 +848,17 @@ export function AgentDefinitionDialog({
                 value={runtimeDropdownValue}
                 warning={runtimeWarning}
               />
-              <AcpCommandField
-                candidates={acpCommandsQuery.data ?? []}
-                disabled={isPending || acpCommandsQuery.isLoading}
-                onValueChange={(command) => {
-                  setAcpCommand(command);
-                  setHasUserChanges(true);
-                }}
-                value={acpCommand}
-              />
+              {!hosted ? (
+                <AcpCommandField
+                  candidates={acpCommandsQuery.data ?? []}
+                  disabled={isPending || acpCommandsQuery.isLoading}
+                  onValueChange={(command) => {
+                    setAcpCommand(command);
+                    setHasUserChanges(true);
+                  }}
+                  value={acpCommand}
+                />
+              ) : null}
             </>
           ) : null}
           {llmProviderFieldVisible && aiConfigurationMode === "custom" ? (
@@ -898,8 +928,8 @@ export function AgentDefinitionDialog({
           <AnimatePresence initial={false}>
             {modelFieldVisible && aiConfigurationMode === "custom" ? (
               <PersonaModelField
-                disabled={isPending}
-                isExplicitModelRequired={isExplicitModelRequired}
+                disabled={isPending || hosted}
+                isExplicitModelRequired={!hosted && isExplicitModelRequired}
                 model={model}
                 modelDiscoveryStatus={modelDiscoveryStatus}
                 modelDropdownOptions={modelDropdownOptions}
@@ -915,7 +945,7 @@ export function AgentDefinitionDialog({
             ) : null}
           </AnimatePresence>
 
-          {aiConfigurationMode === "defaults" ? (
+          {aiConfigurationMode === "defaults" && !hosted ? (
             <AgentCreateAiDefaultsSummary
               canChooseProvider={runtimeCanChooseLlmProvider}
               harness={runtimeSummaryLabel}
@@ -987,7 +1017,7 @@ export function AgentDefinitionDialog({
                   hiddenEnvKeys={
                     topLevelSecretEnvVar ? [topLevelSecretEnvVar] : []
                   }
-                  inheritedEnvVars={inheritedEnvVarsForAdvanced}
+                  inheritedEnvVars={hosted ? {} : inheritedEnvVarsForAdvanced}
                   model={model}
                   modelTuningRuntimeId={runtime}
                   namePoolText={namePoolText}

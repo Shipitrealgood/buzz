@@ -9,6 +9,7 @@ import { coerceConfigValues } from "./ProviderConfigFields";
 export type WhereToRunDraft = {
   runOn: "local" | string;
   destination?: RegisteredHostDestination;
+  hostAvailable?: boolean;
   providerConfig: Record<string, string>;
   probedProvider: BackendProviderProbeResult | null;
 };
@@ -62,7 +63,11 @@ export function providerConfigComplete(draft: WhereToRunDraft): boolean {
   );
 }
 
-export function canSubmitWhereToRun(draft: WhereToRunDraft): boolean {
+export function canSubmitWhereToRun(
+  draft: WhereToRunDraft,
+  hostedReady = false,
+): boolean {
+  if (draft.destination) return draft.hostAvailable === true && hostedReady;
   return providerConfigComplete(draft);
 }
 

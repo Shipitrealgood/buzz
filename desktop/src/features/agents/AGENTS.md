@@ -174,7 +174,7 @@ with a TypeScript lookup table or an id comparison in a component.
    with "computer or server". Remote selections name either an installed
    external backend provider or a registered host selected in `WhereToRunSection`.
    Windows exposes host registration even with no external providers; registered
-   host creation remains unconditionally blocked until deployment is implemented. Never synthesize a run location a surface doesn't have. Don't
+   host creation is default-off behind native `BUZZ_NATIVE_HOST_DEPLOYMENT_V1` and uses the hosted setup path below. Never synthesize a run location a surface doesn't have. Don't
    expose `respond-to`, `allowlist`, Nostr, or harness jargon in primary UI
    copy. **The owner-only-access build capability is backend-independent.** When
    `getAgentAccessOwnerOnly()` is true, every managed agent's access control is
@@ -360,6 +360,37 @@ runtimes, or deployment capability. This panel exposes no legacy provisioning
 form or agent-history actions. A pending revocation remains visible until the
 host signs its tombstone. The ordinary agent configuration, remote cloud marker,
 and provider-backed creation behavior remain independent of registration.
+
+### Hosted Add Agent and continuation
+
+The real `AgentDialog` / `AgentDefinitionDialog` form selects an explicit
+configuration source. Hosted mode uses approved installed-ID → canonical Rust
+builtin/preset metadata; it never infers a harness from an installed-ID suffix.
+Two installed IDs may share a harness and remain separate picker choices.
+Local runtime-file, ACP-command, authentication and model discovery do not run
+for that source. Provider/static/custom model choices cannot grant hosted launch.
+Name, prompt, access and authored configuration validation remain shared.
+Unsupported command/environment/provider overrides fail natively, never strip
+silently to claim preparation.
+
+One native setup token belongs to one explicit draft. Both submit callers use a
+synchronous latch before avatar/definition effects and retain that definition
+for retries. Preparation uses the main native identity, attestation, record and
+profile phases with the protected existing intent journal. Hosted IPC responses
+contain no key, auth tag, ciphertext or arbitrary recovery snapshot. Closing a
+prepared form keeps its identity; reopening lists the latest exact scoped intent
+locally, and explicit Check status / Retry / Refresh models / Launch obtain current
+native authority. A shared `HostedAgentSetup` renders continuation from both the
+create flow and saved-agent placement summary (owned-agent Runtime tab, also the
+instance editor). Linked-definition Edit keeps its existing meaning. No polling or local Start fallback.
+
+Login outcome, model availability, deployment application and conversational
+presence are separate facts. Fresh current-revision model observations permit
+only exact returned IDs; expiry invalidates launch without a network request.
+Native login occurs in this new agent's host context. Channel attachment uses
+captured relay/signer scope and `ensureRunning:false`. The placement summary's
+cloud + Runs on host key describes execution location; the existing “Not managed
+on this device” provenance predicate is unchanged.
 
 ## Channel-only runtime controls
 

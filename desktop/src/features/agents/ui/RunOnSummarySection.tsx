@@ -1,4 +1,8 @@
-import type { ManagedAgentBackend } from "@/shared/api/types";
+import { useRegisteredHostLabel } from "../lib/hostDirectory";
+import { Cloud } from "lucide-react";
+import { truncateNpub } from "@/shared/lib/pubkey";
+import { ContinueHostedSetup } from "./HostedAgentSetup";
+import type { ManagedAgent } from "@/shared/api/types";
 
 import { summarizeRunOn } from "./runOnSummary";
 
@@ -17,11 +21,15 @@ import { summarizeRunOn } from "./runOnSummary";
  * this dialog already uses "Provider" for the ACP harness selector.
  */
 export function RunOnSummarySection({
-  backend,
+  agent,
 }: {
-  backend: ManagedAgentBackend;
+  agent: Pick<ManagedAgent, "backend" | "pubkey">;
 }) {
+  const { backend, pubkey } = agent;
   const summary = summarizeRunOn(backend);
+  const hostLabel = useRegisteredHostLabel(
+    backend.type === "registered_host" ? backend.scope : null,
+  );
 
   return (
     <div className="space-y-1.5" data-testid="edit-agent-run-on">
@@ -34,9 +42,18 @@ export function RunOnSummarySection({
           This computer
         </p>
       ) : summary.location === "registered_host" ? (
-        <p className="text-sm text-muted-foreground">
-          Registered host — deployment pending
-        </p>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p className="flex items-center gap-2">
+            <Cloud aria-hidden="true" className="h-4 w-4" />
+            Runs on{" "}
+            {backend.type === "registered_host"
+              ? (hostLabel ?? truncateNpub(backend.scope.host))
+              : "registered host"}
+          </p>
+          {backend.type === "registered_host" && pubkey ? (
+            <ContinueHostedSetup scope={backend.scope} pubkey={pubkey} />
+          ) : null}
+        </div>
       ) : (
         <div className="space-y-2 rounded-2xl border border-border bg-muted/30 px-4 py-3">
           <p

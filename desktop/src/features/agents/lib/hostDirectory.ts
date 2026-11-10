@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invokeTauri } from "@/shared/api/tauri";
 
 export type HostRequest = {
@@ -51,4 +52,30 @@ export function useHostDirectory(session: Session | null) {
         ? 5000
         : 60_000,
   });
+}
+
+/** Read an already loaded registration label without starting a row-level query. */
+export function useRegisteredHostLabel(
+  scope: Host["scope"] | null,
+): string | null {
+  const cache = useQueryClient().getQueryCache();
+  return useSyncExternalStore(
+    (notify) => cache.subscribe(notify),
+    () => {
+      if (!scope) return null;
+      for (const query of cache.findAll({ queryKey: ["paired-hosts"] })) {
+        const directory = query.state.data as Directory | undefined;
+        const host = directory?.hosts.find(
+          (host) =>
+            host.scope.community === scope.community &&
+            host.scope.owner === scope.owner &&
+            host.scope.host === scope.host &&
+            host.scope.generation === scope.generation,
+        );
+        if (host?.label) return host.label;
+      }
+      return null;
+    },
+    () => null,
+  );
 }

@@ -1,7 +1,27 @@
+import {
+  hostedCatalog,
+  hostedSetupToken,
+  listHostedSetups,
+  currentHostedCatalog,
+  sameHostScope,
+  type HostedCatalog,
+  type HostedSetup,
+} from "@/shared/api/hostedAgents";
+import type {
+  HostedDraft,
+  AgentSubmitResult,
+} from "../lib/prepareHostedDefinition";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { useIdentityQuery } from "@/shared/api/hooks";
+import { isWindowsPlatform } from "@/shared/lib/platform";
+import { Button } from "@/shared/ui/button";
+import { AgentDefinitionDialogShell } from "./AgentDefinitionDialogShell";
+import { HostedAgentSetup } from "./HostedAgentSetup";
 import * as React from "react";
 
 import type {
   AcpRuntimeCatalogEntry,
+  AcpRuntime,
   CreatePersonaInput,
   ManagedAgent,
   UpdatePersonaInput,
@@ -45,7 +65,7 @@ type AgentDialogCreateProps = {
     intent: AgentCreateIntent,
     backendIntent: BackendIntent | null,
     effortLevel: string | null,
-  ) => Promise<boolean>;
+  ) => Promise<AgentSubmitResult>;
 };
 
 type AgentDialogInstanceEditProps = {
@@ -139,6 +159,112 @@ function AgentCreateDialogRouter({
 }: AgentDialogCreateProps) {
   const [runDraft, setRunDraft] = React.useState(emptyWhereToRunDraft);
   const [effortLevel, setEffortLevel] = React.useState<string | null>(null);
+  const relay = useCommunities().activeCommunity?.relayUrl;
+  const owner = useIdentityQuery().data?.pubkey;
+  const scope = runDraft.destination?.scope;
+  const scopeKey = scope ? JSON.stringify(scope) : "local";
+  const [catalog, setCatalog] = React.useState<HostedCatalog | null>(null);
+  const [catalogError, setCatalogError] = React.useState<string | null>(null);
+  const [token, setToken] = React.useState<string | null>(null);
+  const tokenRequest = React.useRef<Promise<string> | null>(null);
+  const [setup, setSetup] = React.useState<HostedSetup | null>(null);
+  const [retained, setRetained] = React.useState<HostedSetup[]>([]);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [now, setNow] = React.useState(Date.now());
+  const submitLatch = React.useRef(false);
+  const draft = React.useRef<HostedDraft | null>(null);
+  const generation = React.useRef(0);
+  const current = React.useRef({ scopeKey, alive: true });
+  current.current.scopeKey = scopeKey;
+  React.useEffect(() => {
+    current.current.alive = true;
+    return () => {
+      generation.current++;
+      current.current.alive = false;
+    };
+  }, []);
+  React.useEffect(() => {
+    if (!isWindowsPlatform()) return;
+    let cancelled = false;
+    tokenRequest.current ??= hostedSetupToken();
+    void tokenRequest.current.then(
+      (value) => {
+        if (!cancelled) setToken(value);
+      },
+      (cause: unknown) => {
+        if (!cancelled) setCatalogError(String(cause));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  React.useEffect(() => {
+    if (!isWindowsPlatform() || !relay || !owner) return;
+    let cancelled = false;
+    const origin = relay.replace(/^wss:/, "https:").replace(/\/$/, "");
+    void listHostedSetups(origin, owner).then(
+      (items) => {
+        if (!cancelled)
+          setRetained(
+            items.filter(
+              (item) =>
+                item.scope.community === origin && item.scope.owner === owner,
+            ),
+          );
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [relay, owner]);
+  React.useEffect(() => {
+    generation.current++;
+    setCatalog(null);
+    setCatalogError(null);
+    if (!scope) return;
+    let cancelled = false;
+    void hostedCatalog(scope).then(
+      (value) => {
+        if (!cancelled && sameHostScope(value.status.scope, scope)) {
+          setCatalog(value);
+          setNow(Date.now());
+        }
+      },
+      (cause: unknown) => {
+        if (!cancelled) setCatalogError(String(cause));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [scope]);
+  React.useEffect(() => {
+    if (!catalog) return;
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, catalog.status.expires_at * 1000 - Date.now()) + 1,
+    );
+    return () => clearTimeout(timer);
+  }, [catalog]);
+  const hostedReady =
+    !!scope && !!token && currentHostedCatalog(catalog, scope, now);
+  const hostRuntimes = React.useMemo(
+    () =>
+      (catalog?.runtimes ?? []).flatMap(({ installedId, metadata }) =>
+        metadata
+          ? [
+              {
+                ...metadata,
+                id: installedId,
+                label: `${metadata.label} · ${installedId}`,
+              },
+            ]
+          : [],
+      ),
+    [catalog],
+  );
   const initialValues = React.useMemo(
     () => providedInitialValues ?? createPersonaDialogState().initialValues,
     [providedInitialValues],
@@ -148,11 +274,32 @@ function AgentCreateDialogRouter({
   // Effort is local-only: a provider backend sets it at deploy time.
   const backendIntent = resolveBackendIntent(runDraft);
 
+  if (setup)
+    return (
+      <AgentDefinitionDialogShell
+        embedded={embedded ?? false}
+        open
+        title="Agent setup"
+        description="Continue this agent on its registered host."
+        onOpenChange={onOpenChange}
+        footer={null}
+      >
+        <HostedAgentSetup
+          key={setup.operation}
+          initial={setup}
+          onClose={() => onOpenChange(false)}
+        />
+      </AgentDefinitionDialogShell>
+    );
+
   return (
     // The create flow is the one surface that knows where the agent will run,
     // because it owns the "Run on" draft.
     <AgentRunLocationProvider runLocation={runLocationForRunOn(runDraft.runOn)}>
       <AgentDefinitionDialog
+        configurationSource={
+          scope ? { type: "hosted", key: scopeKey } : undefined
+        }
         createRunSection={(effortOptions) => (
           <>
             <WhereToRunSection
@@ -163,6 +310,28 @@ function AgentCreateDialogRouter({
                 onDirtyChange?.(true);
               }}
             />
+            {scope ? (
+              <p role="status" className="text-sm">
+                {catalogError ??
+                  (!catalog
+                    ? "Reading host runtime metadata…"
+                    : !hostedReady
+                      ? "Host metadata is expired or unavailable. Reselect the host to refresh."
+                      : !hostRuntimes.length
+                        ? "No supported installed harnesses on this host."
+                        : "Choose an installed host harness, then prepare this agent.")}
+              </p>
+            ) : null}
+            {retained.map((item) => (
+              <Button
+                key={item.operation}
+                type="button"
+                variant="outline"
+                onClick={() => setSetup(item)}
+              >
+                Continue setup: {item.name}
+              </Button>
+            ))}
             {backendIntent ? null : (
               <EffortPickerField
                 backend={{ type: "local" }}
@@ -174,33 +343,99 @@ function AgentCreateDialogRouter({
             )}
           </>
         )}
-        createSubmitBlocked={!canSubmitWhereToRun(runDraft)}
+        createSubmitBlocked={!canSubmitWhereToRun(runDraft, hostedReady)}
         description={copy.description}
         embedded={embedded}
-        error={definitionError}
+        error={submitError ? new Error(submitError) : definitionError}
         initialValues={initialValues}
         isPending={isDefinitionPending}
         onDirtyChange={onDirtyChange}
         onOpenChange={onOpenChange}
         onSubmit={async (input, { effortOptions }) => {
-          if (!canSubmitWhereToRun(runDraft)) return;
-          const submitted = await onSubmitDefinition(
-            input,
-            "definition_start",
-            backendIntent,
-            !backendIntent && isSavableEffort(effortLevel, effortOptions)
-              ? effortLevel
-              : null,
-          );
-          if (submitted) {
-            onDirtyChange?.(false);
-            onOpenChange(false);
+          if (
+            submitLatch.current ||
+            !canSubmitWhereToRun(runDraft, hostedReady)
+          )
+            return;
+          submitLatch.current = true;
+          const request = generation.current;
+          setSubmitError(null);
+          try {
+            let destination = backendIntent;
+            if (destination?.type === "registered-host") {
+              const chosen = catalog?.runtimes.find(
+                (item) => item.installedId === input.runtime,
+              );
+              if (
+                !token ||
+                !chosen?.metadata ||
+                chosen.metadata.availability !== "available" ||
+                !chosen.metadata.command
+              )
+                throw new Error("Choose a supported installed host harness.");
+              if (!draft.current)
+                draft.current = {
+                  operation: token,
+                  runtime: chosen.installedId,
+                  harness: chosen.metadata as AcpRuntime,
+                  isCurrent: () =>
+                    current.current.alive &&
+                    current.current.scopeKey === scopeKey &&
+                    Date.now() < (catalog?.status.expires_at ?? 0) * 1000,
+                };
+              if (!draft.current.frozen) {
+                draft.current.runtime = chosen.installedId;
+                draft.current.harness = chosen.metadata as AcpRuntime;
+              }
+              draft.current.isCurrent = () =>
+                current.current.alive &&
+                current.current.scopeKey === scopeKey &&
+                Date.now() < (catalog?.status.expires_at ?? 0) * 1000;
+              destination = { ...destination, setup: draft.current };
+            }
+            const submitted = await onSubmitDefinition(
+              input,
+              "definition_start",
+              destination,
+              !backendIntent && isSavableEffort(effortLevel, effortOptions)
+                ? effortLevel
+                : null,
+            );
+            if (!current.current.alive || request !== generation.current)
+              return;
+            if (typeof submitted === "object") {
+              setSetup(submitted.hosted);
+              onDirtyChange?.(false);
+            } else if (submitted) {
+              onDirtyChange?.(false);
+              onOpenChange(false);
+            } else if (scope)
+              setSubmitError(
+                "Setup could not complete. Retry this draft or reopen its retained setup.",
+              );
+          } catch (cause) {
+            if (request === generation.current)
+              setSubmitError(
+                cause instanceof Error ? cause.message : String(cause),
+              );
+          } finally {
+            submitLatch.current = false;
           }
         }}
         open
-        runtimes={runtimes}
-        runtimeCatalogStatus={runtimeCatalogStatus}
-        submitLabel={submitLabel ?? copy.submitLabel}
+        runtimes={scope ? hostRuntimes : runtimes}
+        runtimeCatalogStatus={
+          scope
+            ? catalogError
+              ? "error"
+              : catalog
+                ? "ready"
+                : "loading"
+            : runtimeCatalogStatus
+        }
+        submitLabel={
+          scope ? "Prepare agent" : (submitLabel ?? copy.submitLabel)
+        }
         title={copy.title}
       />
     </AgentRunLocationProvider>

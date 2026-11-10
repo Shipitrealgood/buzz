@@ -1,3 +1,7 @@
+import {
+  LOCAL_CONFIGURATION,
+  type AgentConfigurationSource,
+} from "@/shared/api/hostedAgents";
 import * as React from "react";
 
 import { discoverAgentModels } from "@/shared/api/agentModels";
@@ -198,6 +202,7 @@ export function isSuccessfulEmptyDiscovery({
 }
 
 export function usePersonaModelDiscovery({
+  source = LOCAL_CONFIGURATION,
   envVars,
   isCustomProviderEditing,
   modelFieldVisible,
@@ -205,6 +210,7 @@ export function usePersonaModelDiscovery({
   provider,
   selectedRuntime,
 }: {
+  source?: AgentConfigurationSource;
   envVars: EnvVarsValue;
   isCustomProviderEditing: boolean;
   modelFieldVisible: boolean;
@@ -243,6 +249,7 @@ export function usePersonaModelDiscovery({
   const selectedRuntimeDefaultArgs = selectedRuntime?.defaultArgs;
   const selectedRuntimeDefinitionEnv = selectedRuntime?.definitionEnv;
   const canDiscoverModelOptions =
+    source.type === "local" &&
     open &&
     modelFieldVisible &&
     selectedRuntime?.availability === "available" &&
@@ -433,6 +440,18 @@ export function usePersonaModelDiscovery({
     modelDiscoveryPending,
   });
 
+  if (source.type === "hosted")
+    return {
+      discoveredModelOptions: [],
+      modelDiscoveryLoading: false,
+      modelDiscoveryStatus: {
+        tone: "muted" as const,
+        message:
+          "Models remain pending until this agent is prepared and signs in on its host.",
+      },
+      modelDiscoverySuccessfulEmpty: false,
+      agentDefaultModel: null,
+    };
   return {
     discoveredModelOptions,
     modelDiscoveryLoading: modelDiscoveryPending,

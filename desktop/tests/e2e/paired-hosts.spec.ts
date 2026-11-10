@@ -326,10 +326,12 @@ test("ordinary Add Agent distinguishes registered hosts and refuses submission e
   expect(labels[0]).not.toEqual(labels[1]);
   await hosts.nth(1).click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Registered-host creation" }),
-  ).toContainText("Models will remain pending");
+    page
+      .getByRole("status")
+      .filter({ hasText: "Host runtime metadata is checked" }),
+  ).toContainText("Models remain pending");
   await expect(
-    page.getByRole("button", { name: "Add agent", exact: true }),
+    page.getByRole("button", { name: "Prepare agent", exact: true }),
   ).toBeDisabled();
   // Bypass the disabled-button affordance: actual form submission must still
   // stop before persona publication, key creation or provider deployment.
@@ -360,7 +362,9 @@ test("ordinary Add Agent distinguishes registered hosts and refuses submission e
     .getByRole("menuitemradio", { name: "This computer", exact: true })
     .click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Registered-host creation" }),
+    page
+      .getByRole("status")
+      .filter({ hasText: "Host runtime metadata is checked" }),
   ).toHaveCount(0);
 });
 

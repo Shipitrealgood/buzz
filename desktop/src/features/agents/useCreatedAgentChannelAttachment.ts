@@ -6,19 +6,29 @@ import type { Channel, CreateManagedAgentResponse } from "@/shared/api/types";
 type TargetChannel = Pick<Channel, "id" | "name">;
 
 async function attach(
-  created: CreateManagedAgentResponse,
+  created: Pick<CreateManagedAgentResponse, "agent" | "spawnError">,
   targetChannel: TargetChannel,
 ) {
   const attached = await attachManagedAgentToChannel(targetChannel.id, {
     agent: created.agent,
     role: "bot",
-    ensureRunning: true,
+    ...(created.agent.backend.type === "registered_host"
+      ? {
+          scope: {
+            expectedRelayUrl: created.agent.backend.scope.community
+              .replace(/^https:/, "wss:")
+              .replace(/^http:/, "ws:"),
+            expectedSignerPubkey: created.agent.backend.scope.owner,
+          },
+        }
+      : {}),
+    ensureRunning: created.agent.backend.type !== "registered_host",
   });
   created.agent = attached.agent;
 }
 
 function showAttachmentFailure(
-  created: CreateManagedAgentResponse,
+  created: Pick<CreateManagedAgentResponse, "agent" | "spawnError">,
   targetChannel: TargetChannel,
   cause: unknown,
   toastId?: string | number,
@@ -54,7 +64,7 @@ function showAttachmentFailure(
 /** Keeps creation successful when its optional channel attachment fails. */
 export function useCreatedAgentChannelAttachment() {
   async function presentCreatedAgent(
-    created: CreateManagedAgentResponse,
+    created: Pick<CreateManagedAgentResponse, "agent" | "spawnError">,
     targetChannel?: TargetChannel | null,
   ) {
     if (created.spawnError || !targetChannel) {

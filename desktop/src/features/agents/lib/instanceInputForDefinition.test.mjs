@@ -338,19 +338,23 @@ test("item-13: no runtimes available — refuses with actionable error", () => {
   );
 });
 
-test("registered-host destination refuses before avatar upload or local/provider mapping", async () => {
-  let uploads = 0;
-  await assert.rejects(
-    buildInstanceInputForDefinition(
-      persona({ avatarUrl: "data:image/png;base64,aGVsbG8=" }),
-      gooseRuntime,
-      async () => {
-        uploads++;
-        return "https://fixture.test/avatar";
-      },
-      { type: "registered-host", scope: {} },
-    ),
-    /Registered-host creation is not available/,
+test("registered-host definition mapping uses canonical metadata and never requests local start", async () => {
+  const scope = {
+    community: "https://fixture.test",
+    owner: "a",
+    host: "b",
+    generation: "c",
+  };
+  const input = await buildInstanceInputForDefinition(
+    persona({ runtime: "goose" }),
+    gooseRuntime,
+    undefined,
+    { type: "registered-host", scope },
   );
-  assert.equal(uploads, 0);
+  assert.deepEqual(input.destination, { type: "registered-host", scope });
+  assert.deepEqual(input.backend, { type: "registered_host", scope });
+  assert.deepEqual(input.agentArgs, gooseRuntime.defaultArgs);
+  assert.equal(input.spawnAfterCreate, false);
+  assert.equal(input.startOnAppLaunch, false);
+  assert.equal(input.personaId, persona().id);
 });

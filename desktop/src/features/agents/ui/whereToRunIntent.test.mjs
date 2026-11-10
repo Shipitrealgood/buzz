@@ -159,3 +159,105 @@ test("host destination always blocks even with complete provider/capability data
     /no longer available/,
   );
 });
+
+test("host submit requires both current registration and native readiness", () => {
+  const destination = { type: "registered-host", scope: {} };
+  for (const registered of [false, true])
+    for (const ready of [false, true]) {
+      assert.equal(
+        canSubmitWhereToRun(
+          { ...emptyWhereToRunDraft, destination, hostAvailable: registered },
+          ready,
+        ),
+        registered && ready,
+      );
+    }
+});
+
+test("host catalog and model evidence remain exact-scope and freshness bound", async () => {
+  const { currentHostedCatalog, currentHostedModels } = await import(
+    "@/shared/api/hostedAgents.ts"
+  );
+  const scope = {
+    community: "https://fixture.test",
+    owner: "ab".repeat(32),
+    host: "cd".repeat(32),
+    generation: "ef".repeat(32),
+  };
+  const catalog = {
+    status: {
+      scope,
+      availability: "current",
+      expires_at: 2,
+      capability: { state: "supported" },
+    },
+    runtimes: [],
+  };
+  assert.equal(currentHostedCatalog(catalog, scope, 1000), true);
+  for (const availability of ["stale", "revoked", "unavailable"])
+    assert.equal(
+      currentHostedCatalog(
+        { ...catalog, status: { ...catalog.status, availability } },
+        scope,
+        1000,
+      ),
+      false,
+    );
+  assert.equal(currentHostedCatalog(catalog, scope, 2000), false);
+  assert.equal(
+    currentHostedCatalog(
+      {
+        ...catalog,
+        status: { ...catalog.status, capability: { state: "unsupported" } },
+      },
+      scope,
+      1000,
+    ),
+    false,
+  );
+  for (const field of ["community", "owner", "host", "generation"])
+    assert.equal(
+      currentHostedCatalog(catalog, { ...scope, [field]: "other" }, 1000),
+      false,
+    );
+  const models = { models: [{ id: "opaque/model", name: "Fixture" }] };
+  const observation = {
+    scope,
+    agent: "agent",
+    runtime_id: "native/grok",
+    operation_id: "operation",
+    revision: 2,
+    expires_at: 2,
+    login: "succeeded",
+    models: { state: "available", catalog: models },
+  };
+  const setup = {
+    scope,
+    pubkey: "agent",
+    runtime: "native/grok",
+    operation: "operation",
+    revision: 2,
+    state: "needs-login",
+    observation,
+  };
+  assert.equal(currentHostedModels(setup, 1000), models);
+  for (const [field, value] of [
+    ["agent", "other"],
+    ["runtime_id", "other"],
+    ["operation_id", "old"],
+    ["revision", 1],
+    ["expires_at", 1],
+    ["login", "failed"],
+    ["models", { state: "empty" }],
+    ["scope", { ...scope, owner: "other" }],
+  ])
+    assert.equal(
+      currentHostedModels(
+        { ...setup, observation: { ...observation, [field]: value } },
+        1000,
+      ),
+      null,
+    );
+  for (const state of ["failed", "pending", "conflict", "unverified"])
+    assert.equal(currentHostedModels({ ...setup, state }, 1000), null);
+});
