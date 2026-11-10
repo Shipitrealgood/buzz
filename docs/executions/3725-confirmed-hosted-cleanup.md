@@ -1,6 +1,7 @@
 # #3725 confirmed hosted Cleanup execution
 
-Status: implementation in progress. Executor owns exclusive write/test work in
+Status: source implementation handed off for independent review; Windows gate held.
+Executor releases exclusive write/test ownership with the final documentation commit in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
 `proof/3720-host-registration-events`. Starting clean pin
 `ee3bbc8d5f77f45634040e41dafa3e6dfb7b159a`.
@@ -63,3 +64,56 @@ workflow ID `323279417` active. Workflow push filters exclude the canary branch;
 no workflow_run trigger. Existing hooks absent; no hook bypass. Native fixture
 adds exactly `commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence`
 to the existing exact-one Windows list, retaining all prior suites and ACL.
+
+## Source handoff and held Windows gate
+
+Implementation commits: `bf60e71bb` (owner) and `6038d0981` (native/UI/tests).
+No unrelated baseline or final modifications. All local command sessions ended;
+no owned browser/server/build/test process remains. No detached process was used.
+The next documentation-only commit records release of source/test ownership to
+conductor for fresh independent Chuck. Source review can run while export approval
+is pending; the same executor assignment may resume Windows verification after
+explicit authorization and reviewer ownership release.
+
+Automatic approval review rejected the attempted canary push/dispatch **before
+command execution**. Its reason was:
+
+> The command pushes the private source to an external fork and dispatches its workflow; the user authorized Windows verification but did not explicitly authorize exporting this code to that destination.
+
+The rejection instructed: “Do not bypass this rejection through a workaround or
+indirect execution. Continue with a safer alternative, or carry out checks to prove
+that the action is authorized or low risk before trying again.” The conductor
+requested explicit human approval for exactly `Shipitrealgood/buzz` branch
+`build/paired-hosts-canary` and the existing workflow. **No push, workflow run,
+installer, source/run association or artifact hash exists for this delta.** Native
+Windows tests/build are **NOT RUN**; no old test.21 evidence is substituted.
+
+Measured source delta `ee3bbc8d5..6038d0981`:
+
+| Category | Files | Added | Removed | Net |
+|---|---:|---:|---:|---:|
+| Production Rust/TS/TSX | 11 | 906 | 122 | +784 |
+| Tests/fixtures | 6 | 826 | 71 | +755 |
+| Workflow | 1 | 1 | 0 | +1 |
+| Docs including feature AGENTS | 3 | 84 | 1 | +83 |
+
+Counts include formatting/reindentation. Known relocation within those counts:
+16 production lines (`run_managed_agent_deletion`) and 47 test-helper lines
+(`seed_intent`). They are not new independent implementations. Final handoff docs
+add documentation only beyond this measured implementation range.
+
+Native fixture assertions are **authored, not executed**: one new exact case
+extends the original isolated create fixture, passes real Device/Management into
+the common coordinator, confirms admission refusal/pending retention/session
+switch/runtime disappearance, and injects archive enqueue failure after record
+removal before restart/retry completion. This does not prove the full Tauri
+command dispatcher or real keyring failure path. Force routing is source-wired
+before the provider force branch; Node verifies hosted IPC sends no force flag or
+shutdown. Reviewer should judge these boundaries explicitly.
+
+Full `just ci`, native Windows/canary, real Tauri IPC/UI journey, human confirmation,
+live relay/host/provider/login/chat/service tests, installation and deployment are
+NOT RUN. No board mutation, source-wide cleanup, protocol/schema/host change,
+feature activation, main/tag/release/updater change occurred. Recommended next
+gate: [fresh independent source review](../briefs/3725-confirmed-hosted-cleanup-review.md),
+then authorized supported-platform verification before claiming native acceptance.
