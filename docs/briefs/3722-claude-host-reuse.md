@@ -76,7 +76,7 @@ behavior. The spec records these differences without broadening the patch.
 3. **Absent readiness.** [Current login gate:378](../../crates/buzz-hostd/src/runtime_context.rs#L378)
    must not be bypassed by a fabricated receipt. First-slice conversation stays
    unavailable until the replacement readiness gate lands. Unknown remains unknown.
-4. **Cleanup ownership.** [Cleanup retry:628](../../crates/buzz-hostd/src/deployment.rs#L628)
+4. **Cleanup ownership.** [Cleanup retry:537](../../crates/buzz-hostd/src/deployment.rs#L537)
    survives the executor swap. Never delete shared HOME/provider credentials/repos;
    only confirmed stopped units and their generated Buzz artifacts are removable.
 5. **Mixed versions or migration.** [Observation:62](../../crates/buzz-core/src/host_deployment/observation.rs#L62)
@@ -103,3 +103,11 @@ superseded notices passed; `git diff --check` passed. Only the four owned docs
 changed. The worker return pins the DCO commit and final worktree status. Builds, product tests, full CI,
 native login/service/provider checks and human acceptance are **NOT RUN**.
 No background process was launched. Return docs-only commit and release ownership.
+
+## S1 execution handoff — 2026-11-10
+
+S1 source implementation now has an [execution receipt](../executions/3721-trusted-host-executor.md)
+and [independent-review brief](3721-trusted-host-executor-review.md). Use that bounded
+review packet for the committed implementation range; this planning document remains
+its upstream contract. Registration-only behavior and installed registration units
+remain unchanged. S2/S3, native login/readiness and live rollout remain unexecuted.
