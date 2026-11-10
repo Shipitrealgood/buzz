@@ -1,6 +1,6 @@
 # #3722 — trusted-host execution and main readiness
 
-**Status:** user-ratified trusted-host contract; S1 source implementation and independent review authorized on 2026-11-10. S2/S3 remain the next scoped increment. No live authorization.
+**Status:** user-ratified trusted-host contract. S1 independently accepted at `9b6be69854`. S2/S3 source implementation and independent review authorized on 2026-11-10: reuse main discovery/readiness for netcup and connect existing Windows Add Agent. No live authorization.
 **Date / source:** 2026-11-10; `a41272ffd673d0b7c09f076991e48c37333727eb`, `proof/3720-host-registration-events`.
 **Preflight:** ran, bounded decision/source revalidation; earlier landscape work carried forward. Latest user direction resolves the trust model.
 **Sources:**
@@ -98,7 +98,7 @@ Keep Option A key creation/encryption and existing main respond permissions. No 
 
 ## Sequence, prerequisites and verification boundary
 
-1. S1 scope was presented and approved on 2026-11-10; execute only S1 under its bounded dispatch, then obtain independent source review.
+1. S1 source is independently accepted at `9b6be69854`. User authorized S2/S3 together: shared main host discovery/readiness, launch gating and existing Windows integration; source only, then independent review.
 2. Implement/review S1 as a finite prerequisite; then S2 and S3 as the coherent readiness/launch/UI increment. Update obsolete hostd installation docs with those code changes.
 3. Run affected existing hostd lifecycle/controller tests, core contract tests, main Rust discovery/readiness tests and existing hosted creation/model tests. Use the existing synthetic ACP fixture; no new test platform or provider calls.
 4. Run applicable format/type/lint and repository-required pre-PR checks; independently review the pinned implementation range. Report skipped gates explicitly; source acceptance is not runtime acceptance.
