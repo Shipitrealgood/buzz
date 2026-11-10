@@ -2,9 +2,38 @@
 
 Date: 2026-11-10. Reviewer: `/root/trusted_host_review`, `codex-chuck`.
 Requested configuration: `gpt-6-astra` / `high`. Actual served model/reasoning: not independently exposed; unknown.
-Rework round: 0 (initial review).
+Rework round: 1 (M-1 scoped re-gate); initial round-0 evidence is preserved below.
 
-**Verdict: rework.** One Medium correctness finding, M-1, prevents S1 source acceptance until fixed under the conductor's ruling. C=0 / H=0 / M=1 / L=0. No additional architecture prerequisite or product decision is needed. Source tests pass; the focused cleanup falsification fails.
+**Current verdict: merge-safe for source-only S1.** Open findings C=0 / H=0 / M=0 / L=0. Historical M-1 (Medium) is closed by the independent re-gate below. No new defect or prerequisite was found in its repair. Native rollout and S2/S3 remain outside this acceptance.
+
+## Re-gate round 1 — M-1 closed
+
+Re-gate delta: `88594cc425b9b3e574217860c07dedad7964757a..daf0b076fb240df2f9270a972893b4c1441f51ef`; overall S1 reviewed source range now `b8a9ccd97e62465d804bbc85125ce858a873fe8d..daf0b076fb240df2f9270a972893b4c1441f51ef`. Same clean checkout and same independent reviewer, following the conductor's fix-in-lane ruling. This re-gate covers M-1 and defects introduced by its repair; it does not repeat the broader initial review.
+
+**Read:** [construction now validates non-root state custody without loading launch configuration](../../../crates/buzz-hostd/src/user_service.rs#L102). [Cleanup validation](../../../crates/buzz-hostd/src/user_service.rs#L40) retains exactly the original canonical unit-directory and available-manager checks. [Full launch validation](../../../crates/buzz-hostd/src/user_service.rs#L53) still requires HOME, workspace, launcher, PATH and allowed local environment. It remains mandatory through [catalog](../../../crates/buzz-hostd/src/user_service.rs#L119), [stage](../../../crates/buzz-hostd/src/user_service.rs#L149), [all non-cleanup requests](../../../crates/buzz-hostd/src/user_service.rs#L190), and the unchanged runtime entry. [Cleanup](../../../crates/buzz-hostd/src/user_service.rs#L357) still fences first, reads private saved context, checks its recorded manager/unit location, confirms stop, then removes only the same generated files. The diff does not weaken symlink/private-file checks, ownership matching or stop confirmation. Registration-only production code is unchanged.
+
+**Measured:** the original failing `review_cleanup_after_workspace_move` probe, copied unchanged from this report into the existing fixture, now passes:
+
+```text
+cleanup=Ok("cleaned\n"); active=false; retained_instance=false; manager_calls_unchanged=false; repository_preserved=true
+1 passed; 0 failed; 25 filtered out
+```
+
+The [new regression](../../../crates/buzz-hostd/src/user_service_tests.rs#L399) additionally covers moved HOME/workspace, a deleted launcher, and updated/missing/malformed catalog scenarios. Each asserts stage/prepare/models refusal before manager effects, failed-stop preservation, successful cleanup after another reopen, and provider/repository preservation. The [adapted controller fixture](../../../crates/buzz-hostd/src/registration_refresh_tests.rs#L562) calls production `run(deployment=true)` with missing configuration, then reopens with malformed configuration; manager calls occur and all 40 failed-stop journal records remain pending. This establishes cleanup reachability through the real controller constructor, as well as direct executor convergence.
+
+| Independent re-gate check | Result |
+| --- | --- |
+| `cargo test --offline -p buzz-hostd --all-targets -- --test-threads=1` | PASS, exit 0: library 24 pass / 1 existing ignored (5.01s); activation 1 pass; controller 13 pass (35.74s); runtime/examples 0 cases. Narrow disposable-socket escalation; fake managers only. |
+| `cargo test --offline -p buzz-hostd --lib review_cleanup_after_workspace_move -- --test-threads=1 --nocapture` | PASS, 1 case (0.19s), using the original reviewer probe unchanged. Temporary test addition restored afterward. |
+| Scoped format, diff, source-restoration and document-link checks | PASS; production and test files exactly match the re-gate source pin. |
+
+All commands used Hermit, `HERMIT_SELF_UPDATE=false`, offline Cargo and serial tests. Prior independent core deployment (12 pass), synthetic ACP (1 pass) and finite retry/observation probe evidence is retained: the repair changes no core/ACP/runtime/template/controller production code, and the affected hostd suites were rerun. Ancillary compile/lint/size receipts retain the previously stated provenance; they were not rerun or upgraded to independent passes. All initially unrun native/provider/Windows/full-CI/human gates remain unrun and confer no runtime activation authority.
+
+**Disposition and handoff:** M-1 closed by measured independent re-gate; recommend conductor acceptance of S1 and continuation to the already scoped S2/S3. No remaining merge blocker. Minimalism/elegance/correctness now 9/10 each: the repair separates the two validation purposes in the existing module without adding machinery. All reviewer processes exited; targeted inspection found no remaining fixture processes. The report update is documentation-only, temporary tests are restored, and exclusive write/test ownership is released with its DCO commit.
+
+## Initial review record — historical at e0cc1d529
+
+The remainder preserves the initial finding, original reproduction and first-pass evidence. Its source line references and failure statements describe `e0cc1d529af62bac6689de60e52e21bd9e544e80` (use `git show <pin>:<path>` for that historical source); the current re-gate citations and disposition above govern acceptance. Initial verdict was rework: C=0 / H=0 / M=1 / L=0.
 
 ## Pin and contract
 
@@ -27,7 +56,7 @@ This is a normal account maintenance scenario, not a hostile same-account agent:
 
 | Finding | Proposed owner / next action | Disposition |
 | --- | --- | --- |
-| M-1 | Existing #3721 executor; separate cleanup prerequisites, add the focused regression, return to this reviewer for the original obligation and introduced-defect re-gate | fix in lane — conductor accepted the concrete failure on 2026-11-10 and directed repair in existing #3721 before S1 acceptance |
+| M-1 | Existing #3721 executor repaired the validation boundary; independent re-gate completed above | closed — original conductor ruling was fix in lane; repair independently verified at daf0b076fb240df2f9270a972893b4c1441f51ef |
 
 ## Obligation results and call-chain review
 
@@ -134,10 +163,12 @@ review_start_failure_retry_and_terminal_observation ... ok
 1 passed; 1 failed; 24 filtered out
 ```
 
-## Return and re-gate contract
+## Initial return and re-gate contract (fulfilled by round 1 above)
 
 The conductor ruled M-1 “fix in same #3721 lane” during this review and accepted the realistic cleanup failure. No board mutation was performed by this reviewer. The report itself carries the single-fix handoff: executor repairs M-1, preserves S1's safety boundaries, commits code/regression, and returns this same checkout for a re-gate limited to M-1 and defects introduced by its fix. S2/S3, native installation/login, existing-agent adoption and registration redesign stay excluded.
 
 Review changed documentation only after restoring temporary tests. All reviewer test processes completed; targeted process inspection at return found no remaining review fixture processes. Exclusive write/test ownership is released with the report commit. Source-only acceptance and native rollout remain separate.
 
-quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=b8a9ccd97e62465d804bbc85125ce858a873fe8d..e0cc1d529af62bac6689de60e52e21bd9e544e80 findings=C=0/H=0/M=1/L=0 rework_rounds=0
+Initial quality record: `quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=b8a9ccd97e62465d804bbc85125ce858a873fe8d..e0cc1d529af62bac6689de60e52e21bd9e544e80 findings=C=0/H=0/M=1/L=0 rework_rounds=0`
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=b8a9ccd97e62465d804bbc85125ce858a873fe8d..daf0b076fb240df2f9270a972893b4c1441f51ef findings=C=0/H=0/M=0/L=0 rework_rounds=1
