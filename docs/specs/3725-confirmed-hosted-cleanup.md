@@ -1,6 +1,6 @@
 # #3725 — confirmed hosted Cleanup from Windows
 
-**Status:** proposed executable contract for conductor ratification; source only, narrow slice of #3725/#3724, not their broader completion.
+**Status:** conductor-ratified executable contract (2026-11-10); source only, narrow slice of #3725/#3724, not their broader completion.
 **Date:** 2026-11-10 UTC. **Source:** `392c458e83c37b42e1d58168d11499818d38558f`.
 **Workspace / branch:** `/home/bryce/services/buzz-wt-3720-host-registration`, `proof/3720-host-registration-events`.
 **Preflight:** `skipped-self-contained`; accepted registration, trusted normal nonroot host account/HOME/PATH/login/network, main identity creation and transport decisions remain settled.

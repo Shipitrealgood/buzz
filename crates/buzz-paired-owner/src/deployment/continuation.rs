@@ -96,6 +96,7 @@ impl Management {
             .deployment_intent(&self.community, &keys, previous)?
             .context("missing intent")?;
         let a = &old.protected.authority;
+        device.deployment_open(&self.community, &keys, a)?;
         let Command::Deploy { config, identity } =
             wire::restore_command(&keys, a, &old.protected.ciphertext)?
         else {

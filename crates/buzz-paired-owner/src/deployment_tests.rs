@@ -1053,55 +1053,22 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             .find_map(|result| result.as_ref().ok())
             .unwrap()
     );
+    cleanup_tests::exercise(
+        &mut management,
+        &responses,
+        &owner,
+        &host,
+        &first,
+        &command,
+        &status,
+    )
+    .await;
     drop(management);
     peer.abort();
     let _ = peer.await;
 }
 
-// Construct a historical on-disk row with real signatures/encryption, without
-// changing production time or weakening command expiry validation.
-fn seed_intent(
-    device: &mut Device,
-    owner: &Keys,
-    authority: d::Authority,
-    command: &d::Command,
-    snapshot: Value,
-) -> Intent {
-    let (authority, event) =
-        wire::seal_command(owner, authority, command, now().unwrap() - 120).unwrap();
-    let plain = serde_json::to_vec(&Snapshot {
-        authority: authority.clone(),
-        data: snapshot,
-    })
-    .unwrap();
-    let intent = Intent {
-        protected: d::ProtectedCreateIntent {
-            authority: authority.clone(),
-            ciphertext: event.content.as_bytes().to_vec(),
-        },
-        event: serde_json::to_string(&event).unwrap(),
-        materialization: nip44::encrypt(
-            owner.secret_key(),
-            &owner.public_key(),
-            plain,
-            Version::V2,
-        )
-        .unwrap(),
-        phase: 2,
-        result: None,
-    };
-    device.deployment_schema().unwrap();
-    device
-        .db
-        .execute(
-            "INSERT INTO deployment_intents VALUES(?,?,?,?)",
-            params![
-                authority.scope.community,
-                owner.public_key().to_hex(),
-                authority.operation_id,
-                serde_json::to_string(&intent).unwrap()
-            ],
-        )
-        .unwrap();
-    intent
-}
+use cleanup_tests::seed_intent;
+
+#[path = "deployment/cleanup_tests.rs"]
+mod cleanup_tests;

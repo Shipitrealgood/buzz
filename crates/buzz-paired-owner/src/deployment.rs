@@ -107,6 +107,7 @@ impl Device {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        cleanup::ensure_deploy_open(&tx, selected, keys, &authority)?;
         let raw: Option<String> = tx.query_row(
             "SELECT data FROM deployment_intents WHERE community=? AND owner=? AND operation_id=?",
             params![selected, keys.public_key().to_hex(), authority.operation_id],
@@ -220,6 +221,9 @@ impl Device {
             phase >= intent.phase && phase <= intent.phase + 1,
             "nonmonotonic intent phase"
         );
+        if intent.protected.authority.action == buzz_core::host_deployment::Action::Deploy {
+            cleanup::ensure_deploy_open(&tx, selected, keys, &intent.protected.authority)?;
+        }
         intent.phase = phase;
         tx.execute(
             "UPDATE deployment_intents SET data=? WHERE community=? AND owner=? AND operation_id=?",
@@ -417,6 +421,9 @@ impl Management {
             &self.community,
             &signer()?,
         )?;
+        if intent.protected.authority.action == buzz_core::host_deployment::Action::Deploy {
+            device.deployment_open(&self.community, &keys, &intent.protected.authority)?;
+        }
         // Reply loss must be reconciled before interpreting command expiry.
         let evidence = self.operation(device, signer, operation).await?;
         ensure!(
@@ -424,9 +431,12 @@ impl Management {
             "placement conflict; exact old intent retained"
         );
         if now()? >= intent.protected.authority.expires_at {
-            ensure!(evidence.admitted && matches!(evidence.state.as_str(), "needs-login" | "applied" | "failed"),
+            ensure!(evidence.admitted && matches!(evidence.state.as_str(), "needs-login" | "applied" | "failed" | "cleanup-pending" | "cleaned"),
                 "original deployment command expired; identity retained; explicit new operation required");
             return Ok(());
+        }
+        if intent.protected.authority.action == buzz_core::host_deployment::Action::Deploy {
+            device.deployment_open(&self.community, &signer()?, &intent.protected.authority)?;
         }
         let ok = self
             .ws
@@ -460,6 +470,8 @@ fn restore_snapshot(keys: &Keys, intent: &Intent) -> Result<Value> {
     Ok(snapshot.data)
 }
 
+mod cleanup;
+pub use cleanup::CleanupPlan;
 mod continuation;
 pub use continuation::Operation;
 
