@@ -1,13 +1,14 @@
 # #3725 confirmed hosted Cleanup — independent post-audit
 
-**Current verdict: merge-block pending successful Windows native verification.**
-Round 2 accepts the exact-wire sender repair and fixture corrections; the third
-existing Windows run may proceed after ownership release. No remaining in-scope
-source finding was found (C=0 / H=0 / M=0 / L=0). The first two Windows runs
-compiled native tests but failed Cleanup before completion/race assertions; the
-latest sender source has not yet run on Windows. See
-[round 2](#round-2--windows-failures-and-exact-wire-sender-repair) for current
-evidence and the historical-envelope compatibility boundary.
+**Current verdict: merge-safe for the bounded confirmed Cleanup source/native/
+canary slice.** No open findings or merge blockers: C=0 / H=0 / M=0 / L=0.
+Current-source Windows run `42870540036` passed both jobs, 111 distinct outer Rust
+cases with zero failures/ignored cases, and ACL. Independent retained-evidence
+verification confirms source/run/ZIP/installer association and hashes. See
+[final evidence re-gate](#round-3--final-native-and-canary-evidence-re-gate).
+This does not close broader #3725 lifecycle, authorize deployment, or claim full
+native IPC/keyring/live/human workflow acceptance. The historical-envelope and
+host-package provenance conditions from round 2 remain rollout boundaries.
 The round-0 findings and receipts below are preserved as history and their source
 line references describe implementation `6038d0981`, before repair.
 
@@ -383,3 +384,114 @@ No open in-scope source findings; overall merge-block remains the required nativ
 verification gate, not a new counted source finding.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=8cec4d7cf5742b7d4fbcb3f093dd2242f6865d21..d093d6dcd556a6ef6017cf8a2a70c109c14627e8 findings=C=0/H=0/M=0/L=0 rework_rounds=2
+
+## Round 3 — final native and canary evidence re-gate
+
+**2026-11-10. Merge-safe for this bounded source/native/canary assignment.**
+Evidence-only continuation; two source rework rounds, no new source repair.
+Clean handoff `523f43be35567d5ea7bf7004fcbd244f4081f5b2`. Independently checked
+that the entire delta since accepted/tested
+`929c2cd890fbc2c0993549c3cbc64a2714232832` is two handoff Markdown files
+(+142/-2); production, tests, workflow and build inputs are unchanged. Read the
+updated brief/execution receipt and assessed actual retained artifacts/logs rather
+than treating their summary as proof. Unchanged suites were not rerun.
+
+### Source and terminal-run association
+
+Retained evidence root:
+`/home/bryce/services/buzz-agents/releases/3725-windows-canary/929c2cd890fbc2c0993549c3cbc64a2714232832/42870540036/`.
+The following are **independently read/verified local evidence of executor-run
+Windows gates**, not a new remote run or fresh GitHub API retrieval:
+
+- `run.json`: [run 42870540036](https://github.com/Shipitrealgood/buzz/actions/runs/42870540036),
+  workflow dispatch number 24, approved canary branch, exact head
+  `929c2cd890fbc2c0993549c3cbc64a2714232832`, completed/success.
+- `jobs.json`: native job `130020350387` and installer job `130020349988` both
+  completed/success at that same head. Native elapsed 15m47s; installer 16m56s.
+- Native `tests/source.txt`, installer `build-receipt.txt`, saved artifact metadata
+  and full job logs agree on source/run. Native target is
+  `x86_64-pc-windows-msvc`; installer is version `0.5.29-test.24`.
+- Read the unchanged exact-case workflow: `set -euo pipefail`, Cargo `--exact`,
+  named-pass grep and exact nonzero summary assertions remain in place
+  ([workflow:285](../../../.github/workflows/windows-canary.yml#L285)). Native
+  failure cannot be converted into success by `tee`; no gate was skipped to
+  obtain this result.
+
+### Native acceptance evidence
+
+Parsed each extracted Cargo log independently, required one successful terminal
+summary with zero failed/ignored, matched its unique named pass lines to the
+summary, and checked cross-suite uniqueness. **111 distinct outer cases**:
+
+| Suite | Passed |
+|---|---:|
+| Owner library | 16 |
+| Shared harness | 9 |
+| Signed directory conversion | 73 |
+| Directory discovery | 7 |
+| Paired-host commands | 3 |
+| Exact hosted create | 1 |
+| Exact hosted Cleanup | 1 |
+| Exact hosted metadata | 1 |
+
+The exact Cleanup log says **1 passed, 0 failed, 0 ignored, 10.72s**, and the full
+native job log agrees. Its source still invokes the isolated child with Cleanup
+enabled and requires child success. Read control flow establishes that a pass
+traverses the retained archive-failure/restart recovery and H-2 contention/writer
+race assertions before the final completion assertion; the earlier failed-run
+stopping points are now passed. These are subcases of one test, not extra counts.
+The UTF-16 ACL receipt separately confirms owner SQLite use and another standard
+user's successful control read but denied DB/WAL/SHM access. H-2's previously
+pending supported-platform fixture proof is now discharged; H-1 and exact-wire
+source/proof acceptance from prior rounds remain valid on the unchanged source.
+
+### Independent artifact verification
+
+Recalculated SHA-256/size for each ZIP and compared against retained GitHub
+`artifacts.json`; required each artifact's workflow run/head to match. Read every
+ZIP member and compared its bytes to the extracted evidence. Native ZIP has
+exactly ten flat members; installer ZIP exactly installer plus build receipt.
+Recalculated executable hash/size and checked MZ/PE headers plus receipt
+source/version/filename/hash. All checks passed:
+
+| Artifact | Bytes | SHA-256 |
+|---|---:|---|
+| Native ZIP, ID `13789439674` | 5,407 | `b138ee57859c58a66a8983a04e5f6450d224d3455caf6d2202dbd7ce2edca421` |
+| Installer ZIP, ID `13790342999` | 56,456,917 | `79b745b59dcdb033ba651fba9c814372c5b8bf784756d6dcff0c23c842f4c1c5` |
+| `Buzz_0.5.29-test.24_x64-setup.exe` | 56,458,561 | `b5c800b489cc7f85f654ec8a768ed96a7ceec408e79c11754fbfdc34f75a050e` |
+
+Saved metadata expiry: native `2026-11-17T18:15:14Z`; installer
+`2026-11-17T18:15:24Z`. Local copies remain retained. The installer was not
+executed. The first two failed Windows runs and test.22/test.23 remain preserved
+in their separate directories and in this audit; their failures are not erased
+or included in the successful case count.
+
+### Final disposition and limits
+
+**Accept this bounded Cleanup source/native/canary slice.** C=0/H=0/M=0/L=0;
+no remaining merge blocker in the assignment. The available owner/Node/browser/
+WebSocket gates were independently run in earlier rounds; required Windows gates
+were now run by the executor on accepted source and independently verified here
+through retained native logs, workflow, metadata and artifact bytes. Final
+documentation citation and whitespace checks pass. No new build/test campaign,
+source export, workflow dispatch, installer execution, live operation or board
+write occurred during this evidence re-gate.
+
+Still outside acceptance: full `just ci`, full Tauri IPC, actual keyring/import
+failure, real relay/host/systemd/provider/login/chat and human workflow; broader
+#3724/#3725 lifecycle; installation or live activation. Browser IPC remains mocked
+and native tests use the authenticated socket fixture. Default-off behavior is
+unchanged. Round-2 historical-envelope/fresh-pilot ruling remains binding; future
+rollout must check inspected-relay drift and reconcile the prepared `c97256e` host
+package against final source because it predates the shared sender correction.
+Those separately routed rollout conditions do not invalidate this automated gate
+and are not silently claimed complete.
+
+Return to conductor to record bounded acceptance and route the existing rollout/
+human acceptance obligations. No further source repair is requested. All review
+commands are terminal; clean signed audit commit releases exclusive ownership.
+Requested reviewer configuration **gpt-6-astra / high**; actual served model and
+effort remain unknown. This final evidence round adds no source rework, so the
+rework count remains two.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=ee3bbc8d5f77f45634040e41dafa3e6dfb7b159a..929c2cd890fbc2c0993549c3cbc64a2714232832 findings=C=0/H=0/M=0/L=0 rework_rounds=2
