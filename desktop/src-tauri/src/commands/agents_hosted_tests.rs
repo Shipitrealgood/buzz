@@ -158,6 +158,81 @@ fn native_phases(home: &std::path::Path) {
             context.record().unwrap().private_key_nsec,
             saved.private_key_nsec
         );
+        // An interrupted follow-on has journaled the new model but has not
+        // replaced the existing main record. Reopen and recover that intent,
+        // preserving the original private identity and rejecting the old root.
+        let root_operation = context.operation.clone();
+        let prior = context.intent().unwrap();
+        let mut snapshot = context.snapshot().unwrap();
+        snapshot["record"]["model"] = "opaque/model:fixture".into();
+        let d::Command::Deploy {
+            mut config,
+            identity,
+        } = wire::restore_command(
+            &owner,
+            &prior.protected.authority,
+            &prior.protected.ciphertext,
+        )
+        .unwrap()
+        else {
+            panic!("fixture deployment")
+        };
+        config.model = d::ModelSelection::Selected {
+            id: "opaque/model:fixture".into(),
+        };
+        let mut authority = prior.protected.authority.clone();
+        authority.operation_id = "ef".repeat(32);
+        authority.expected_revision = 1;
+        authority.content_sha256.clear();
+        let (authority, event) = wire::seal_command(
+            &owner,
+            authority,
+            &d::Command::Deploy { config, identity },
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap();
+        let plain = serde_json::to_vec(&json!({"authority":authority,"data":snapshot})).unwrap();
+        let materialization = nostr::nips::nip44::encrypt(
+            owner.secret_key(),
+            &owner.public_key(),
+            plain,
+            nostr::nips::nip44::Version::V2,
+        )
+        .unwrap();
+        let retained = json!({"protected":{"authority":authority,"ciphertext":event.content.as_bytes()},"event":serde_json::to_string(&event).unwrap(),"materialization":materialization,"phase":0,"result":null});
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute(
+                "INSERT INTO deployment_intents VALUES(?,?,?,?)",
+                rusqlite::params![
+                    scope.community,
+                    scope.owner.to_hex(),
+                    authority.operation_id,
+                    retained.to_string()
+                ],
+            )
+            .unwrap();
+        context.device = Device::at(&path).unwrap();
+        assert!(context
+            .recover(app.handle(), &state)
+            .await
+            .unwrap_err()
+            .contains("newer retained"));
+        context.operation = authority.operation_id;
+        assert!(context
+            .recover(app.handle(), &state)
+            .await
+            .unwrap()
+            .is_some());
+        let recovered = load_managed_agents(app.handle()).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].model.as_deref(), Some("opaque/model:fixture"));
+        assert_eq!(recovered[0].private_key_nsec, saved.private_key_nsec);
+        assert_eq!(recovered[0].auth_tag, saved.auth_tag);
+        assert_eq!(context.intent().unwrap().phase, 1);
+        context.operation = root_operation;
+        assert!(context.recover(app.handle(), &state).await.is_err());
+        context.operation = "ef".repeat(32);
         state
             .workspace_apply_generation
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);

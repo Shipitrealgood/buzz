@@ -240,7 +240,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         .prepare_deployment(
             &scope.community,
             &owner,
-            authority,
+            authority.clone(),
             &command,
             &status,
             snapshot.clone(),
@@ -353,6 +353,10 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     let addr = listener.local_addr().unwrap();
     let responses = std::sync::Arc::new(std::sync::Mutex::new(current));
     let served = responses.clone();
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let published = sent.clone();
+    let deny_send = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let denied_send = deny_send.clone();
     let relay_key = relay.public_key();
     let peer = tokio::spawn(async move {
         let (socket, _) = listener.accept().await.unwrap();
@@ -362,7 +366,34 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                 continue;
             };
             let msg: Value = serde_json::from_str(text).unwrap();
+            if msg[0] == "EVENT" {
+                published.lock().unwrap().push(msg[1].clone());
+                socket
+                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                        serde_json::json!([
+                            "OK",
+                            msg[1]["id"],
+                            !denied_send.load(std::sync::atomic::Ordering::SeqCst),
+                            "fixture admission"
+                        ])
+                        .to_string()
+                        .into(),
+                    ))
+                    .await
+                    .unwrap();
+            }
             if msg[0] == "REQ" {
+                if served.lock().unwrap().get("denied") == Some(&Value::Bool(true)) {
+                    socket
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            serde_json::json!(["CLOSED", msg[1], "restricted: read denied"])
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                    continue;
+                }
                 let query: wire::Query =
                     serde_json::from_value(msg[2]["host_deployment"].clone()).unwrap();
                 let reply = wire::Reply {
@@ -395,6 +426,40 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
         Management::from_authenticated(true, &scope.community, owner.public_key(), relay_key, ws)
             .unwrap();
     let signer = || Ok(owner.clone());
+    let admitted = responses.lock().unwrap().clone();
+    let missing = serde_json::json!({"state":"missing-or-superseded"});
+    *responses.lock().unwrap() = missing.clone();
+    assert!(management
+        .dispatch(&mut device, &signer, &authority.operation_id)
+        .await
+        .is_err());
+    assert_eq!(
+        device
+            .deployment_intent(&scope.community, &owner, &authority.operation_id)
+            .unwrap()
+            .unwrap()
+            .phase,
+        2
+    );
+    deny_send.store(false, std::sync::atomic::Ordering::SeqCst);
+    management
+        .dispatch(&mut device, &signer, &authority.operation_id)
+        .await
+        .unwrap();
+    management
+        .dispatch(&mut device, &signer, &authority.operation_id)
+        .await
+        .unwrap();
+    assert_eq!(sent.lock().unwrap().len(), 3);
+    for event in sent.lock().unwrap().iter() {
+        assert_eq!(*event, serde_json::from_str::<Value>(&first.event).unwrap());
+    }
+    *responses.lock().unwrap() = serde_json::json!({"denied":true});
+    assert!(management
+        .operation(&mut device, &signer, &authority.operation_id)
+        .await
+        .is_err());
+    *responses.lock().unwrap() = admitted;
     let read = management
         .operation(
             &mut device,
@@ -568,7 +633,247 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     let serialized = serde_json::to_string(&read).unwrap();
     assert!(!serialized.contains("nsec1"));
     assert!(!serialized.contains("auth_tag"));
+    // Expired commands remain recoverable. Admission, not wall-clock expiry,
+    // determines whether a new initial operation is allowed.
+    let expired_dir = tempfile::tempdir().unwrap();
+    let mut expired_device = Device::at(&expired_dir.path().join("owner.sqlite")).unwrap();
+    let mut expired_authority = authority.clone();
+    expired_authority.operation_id = "fa".repeat(32);
+    expired_authority.expires_at = now().unwrap() - 1;
+    let expired = seed_intent(
+        &mut expired_device,
+        &owner,
+        expired_authority,
+        &command,
+        snapshot.clone(),
+    );
+    *responses.lock().unwrap() = missing.clone();
+    let before = sent.lock().unwrap().len();
+    assert!(management
+        .dispatch(
+            &mut expired_device,
+            &signer,
+            &expired.protected.authority.operation_id
+        )
+        .await
+        .is_err());
+    assert_eq!(sent.lock().unwrap().len(), before);
+    let replacement = management
+        .continue_deployment(
+            &mut expired_device,
+            &signer,
+            &expired.protected.authority.operation_id,
+            &status,
+            d::ModelSelection::PendingLogin {},
+            snapshot.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replacement.protected.authority.expected_revision, 0);
+    assert_eq!(replacement.protected.authority.agent, agent.public_key());
+    assert!(
+        wire::restore_command(
+            &owner,
+            &replacement.protected.authority,
+            &replacement.protected.ciphertext
+        )
+        .unwrap()
+            == command
+    );
+    // A distinct reopened journal whose initial operation was already admitted
+    // reconciles its terminal receipt without trying to resend expired bytes.
+    let admitted_dir = tempfile::tempdir().unwrap();
+    let mut admitted_device = Device::at(&admitted_dir.path().join("owner.sqlite")).unwrap();
+    let expired = seed_intent(
+        &mut admitted_device,
+        &owner,
+        expired.protected.authority.clone(),
+        &command,
+        snapshot.clone(),
+    );
+    let mut expired_body = body_for(&expired);
+    let observation = expired_body.observation.as_mut().unwrap();
+    observation.observed_at = now().unwrap() - 60;
+    observation.login_at = Some(now().unwrap() - 60);
+    observation.expires_at = now().unwrap() - 1;
+    let receipt = wire::result_body(&host, &expired_body, now().unwrap() - 60).unwrap();
+    *responses.lock().unwrap() = serde_json::json!({"event":expired.event,"result":serde_json::to_string(&receipt).unwrap(),"state":"needs-login","unit_id":"ef".repeat(32),"revision":1});
+    management
+        .dispatch(
+            &mut admitted_device,
+            &signer,
+            &expired.protected.authority.operation_id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(sent.lock().unwrap().len(), before);
+    assert_eq!(
+        admitted_device
+            .deployment_intent(
+                &scope.community,
+                &owner,
+                &expired.protected.authority.operation_id
+            )
+            .unwrap()
+            .unwrap()
+            .phase,
+        3
+    );
+    assert!(management
+        .observation(
+            &mut admitted_device,
+            &signer,
+            &expired.protected.authority.operation_id
+        )
+        .await
+        .is_err());
+    *responses.lock().unwrap() = missing;
+    assert!(management
+        .continue_deployment(
+            &mut admitted_device,
+            &signer,
+            &expired.protected.authority.operation_id,
+            &status,
+            d::ModelSelection::PendingLogin {},
+            snapshot.clone()
+        )
+        .await
+        .is_err());
+    // Signer changes during the read cannot authorize a phase/result mutation.
+    *responses.lock().unwrap() = serde_json::json!({"state":"missing-or-superseded"});
+    let calls = std::cell::Cell::new(0);
+    let changed = || {
+        let n = calls.get();
+        calls.set(n + 1);
+        Ok(if n < 2 {
+            owner.clone()
+        } else {
+            Keys::generate()
+        })
+    };
+    assert!(management
+        .operation(
+            &mut admitted_device,
+            &changed,
+            &expired.protected.authority.operation_id
+        )
+        .await
+        .is_err());
+    // Fill the existing bounded table only in this disposable fixture; refusal
+    // keeps every prior row rather than evicting recovery evidence.
+    let tx = expired_device.db.transaction().unwrap();
+    for index in 2..1024 {
+        tx.execute(
+            "INSERT INTO deployment_intents VALUES(?,?,?,?)",
+            params![
+                scope.community,
+                owner.public_key().to_hex(),
+                format!("{index:064x}"),
+                serde_json::to_string(&expired).unwrap()
+            ],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+    let mut extra = authority.clone();
+    extra.operation_id = "fb".repeat(32);
+    assert!(expired_device
+        .prepare_deployment(&scope.community, &owner, extra, &command, &status, snapshot)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("capacity"));
+    let count: i64 = expired_device
+        .db
+        .query_row("SELECT count(*) FROM deployment_intents", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 1024);
+    // Two main candidates mint different keys for the same new operation.
+    // The journal transaction chooses one before either can save a main record.
+    let race_dir = tempfile::tempdir().unwrap();
+    let race_path = race_dir.path().join("race.sqlite");
+    Device::at(&race_path).unwrap().deployment_schema().unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let workers:Vec<_>=(0..2).map(|_| {
+        let path=race_path.clone(); let owner=owner.clone(); let status=status.clone();
+        let mut authority=authority.clone(); let config=config.clone(); let barrier=barrier.clone();
+        std::thread::spawn(move || {
+            let candidate=Keys::generate(); authority.agent=candidate.public_key();
+            let command=d::Command::Deploy {config:Box::new(config),identity:PrivateIdentity {
+                private_key_nsec:candidate.secret_key().to_bech32().unwrap(),
+                auth_tag:Some(buzz_sdk::nip_oa::compute_auth_tag(&owner,&candidate.public_key(),"").unwrap())}};
+            let snapshot=serde_json::json!({"record":{"pubkey":candidate.public_key().to_hex(),"model":null}});
+            let mut device=Device::at(&path).unwrap(); barrier.wait();
+            device.prepare_deployment(&status.scope.community,&owner,authority,&command,&status,snapshot).map(|i|i.protected.authority.agent)
+        })
+    }).collect();
+    let outcomes: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    let winner = Device::at(&race_path)
+        .unwrap()
+        .deployment_intents(&scope.community, &owner)
+        .unwrap();
+    assert_eq!(winner.len(), 1);
+    assert_eq!(winner[0].phase, 0);
+    assert_eq!(
+        winner[0].protected.authority.agent,
+        *outcomes
+            .iter()
+            .find_map(|result| result.as_ref().ok())
+            .unwrap()
+    );
     drop(management);
     peer.abort();
     let _ = peer.await;
+}
+
+// Construct a historical on-disk row with real signatures/encryption, without
+// changing production time or weakening command expiry validation.
+fn seed_intent(
+    device: &mut Device,
+    owner: &Keys,
+    authority: d::Authority,
+    command: &d::Command,
+    snapshot: Value,
+) -> Intent {
+    let (authority, event) =
+        wire::seal_command(owner, authority, command, now().unwrap() - 120).unwrap();
+    let plain = serde_json::to_vec(&Snapshot {
+        authority: authority.clone(),
+        data: snapshot,
+    })
+    .unwrap();
+    let intent = Intent {
+        protected: d::ProtectedCreateIntent {
+            authority: authority.clone(),
+            ciphertext: event.content.as_bytes().to_vec(),
+        },
+        event: serde_json::to_string(&event).unwrap(),
+        materialization: nip44::encrypt(
+            owner.secret_key(),
+            &owner.public_key(),
+            plain,
+            Version::V2,
+        )
+        .unwrap(),
+        phase: 2,
+        result: None,
+    };
+    device.deployment_schema().unwrap();
+    device
+        .db
+        .execute(
+            "INSERT INTO deployment_intents VALUES(?,?,?,?)",
+            params![
+                authority.scope.community,
+                owner.public_key().to_hex(),
+                authority.operation_id,
+                serde_json::to_string(&intent).unwrap()
+            ],
+        )
+        .unwrap();
+    intent
 }

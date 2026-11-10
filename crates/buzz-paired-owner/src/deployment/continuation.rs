@@ -113,7 +113,10 @@ impl Management {
             evidence.revision.context("missing placement revision")?
         } else {
             ensure!(
-                a.expected_revision == 0 && now()? >= a.expires_at,
+                a.expected_revision == 0
+                    && old.phase < 3
+                    && old.result.is_none()
+                    && now()? >= a.expires_at,
                 "operation admission unresolved; retry exact intent"
             );
             ensure!(

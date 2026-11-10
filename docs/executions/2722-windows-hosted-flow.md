@@ -59,3 +59,24 @@ check with `CHECK_FILE_SIZES_BASE=0f7927f24bb79f9a3592dc80a5dbe56ed0f13717`:
 PASS after approved escalation for sandbox-denied Node→read-only-git subprocess.
 These checks do not compile or execute Windows-only source. V2/V3 acceptance
 coverage remains incomplete until the final finite matrix is accounted for.
+
+
+## Native follow-on verification checkpoint
+
+First source commit: `5b0404522` (native bridge/metadata/existing-intent continuation).
+The expanded existing owner journey now passes **2/2** (4.68 seconds): real
+WebSocket EVENT replay after denied publication and reopen; exact signed bytes;
+expired unadmitted replacement; expired admitted receipt reconciliation without
+resend; no revision-zero reset after prior admission; expired observations;
+post-await signer change; bounded 1,024-row capacity refusal; and two simultaneous
+different identity candidates for one new operation with exactly one journal
+winner at phase zero. This remains a transport-boundary fixture, not a live relay.
+The additional expired-admitted guard checks retained phase/result as well as
+initial revision. Native setup projection also withholds unit/observation on
+historical placement or stale current runtime/catalog mapping.
+
+Windows native tests now author interrupted follow-on model-save recovery using
+an exact signed/encrypted retained fixture row, actual main record recovery and
+same key/auth-tag assertions, including refusal to recover the older root.
+Execution of this native case remains **NOT RUN**. It does not independently
+exercise the Windows top-level transport command or establish native acceptance.

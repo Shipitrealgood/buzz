@@ -78,7 +78,7 @@ pub(super) async fn setup(
             } else {
                 read.state
             };
-            response.unit = read.unit;
+            response.unit = if read.current { read.unit } else { None };
             response.revision = read.revision;
             if read.current {
                 if let Some(body) = read.body {
@@ -93,9 +93,19 @@ pub(super) async fn setup(
                         return Err("Not a deployment".into());
                     };
                     if let Some(observation) = body.observation {
-                        if observation
-                            .current(&body.result, &config, nostr::Timestamp::now().as_secs())
-                            .is_ok()
+                        if create.check_runtime().is_ok()
+                            && create
+                                .status
+                                .permits(
+                                    &create.scope,
+                                    &config.catalog_revision,
+                                    &config.runtime_id,
+                                    nostr::Timestamp::now().as_secs(),
+                                )
+                                .is_ok()
+                            && observation
+                                .current(&body.result, &config, nostr::Timestamp::now().as_secs())
+                                .is_ok()
                         {
                             response.observation = Some(observation);
                         } else {
@@ -175,8 +185,9 @@ pub async fn hosted_setup_list(
         .map_err(|e| e.to_string())?;
     let device = crate::commands::paired_hosts::device(&app).map_err(|e| e.to_string())?;
     let keys = session.keys().map_err(|e| e.to_string())?;
+    let selected = crate::relay::relay_api_base_url_with_override(&state);
     let intents = device
-        .deployment_intents(&expected_relay, &keys)
+        .deployment_intents(&selected, &keys)
         .map_err(|e| e.to_string())?;
     let mut newest = std::collections::BTreeMap::new();
     for intent in &intents {
