@@ -1,5 +1,81 @@
 # #2722 checkpoint 3 — Windows hosted Add Agent post-audit
 
+## Re-gate, 2026-11-10 — source acceptance recommended
+
+**M-1 and M-2 are closed. No new source findings: C=0 / H=0 / M=0 / L=0.**
+The bounded source packet satisfies this re-gate; no further source repair is
+requested. Normal repository merge-safe attestation remains withheld for the
+separately required Windows/native, full-CI and human gates, all **NOT RUN**.
+This is not rollout, native command/service or whole-pilot acceptance.
+
+Same reviewer, rework round **1**. Reviewed clean repair range
+`d16609625383c4ddd01934e89555e319374fbf76..2d7f22aa99110aab608076766793e77a82fa98b0`
+in the same worktree/branch. Source repairs are `d55d1c67e45ea8c258ebde7d09cd21ad514428a1`
+(M-2) and `99ad536bfef295f5dc11daa6249e0d759bc3c35e` (M-1); final pin is
+documentation only. Requested reviewer configuration remains **gpt-6-astra/high**;
+served model/effort **unknown**. Read the new execution/brief sections, changed
+feature guidance, complete repair diff and affected callers. No fresh architecture
+audit, new verification campaign or native-environment repair.
+
+| Finding | Closure evidence, independently read and tested |
+| --- | --- |
+| M-1 — closed | [AgentDialog.tsx:365](../../../desktop/src/features/agents/ui/AgentDialog.tsx#L365) rejects a submitted draft's exact installed-ID/scope/destination mismatch before either submit handler, with restore/Continue setup guidance. [prepareHostedDefinition.ts:40](../../../desktop/src/features/agents/lib/prepareHostedDefinition.ts#L40) independently checks the exact binding before canonicalization/avatar/definition/prepare effects; frozen inputs retain the installed ID and scope. [Browser regression:494](../../../desktop/tests/e2e/hosted-agent-setup.spec.ts#L494) repeats the previously failing lost-response → second/grok sequence, observes rejection with one definition and one prepare, then restores native/grok and successfully retries the retained setup. [Helper table:362](../../../desktop/src/features/agents/lib/instanceInputForDefinition.test.mjs#L362) rejects installed-ID and all four scope-component changes. |
+| M-2 — closed | [continuation.rs:114](../../../crates/buzz-paired-owner/src/deployment/continuation.rs#L114) first requires an exact absent expired attempt without local admission evidence and allows only PendingLogin replacement. Nonzero recovery at line 129 reads existing exact scoped predecessors and requires their current admitted revision to equal the attempt's expected revision, an allowed setup state, and matching protected identity/configuration apart from model. It uses the returned proven revision, never zero or the local number alone. [Owner table:643](../../../crates/buzz-paired-owner/src/deployment_tests.rs#L643) exercises PendingLogin and Selected × unknown predecessor/newer placement/lost pending admission/lost terminal admission/absence. Refusals retain two intents; successful recovery preserves identity, protected snapshot and nonzero revision, and observes the same unit. |
+
+The returned predecessor unit is validated by the unchanged exact operation-read
+path; the unchanged relay placement binding preserves it for the same scoped
+agent. The owner fixture simulates that relay boundary, so its same-unit check is
+not a new relay/native-service execution claim. Existing pending/applied/cleanup
+state guards, current status checks, signer fences and verified-absent-peer
+transaction checks remain intact. An admitted terminal lost reply follows its
+actual admitted revision; a lost pending admission cannot be superseded.
+No new sibling, store, protocol or coordinator was introduced. Source correctness
+assessment is now **9/10** for the reviewed contract; prior minimalism/elegance
+assessments remain unchanged.
+
+### Independent re-gate measurements
+
+Hermit activated with `HERMIT_SELF_UPDATE=false`. Loopback/Node subprocess checks
+used approved escalation. Source remained unchanged throughout; no mutations.
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p buzz-paired-owner deployment -- --test-threads=1` | **2 passed**, 0 failed, 6.27s; actual owner library and synthetic signed/encrypted WS fixture. |
+| From desktop: `node --import ./test-loader.mjs --experimental-strip-types --test src/features/agents/lib/instanceInputForDefinition.test.mjs src/features/agents/ui/whereToRunIntent.test.mjs` | **33 passed**, 0 failed, 0 skipped; 595ms. |
+| `pnpm --dir desktop build:e2e` | **PASS**; invokes TypeScript `tsc` then fixture-mode Vite build, 3.01s Vite; existing chunk/dynamic-import warnings. |
+| `pnpm --dir desktop exec playwright test --project=smoke hosted-agent-setup.spec.ts` | **3 passed**, 0 failed, 21.0s; includes the formerly failing M-1 sequence. |
+| `rustfmt --edition 2021 --check crates/buzz-paired-owner/src/deployment.rs`; Biome check on four changed TS/TSX/MJS files; `CHECK_FILE_SIZES_BASE=d16609625383c4ddd01934e89555e319374fbf76 node desktop/scripts/check-file-sizes.mjs`; `git diff --check` | **PASS**, no fixes or ceiling changes. |
+
+Carry the first-pass 89-test evidence below for unchanged obligations; it is not a
+claim that all 89 reran. The repair changes only owner continuation and exact
+submitted-draft binding in the shared helper/router. Those seams and all hosted
+journeys are rerun here. Discovery/model logic, metadata/native commands,
+WhereToRun selector, profile summary, channel attachment, registration and
+local/provider branches are unchanged, so their prior scoped JS/jsdom/browser
+measurements retain continuity. The original first-pass failures and concrete
+findings remain preserved in the historical section.
+
+**NOT RUN remains:** Windows native tests/build and actual Tauri command execution,
+full `just ci`, human acceptance, native service/login/provider/live journey.
+The known absent Windows target libraries/runner are unchanged and were not
+re-investigated or installed. No source acceptance is inferred from those gaps.
+No `buzz-review-completed` marker, push/merge/PR, board or live-system action.
+
+Route the accepted source packet back to the conductor; no additional source-fix
+assignment is proposed. All owned test sessions exited; temporary owner journals
+and WS peer were disposed, and browser fixture port 4173 was independently
+verified without a listener (`ss -ltnp sport = :4173`) and reusable by a
+`SO_REUSEADDR` bind. An initial plain bind returned address-in-use after server
+exit, consistent with TCP TIME_WAIT rather than a live listener. Only this report
+changed; the worktree is clean after its signed-off commit. **38 individual tests
+passed this re-gate; no behavioral/build gate failed.** The quality record's `rework` /
+`partial` labels describe outstanding repository readiness gates, **not reopened
+M-1/M-2 findings or a request for further source changes**.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=d16609625383c4ddd01934e89555e319374fbf76..2d7f22aa99110aab608076766793e77a82fa98b0 findings=C=0/H=0/M=0/L=0 rework_rounds=1
+
+## Initial review history — superseded by the re-gate above
+
 2026-11-10 UTC. **Verdict: rework; source acceptance held for M-1 and M-2.**
 Counts: **C=0 / H=0 / M=2 / L=0**. First review, rework rounds **0**.
 Windows/native, full CI and human acceptance remain unrun and independently
