@@ -1,6 +1,6 @@
 # #3722 — trusted-host execution and main readiness
 
-**Status:** replacement implementation proposal; show the first patch scope before coding. No implementation or live authorization.
+**Status:** user-ratified trusted-host contract; S1 source implementation and independent review authorized on 2026-11-10. S2/S3 remain the next scoped increment. No live authorization.
 **Date / source:** 2026-11-10; `a41272ffd673d0b7c09f076991e48c37333727eb`, `proof/3720-host-registration-events`.
 **Preflight:** ran, bounded decision/source revalidation; earlier landscape work carried forward. Latest user direction resolves the trust model.
 **Sources:**
@@ -10,6 +10,8 @@
 - [Archived user-service template](/home/bryce/services/buzz-agents/releases/pre-main-netcup/buzz-agent@.service:8), [provisioning pattern](/home/bryce/services/buzz-agents/docs/agent-provisioning-runbook.md:70); source references only, not live evidence or adoption instructions.
 
 ## Decision and boundary
+
+**Ratification:** Bryce confirmed the complete walkthrough and requested documentation plus execution. The shared non-root account/HOME/native-login model below is settled, not a provisional security exception. Do not reopen private per-agent OS environments, root-helper requirements, or custom authentication without concrete new evidence and a user decision. S1 ends at reviewed source; live installation and existing-agent adoption require separate authorization.
 
 This replaces the previous #3722 isolated-service/native-login-entry spec and the operative direction in [#3719](3719-host-online-readiness.md).
 Per-agent OS users, DynamicUser/private roots, isolated provider credentials, exact-service interactive login entry, and root catalog/hash approval are **superseded, not passed**.
@@ -96,7 +98,7 @@ Keep Option A key creation/encryption and existing main respond permissions. No 
 
 ## Sequence, prerequisites and verification boundary
 
-1. Present S1's exact file/behavior scope to the user; current request is planning only. A fresh executor starts only on a new implementation dispatch.
+1. S1 scope was presented and approved on 2026-11-10; execute only S1 under its bounded dispatch, then obtain independent source review.
 2. Implement/review S1 as a finite prerequisite; then S2 and S3 as the coherent readiness/launch/UI increment. Update obsolete hostd installation docs with those code changes.
 3. Run affected existing hostd lifecycle/controller tests, core contract tests, main Rust discovery/readiness tests and existing hosted creation/model tests. Use the existing synthetic ACP fixture; no new test platform or provider calls.
 4. Run applicable format/type/lint and repository-required pre-PR checks; independently review the pinned implementation range. Report skipped gates explicitly; source acceptance is not runtime acceptance.

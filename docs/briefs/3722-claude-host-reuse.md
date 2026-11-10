@@ -1,7 +1,6 @@
 # #3722 — trusted-host implementation handoff
 
-**Date:** 2026-11-10. **Next owner:** conductor presents the first patch scope;
-a fresh executor starts only after implementation dispatch. Requested Astra/high;
+**Date:** 2026-11-10. **Next owner:** fresh executor for user-approved S1 source implementation, then independent review. The shared-account decision is ratified; live actions remain unauthorized. Requested Astra/high;
 actual served model/reasoning not independently exposed.
 
 ## Where the work lives
@@ -35,7 +34,7 @@ behavior. The spec records these differences without broadening the patch.
 
 ## Sequence and first patch
 
-1. **Present S1 before coding.** Existing signed deployment request → existing
+1. **S1 scope presented and approved.** Existing signed deployment request → existing
    host journal/reconciliation → local user service → main ACP harness. The
    journal prevents duplicate effects on retries; it is already implemented.
 2. **S1: replace the local executor boundary.** Modify hostd
