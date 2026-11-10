@@ -57,3 +57,22 @@ Implementation choices within S1: use the existing runtime executable rather tha
 Smallest S2: shared main registry/readiness facts, same-account current readiness/model refresh and strict launch recheck, then enable the conversation path under that truthful guard. Smallest S3: existing private DTO/UI projection and matched gated rollout. Neither is hidden in this patch. Native rollout requires a separate exact approval and disposable new-agent test; existing agents stay excluded.
 
 Next gate: fresh independent reviewer on the committed range using [review brief](../briefs/3721-trusted-host-executor-review.md). No open product/architecture question was introduced. Implementation commit is pinned above; the documentation commit/final clean status are returned by the executor. All test/build sessions completed; the targeted process check found no remaining disposable manager/model fixture children. Exclusive write/test ownership is released on return.
+
+## M-1 repair — 2026-11-10
+
+Continuation of the same S1 assignment, starting at clean `88594cc425b9b3e574217860c07dedad7964757a`. Input: [independent M-1 finding](../audits/post-audit/3721-trusted-host-executor.md#m-1-medium-high-confidence--cleanup-depends-on-obsolete-launch-paths); conductor authorized fix-in-lane. The independent report was not edited. This section supersedes the original receipt's overbroad claim that cleanup already worked independently of current/obsolete launch configuration.
+
+**Changed:** only `user_service.rs` production behavior. `installed()` now binds the non-root private controller/state directory without requiring current launch configuration. `catalog()` and all launch callers retain full validation at use. `LocalContext::validate_cleanup()` requires the recorded canonical unit directory and available recorded manager; full launch validation additionally requires HOME, workspace, launcher, PATH and local environment. Cleanup uses the restrictive validator before its unchanged exact unit-shape/confirmed-stop/deletion sequence. Missing old HOME/workspace/launcher or absent/malformed current catalog no longer blocks the authorized stop. Missing/unsafe recorded manager/unit custody still fails and preserves retry records; no fallback exists.
+
+**Regressions:** added one existing-fixture test with three scenarios: move HOME and workspace, remove the old launcher, then reopen against updated, missing or malformed launch configuration. Each proves launch refusal before effects, failed-stop retention, successful cleanup after another reopen, and preservation of moved provider/repository fixtures. Adapted the existing slow-generation controller test to call production `run(deployment=true)` with no current catalog, then reopen it with malformed catalog. It proves the controller reaches manager operations and preserves all 40 failed-stop journal records, rather than merely testing a direct executor cleanup call.
+
+Measured repair delta before docs: production **+21/-9 (net +12)** in one file; test-only **+91/-2 (net +89)** in two existing fixture files. No new file, protocol, manager, launch capability or registration production edit. S2/S3 remain excluded.
+
+Verification commands (Hermit, `HERMIT_SELF_UPDATE=false`, offline Cargo, serial test cases):
+
+- `cargo test --offline -p buzz-hostd --lib cleanup_after_launch_paths_move -- --test-threads=1`: PASS 1 case / 3 configuration scenarios, 0.73s.
+- `cargo test --offline -p buzz-hostd --bin buzz-hostd cleanup_failures_and_slow_generation -- --test-threads=1`: PASS 1 existing controller case, 13.01s; narrow disposable-socket escalation.
+- Final affected `cargo test --offline -p buzz-hostd --all-targets -- --test-threads=1`: PASS, exit 0; library 24 pass / 1 existing ignored (5.17s), activation binary 1 pass, controller 13 pass (35.73s); runtime/examples each 0 cases.
+- `cargo fmt -p buzz-hostd -- --check` and `git diff --check`: PASS. All three test sessions exited 0; targeted process inspection found no remaining manager/model fixture children. Final DCO pin/clean status is returned with ownership release.
+
+Prior core deployment, synthetic ACP and lint/size evidence remains applicable: no core/ACP/runtime/template changes in this delta. Those gates were not repeated. All previously unrun full-CI/native/provider/human gates remain unrun. No live actions or unrelated changes. Requested Astra/high, actual served configuration not independently exposed. Next gate is the same independent reviewer, limited to M-1 and defects introduced by this repair.

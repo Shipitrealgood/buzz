@@ -394,3 +394,68 @@ fn new_route_has_no_root_client_and_fixed_unit_uses_account_supervision() {
         assert!(!unit.contains(forbidden));
     }
 }
+
+#[tokio::test]
+async fn cleanup_after_launch_paths_move_does_not_require_current_catalog() {
+    for config in ["updated", "missing", "malformed"] {
+        let (dir, service, mut prepared, mut catalog) = fixture();
+        let launcher = dir.path().join("retired-launcher");
+        fs::write(&launcher, "#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&launcher, fs::Permissions::from_mode(0o700)).unwrap();
+        catalog.local.as_mut().unwrap().launcher = launcher.clone();
+        write_json(&service.staging, "deployment.json", &catalog).unwrap();
+        let revision = service.catalog().unwrap().1;
+        prepared.instance.revision = revision.clone();
+        prepared
+            .instance
+            .deployment
+            .as_mut()
+            .unwrap()
+            .config
+            .catalog_revision = revision;
+        let id = &prepared.instance.unit_id;
+        service.stage(&prepared.instance).unwrap();
+        service.action("prepare", id).await.unwrap();
+        service.action("models", id).await.unwrap();
+        let local = catalog.local.as_mut().unwrap();
+        let moved_home = dir.path().join("moved-home");
+        let moved_repo = dir.path().join("moved-repo");
+        fs::rename(&local.home, &moved_home).unwrap();
+        fs::rename(&local.workspace, &moved_repo).unwrap();
+        fs::remove_file(&launcher).unwrap();
+        // The old launch context still fails launch validation after reopening.
+        assert!(service.catalog().is_err());
+        local.home = moved_home.clone();
+        local.workspace = moved_repo.clone();
+        local.launcher = "/usr/bin/true".into();
+        let config_path = service.staging.join("deployment.json");
+        match config {
+            "updated" => write_json(&service.staging, "deployment.json", &catalog).unwrap(),
+            "missing" => fs::remove_file(&config_path).unwrap(),
+            _ => fs::write(&config_path, "{broken").unwrap(),
+        }
+        let reopened = UserService::installed(&service.staging).unwrap();
+        let before = calls(dir.path());
+        assert!(reopened.stage(&prepared.instance).is_err());
+        assert!(reopened.action("prepare", id).await.is_err());
+        assert!(reopened.action("models", id).await.is_err());
+        assert_eq!(
+            before,
+            calls(dir.path()),
+            "{config}: launch must fail before effects"
+        );
+        fs::write(dir.path().join("fail-stop"), "").unwrap();
+        assert!(reopened.action("cleanup", id).await.is_err());
+        assert!(service.dir(id).join("context").is_file());
+        assert!(service.dir(id).join("instance").is_file());
+        assert!(dir.path().join("active").exists());
+        fs::remove_file(dir.path().join("fail-stop")).unwrap();
+        let restarted = UserService::installed(&service.staging).unwrap();
+        assert_eq!(restarted.action("cleanup", id).await.unwrap(), "cleaned\n");
+        restarted.remove_staged(id).unwrap();
+        assert!(!dir.path().join("active").exists());
+        assert!(!service.dir(id).exists());
+        assert!(moved_home.join("provider-login").is_file());
+        assert!(moved_repo.join("user-work").is_file());
+    }
+}

@@ -50,3 +50,15 @@ S2 registry/readiness extraction, S3 UI/DTO work, Windows builds, online native 
 Final relevant components: hostd lib 23 pass + existing ignored ACP case run separately and passed; activation binary 1 pass; controller binary 13 pass; core host_deployment 12 pass. Existing legacy tests were retained. Normal clippy with `--no-deps` passed with pre-existing warnings only; strict lint is blocked by unchanged upstream buzz-core warnings. Scoped format, differential size scripts and diff checks passed. The receipt preserves initial sandbox and fixture failures instead of claiming an uninterrupted green aggregate run.
 
 Return all concrete findings together to the conductor with exact source references. No push/merge/deployment or taskctl authority is transferred. If repairs are needed, return this same pinned checkout to the executor for its own rework after review processes stop.
+
+## M-1 scoped re-gate — 2026-11-10
+
+The conductor returned the sole M-1 finding for repair in this same assignment. Review this repair against clean input `88594cc425b9b3e574217860c07dedad7964757a`; final repair commit comes in the executor return. Earlier sections describe the initial implementation; all other accepted review obligations remain valid. The independent report was not modified.
+
+Production delta is only [user_service.rs:40](../../crates/buzz-hostd/src/user_service.rs#L40), [constructor:102](../../crates/buzz-hostd/src/user_service.rs#L102), and [cleanup:357](../../crates/buzz-hostd/src/user_service.rs#L357). Construction now checks state custody without requiring launch config. Cleanup checks recorded manager/unit location, then preserves its existing identity/stop/path checks. Launch callers still load and fully validate the current catalog. There is no replacement manager or root fallback.
+
+**Probe M-1 and introduced defects:** verify moved/deleted HOME/workspace/launcher no longer block cleanup, but missing/unsafe manager/unit location still does. Verify cleanup after controller reopening reaches the recorded manager without usable current configuration, including failed-stop durable retry. Verify stage/prepare/models remain closed when launch validation or revision binding fails.
+
+[New regression:399](../../crates/buzz-hostd/src/user_service_tests.rs#L399) covers updated/missing/malformed config with moved paths and deleted launcher, failed stop then reopened retry, and preservation of moved provider/repo fixtures. The [existing controller case:387](../../crates/buzz-hostd/src/registration_refresh_tests.rs#L387) now enters the real `run(deployment=true)` constructor with absent config and reopens with malformed config, retaining its 40-unit durable-failure/fairness assertions. No new test platform.
+
+Repair size: +12 net production lines, +89 net test lines. [Receipt M-1 section](../executions/3721-trusted-host-executor.md#m-1-repair--2026-11-10) records targeted and final affected suites, retained prior evidence and unrun gates. Review stays source-only; no S2/S3, native activation, live provider or existing-agent authority is granted. Executor releases the same checkout and processes on return.

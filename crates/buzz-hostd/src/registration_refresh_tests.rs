@@ -479,7 +479,7 @@ else: sys.exit(1)
         std::fs::Permissions::from_mode(0o600),
     )
     .unwrap();
-    let helper = buzz_hostd::deployment::Helper::installed(dir.path()).unwrap();
+    buzz_hostd::deployment::Helper::installed(dir.path()).unwrap();
     // Persist the same per-unit local context used by real cleanup, without starting anything.
     let mut stmt = db
         .prepare("SELECT unit_id,generation FROM deployment_units")
@@ -559,10 +559,34 @@ else: sys.exit(1)
         );
         std::fs::write(&release, b"go").unwrap();
     };
+    // Exercise the production controller constructor, not an injected executor.
+    let mut settings = f.settings.clone();
+    settings.deployment = true;
+    std::fs::remove_file(dir.path().join("deployment.json")).unwrap();
     tokio::select! {
-        result=run_with_helper(dir.path(),f.settings.clone(),false,Some(helper))=>panic!("cleanup stopped controller: {result:?}"),
+        result=run(dir.path(),settings.clone(),false)=>panic!("cleanup stopped controller: {result:?}"),
         _=driver=>{}
     }
+    // Reopening with malformed launch config also reaches durable cleanup retries.
+    std::fs::write(dir.path().join("deployment.json"), "{broken").unwrap();
+    std::fs::set_permissions(
+        dir.path().join("deployment.json"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let before = std::fs::read_to_string(&log).unwrap().lines().count();
+    // Registration/deployment reconciliation may fail; restrictive cleanup still runs.
+    let _ = run(dir.path(), settings, true).await;
+    assert!(std::fs::read_to_string(&log).unwrap().lines().count() > before);
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM deployment_units WHERE cleanup=1 AND cleaned=0",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        40
+    );
     // Restart enumeration continues from its durable generation cursor.
     drop(h);
     let reopened = Host::at(dir.path(), false).unwrap();

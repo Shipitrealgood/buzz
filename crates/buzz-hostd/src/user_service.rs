@@ -37,20 +37,32 @@ pub struct LocalContext {
     pub systemctl: PathBuf,
 }
 impl LocalContext {
+    fn validate_cleanup(&self) -> Result<()> {
+        ensure!(
+            self.unit_dir.is_absolute()
+                && self.unit_dir.canonicalize()? == self.unit_dir
+                && self.unit_dir.is_dir(),
+            "invalid recorded unit directory"
+        );
+        crate::Executable {
+            path: self.systemctl.clone(),
+            sha256: String::new(),
+        }
+        .available()
+    }
     fn validate(&self) -> Result<()> {
-        for p in [&self.home, &self.workspace, &self.unit_dir] {
+        self.validate_cleanup()?;
+        for p in [&self.home, &self.workspace] {
             ensure!(
                 p.is_absolute() && p.canonicalize()? == *p && p.is_dir(),
                 "invalid local account directory"
             );
         }
-        for p in [&self.launcher, &self.systemctl] {
-            crate::Executable {
-                path: p.clone(),
-                sha256: String::new(),
-            }
-            .available()?;
+        crate::Executable {
+            path: self.launcher.clone(),
+            sha256: String::new(),
         }
+        .available()?;
         ensure!(
             !self.tool_path.is_empty() && !self.tool_path.chars().any(char::is_control),
             "invalid tool PATH"
@@ -86,6 +98,7 @@ pub struct UserService {
 }
 impl UserService {
     /// Bind the ordinary account's existing private controller directory.
+    /// Reopening restrictive retries must not depend on usable launch configuration.
     pub fn installed(state: &Path) -> Result<Self> {
         ensure!(
             !rustix::process::geteuid().is_root(),
@@ -95,7 +108,6 @@ impl UserService {
         let service = Self {
             staging: state.into(),
         };
-        service.catalog()?;
         let root = state.join("hosted");
         if !root.try_exists()? {
             fs::DirBuilder::new().mode(0o700).create(&root)?;
@@ -360,7 +372,7 @@ impl UserService {
             return Ok("cleaned\n".into());
         }
         let local: LocalContext = serde_json::from_slice(&private_file(&context, 16384)?)?;
-        local.validate()?;
+        local.validate_cleanup()?;
         stop(&local, id).await?;
         let dropin = local
             .unit_dir
