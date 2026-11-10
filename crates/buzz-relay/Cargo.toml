@@ -94,6 +94,8 @@ async-compression = { version = "0.4.42", features = ["tokio", "gzip"] }
 dev = ["buzz-auth/dev"]
 
 [dev-dependencies]
+# Inspect the disposable host journal in the deployment concurrency journey.
+rusqlite = { version = "0.40", default-features = false, features = ["libsqlite3-sys", "bundled", "fallible_uint"] }
 # The mesh-llm smoke harnesses moved to `crates/buzz-mesh-smoke`. A
 # dev-dependency feeds every target of its package, so keeping the mesh-llm
 # SDK here forced the entire mesh-llm/skippy/rmcp tree to compile before any

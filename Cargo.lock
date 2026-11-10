@@ -1529,6 +1529,7 @@ dependencies = [
  "redis",
  "reqwest 0.13.4",
  "ring",
+ "rusqlite",
  "rust-s3",
  "rustls",
  "serde",

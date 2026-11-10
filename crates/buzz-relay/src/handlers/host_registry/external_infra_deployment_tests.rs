@@ -126,6 +126,14 @@ mod external_infra_deployment_tests {
         effects: Arc<std::sync::Mutex<(usize, bool, bool)>>,
         requests: Arc<std::sync::Mutex<Vec<String>>>,
         task: JoinHandle<()>,
+        held_reply: Arc<
+            std::sync::Mutex<
+                Option<(
+                    tokio::sync::oneshot::Sender<()>,
+                    tokio::sync::oneshot::Receiver<()>,
+                )>,
+            >,
+        >,
     }
     impl ExecutionInstallation {
         async fn new(
@@ -181,7 +189,15 @@ mod external_infra_deployment_tests {
             let state = effects.clone();
             let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
             let received = requests.clone();
+            let held_reply = Arc::new(std::sync::Mutex::new(
+                None::<(
+                    tokio::sync::oneshot::Sender<()>,
+                    tokio::sync::oneshot::Receiver<()>,
+                )>,
+            ));
+            let held = held_reply.clone();
             let task = tokio::spawn(async move {
+                let mut delayed = tokio::task::JoinSet::new();
                 loop {
                     let (mut socket, _) = listener.accept().await.unwrap();
                     let mut request = Vec::new();
@@ -232,7 +248,16 @@ mod external_infra_deployment_tests {
                         },
                     )
                     .unwrap_or_else(|_| "failed\n".into());
-                    socket.write_all(reply.as_bytes()).await.unwrap();
+                    let pause = held.lock().unwrap().take();
+                    if let Some((reached, release)) = pause {
+                        let _ = reached.send(());
+                        delayed.spawn(async move {
+                            let _ = release.await;
+                            let _ = socket.write_all(reply.as_bytes()).await;
+                        });
+                    } else {
+                        socket.write_all(reply.as_bytes()).await.unwrap();
+                    }
                 }
             });
             Self {
@@ -243,6 +268,51 @@ mod external_infra_deployment_tests {
                 effects,
                 requests,
                 task,
+                held_reply,
+            }
+        }
+        fn hold_reply(
+            &self,
+        ) -> (
+            tokio::sync::oneshot::Receiver<()>,
+            tokio::sync::oneshot::Sender<()>,
+        ) {
+            let (reached_tx, reached_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+            assert!(self
+                .held_reply
+                .lock()
+                .unwrap()
+                .replace((reached_tx, release_rx))
+                .is_none());
+            (reached_rx, release_tx)
+        }
+        fn command(&self, owner: &Keys, agent: &Keys) -> buzz_core::host_deployment::Command {
+            use buzz_core::host_deployment as d;
+            use nostr::ToBech32;
+            d::Command::Deploy {
+                config: Box::new(d::Deploy {
+                    catalog_revision: self.revision.clone(),
+                    runtime_id: "acp/codex".into(),
+                    name: "Disposable agent".into(),
+                    policy: buzz_core::paired_message::Policy {
+                        respond_to: "owner-only".into(),
+                        respond_to_allowlist: vec![],
+                        channel_add_policy: "owner_only".into(),
+                    },
+                    model: d::ModelSelection::PendingLogin {},
+                    provider: None,
+                    system_prompt: Some("Proof prompt".into()),
+                    effort: None,
+                    parallelism: 1,
+                }),
+                identity: buzz_core::private_managed_agent::PrivateIdentity {
+                    private_key_nsec: agent.secret_key().to_bech32().unwrap(),
+                    auth_tag: Some(
+                        buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "")
+                            .unwrap(),
+                    ),
+                },
             }
         }
         async fn stop(self) {
@@ -265,9 +335,276 @@ mod external_infra_deployment_tests {
     }
     #[tokio::test]
     #[ignore = "requires Postgres, Redis and isolated Docker network"]
+    async fn deployment_cleanup_completion_is_monotonic_across_overlapping_writers() {
+        use buzz_core::host_deployment::{self as d, wire};
+        for (offline_late, replacement) in
+            [(true, false), (true, true), (false, false), (false, true)]
+        {
+            let f = Fixture::with_deployment(true).await;
+            let owner = Keys::generate();
+            f.member(&owner).await;
+            let owner_dir = tempfile::tempdir().unwrap();
+            let mut device = Device::at(&owner_dir.path().join("owner.sqlite")).unwrap();
+            let mut registration = f.owner(&owner).await;
+            let (dir, mut host) = host();
+            let (scope, mut ws, _, _) =
+                pair(&f, &owner, &mut device, &mut host, &mut registration).await;
+            let installation =
+                ExecutionInstallation::new(dir.path(), &scope, f.state.relay_keypair.public_key())
+                    .await;
+            let agent = Keys::generate();
+            let authority = d::Authority {
+                v: 1,
+                scope: scope.clone(),
+                agent: agent.public_key(),
+                action: d::Action::Deploy,
+                operation_id: "ab".repeat(32),
+                expected_revision: 0,
+                expires_at: nostr::Timestamp::now().as_secs() + 500,
+                content_sha256: String::new(),
+            };
+            let mut owner_ws = f.socket().await;
+            owner_ws.authenticate(&owner, None).await.unwrap();
+            let (_, deploy) = wire::seal_command(
+                &owner,
+                authority.clone(),
+                &installation.command(&owner, &agent),
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            assert!(owner_ws.send_event(deploy).await.unwrap().accepted);
+            host.reconcile_deployments(
+                &mut ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            let mut cleanup = authority.clone();
+            cleanup.action = d::Action::Cleanup;
+            cleanup.expected_revision = 1;
+            let (cleanup, event) = wire::seal_command(
+                &owner,
+                cleanup,
+                &d::Command::Cleanup {},
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            assert!(owner_ws.send_event(event).await.unwrap().accepted);
+            installation.effects.lock().unwrap().2 = true;
+            host.reconcile_deployments(
+                &mut ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            let journal = rusqlite::Connection::open(dir.path().join("host.sqlite")).unwrap();
+            let snapshot = || {
+                journal.query_row("SELECT operation,revision,cleaned,issue,result FROM deployment_units WHERE agent=?",[agent.public_key().to_hex()],|r|Ok((r.get::<_,String>(0)?,r.get::<_,u64>(1)?,r.get::<_,bool>(2)?,r.get::<_,Option<String>>(3)?,r.get::<_,Option<String>>(4)?))).unwrap()
+            };
+            assert!(
+                !snapshot().2 && snapshot().3.is_some(),
+                "current incomplete failure stays actionable"
+            );
+            let pending: Event = serde_json::from_str(snapshot().4.as_ref().unwrap()).unwrap();
+            let mut late_host = Host::at(dir.path(), false).unwrap();
+            let mut late_ws = f.host_socket(&late_host, &scope.generation).await;
+            let (reached, release) = installation.hold_reply();
+            let late = async {
+                if offline_late {
+                    late_host
+                        .cleanup_deployments(&scope.generation, &installation.helper)
+                        .await
+                } else {
+                    late_host
+                        .reconcile_deployments(
+                            &mut late_ws,
+                            f.state.relay_keypair.public_key(),
+                            &scope.generation,
+                            &installation.catalog,
+                            &installation.revision,
+                            &installation.helper,
+                        )
+                        .await
+                }
+            };
+            let winner = async {
+                tokio::time::timeout(Duration::from_secs(5), reached)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let mut current = cleanup.clone();
+                if replacement {
+                    current.expected_revision += 1;
+                    let (a, e) = wire::seal_command(
+                        &owner,
+                        current,
+                        &d::Command::Cleanup {},
+                        nostr::Timestamp::now().as_secs(),
+                    )
+                    .unwrap();
+                    current = a;
+                    assert!(owner_ws.send_event(e).await.unwrap().accepted);
+                    if !offline_late {
+                        // Admit the replacement while its predecessor's online
+                        // failure response is held, then let offline success win.
+                        host.reconcile_deployments(
+                            &mut ws,
+                            f.state.relay_keypair.public_key(),
+                            &scope.generation,
+                            &installation.catalog,
+                            &installation.revision,
+                            &installation.helper,
+                        )
+                        .await
+                        .unwrap();
+                        assert_eq!(snapshot().0, current.operation_id);
+                        assert!(!snapshot().2 && snapshot().3.is_some());
+                    }
+                }
+                installation.effects.lock().unwrap().2 = false;
+                if offline_late {
+                    host.reconcile_deployments(
+                        &mut ws,
+                        f.state.relay_keypair.public_key(),
+                        &scope.generation,
+                        &installation.catalog,
+                        &installation.revision,
+                        &installation.helper,
+                    )
+                    .await
+                    .unwrap();
+                } else {
+                    host.cleanup_deployments(&scope.generation, &installation.helper)
+                        .await
+                        .unwrap();
+                }
+                let saved = snapshot();
+                assert!(saved.2 && saved.3.is_none());
+                let receipt = saved
+                    .4
+                    .expect("offline and online success both durably record terminal receipt");
+                let terminal: Event = serde_json::from_str(&receipt).unwrap();
+                assert_eq!(
+                    wire::open_result(&owner, &terminal, &current)
+                        .unwrap()
+                        .outcome,
+                    d::Outcome::Cleaned
+                );
+                // Crash after the winning journal commit, before online delivery:
+                // reopen and use the production replay path with zero helper work.
+                let mut reopened = Host::at(dir.path(), false).unwrap();
+                let mut retry_ws = f.host_socket(&reopened, &scope.generation).await;
+                let calls = installation.requests.lock().unwrap().len();
+                reopened
+                    .reconcile_deployments(
+                        &mut retry_ws,
+                        f.state.relay_keypair.public_key(),
+                        &scope.generation,
+                        &installation.catalog,
+                        &installation.revision,
+                        &installation.helper,
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(installation.requests.lock().unwrap().len(), calls);
+                assert_eq!(snapshot().4.as_deref(), Some(receipt.as_str()));
+                retry_ws.disconnect().await.unwrap();
+                release.send(()).unwrap();
+                (current, receipt)
+            };
+            let (late, (current, receipt)) = tokio::join!(late, winner);
+            late.unwrap();
+            let saved = snapshot();
+            assert_eq!(
+                (saved.0, saved.1, saved.2, saved.3, saved.4),
+                (
+                    current.operation_id.clone(),
+                    current.expected_revision + 1,
+                    true,
+                    None,
+                    Some(receipt.clone())
+                ),
+                "offline_late={offline_late} replacement={replacement}"
+            );
+            let accepted:String=sqlx::query_scalar("SELECT result_json FROM paired_agent_operations WHERE community_id=$1 AND operation_id=$2").bind(f.community.as_uuid()).bind(&current.operation_id).fetch_one(f.state.db.pool()).await.unwrap();
+            let terminal: Event = serde_json::from_str(&receipt).unwrap();
+            assert_eq!(serde_json::from_str::<Event>(&accepted).unwrap(), terminal);
+            if !replacement {
+                assert!(
+                    !ws.send_event(pending).await.unwrap().accepted,
+                    "a late prepared pending frame cannot regress accepted terminal state"
+                );
+            }
+            assert!(
+                ws.send_event(terminal.clone()).await.unwrap().accepted,
+                "lost reply retries the exact winner"
+            );
+            let calls = installation.requests.lock().unwrap().len();
+            host.cleanup_deployments(&scope.generation, &installation.helper)
+                .await
+                .unwrap();
+            assert_eq!(
+                installation.requests.lock().unwrap().len(),
+                calls,
+                "obsolete retry never restored"
+            );
+            // New authorization for an already-cleaned stable unit receives its
+            // own correlated receipt without erasing the completed observation.
+            let mut next = current.clone();
+            next.expected_revision += 1;
+            let (next, event) = wire::seal_command(
+                &owner,
+                next,
+                &d::Command::Cleanup {},
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            assert!(owner_ws.send_event(event).await.unwrap().accepted);
+            installation.effects.lock().unwrap().2 = true;
+            host.reconcile_deployments(
+                &mut ws,
+                f.state.relay_keypair.public_key(),
+                &scope.generation,
+                &installation.catalog,
+                &installation.revision,
+                &installation.helper,
+            )
+            .await
+            .unwrap();
+            assert_eq!(installation.requests.lock().unwrap().len(), calls);
+            let saved = snapshot();
+            assert!(saved.2 && saved.3.is_none());
+            let rebound: Event = serde_json::from_str(saved.4.as_ref().unwrap()).unwrap();
+            assert_ne!(rebound.id, terminal.id);
+            assert_eq!(
+                wire::open_result(&owner, &rebound, &next).unwrap().outcome,
+                d::Outcome::Cleaned
+            );
+            assert!(wire::open_result(&owner, &rebound, &current).is_err());
+            assert_eq!(
+                journal
+                    .query_row("SELECT unit_id FROM deployment_units", [], |r| r
+                        .get::<_, String>(0))
+                    .unwrap(),
+                authority.operation_id
+            );
+            drop((ws, late_ws, owner_ws, registration));
+            installation.stop().await;
+            f.stop().await;
+        }
+    }
+    #[tokio::test]
+    #[ignore = "requires Postgres, Redis and isolated Docker network"]
     async fn deployment_owner_host_helper_restart_cleanup_journey() {
         use buzz_core::host_deployment::{self as d, wire};
-        use nostr::ToBech32;
         let f = Fixture::with_deployment(true).await;
         let owner = Keys::generate();
         f.member(&owner).await;
@@ -362,29 +699,7 @@ mod external_infra_deployment_tests {
             expires_at: nostr::Timestamp::now().as_secs() + 500,
             content_sha256: String::new(),
         };
-        let command = d::Command::Deploy {
-            config: Box::new(d::Deploy {
-                catalog_revision: installation.revision.clone(),
-                runtime_id: "acp/codex".into(),
-                name: "Disposable agent".into(),
-                policy: buzz_core::paired_message::Policy {
-                    respond_to: "owner-only".into(),
-                    respond_to_allowlist: vec![],
-                    channel_add_policy: "owner_only".into(),
-                },
-                model: d::ModelSelection::PendingLogin {},
-                provider: None,
-                system_prompt: Some("Proof prompt".into()),
-                effort: None,
-                parallelism: 1,
-            }),
-            identity: buzz_core::private_managed_agent::PrivateIdentity {
-                private_key_nsec: agent.secret_key().to_bech32().unwrap(),
-                auth_tag: Some(
-                    buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap(),
-                ),
-            },
-        };
+        let command = installation.command(&owner, &agent);
         let snapshot =
             json!({"record":{"pubkey":agent.public_key().to_hex(),"name":"Disposable agent"}});
         let intent = device

@@ -399,7 +399,36 @@ async fn cleanup_failures_and_slow_generation_do_not_starve_discovery_or_rotatio
     let mut slow_unit = String::new();
     for (i, g) in generations.iter().enumerate() {
         let id = format!("{i:064x}");
-        db.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,'persisted-test-cleanup',1,1)", rusqlite::params![id,g,id,id]).unwrap();
+        let owner = Keys::generate();
+        db.execute(
+            "UPDATE grants SET owner=? WHERE g=?",
+            rusqlite::params![owner.public_key().to_hex(), g],
+        )
+        .unwrap();
+        let scope = Scope {
+            community: f.settings.community.clone(),
+            generation: g.clone(),
+            owner: owner.public_key(),
+            host: h.public_key().unwrap(),
+        };
+        let authority = buzz_core::host_deployment::Authority {
+            v: 1,
+            scope,
+            agent: Keys::generate().public_key(),
+            action: buzz_core::host_deployment::Action::Cleanup,
+            operation_id: id.clone(),
+            expected_revision: 0,
+            expires_at: nostr::Timestamp::now().as_secs() + 500,
+            content_sha256: String::new(),
+        };
+        let (authority, event) = buzz_core::host_deployment::wire::seal_command(
+            &owner,
+            authority,
+            &buzz_core::host_deployment::Command::Cleanup {},
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap();
+        db.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,?,1,1)", rusqlite::params![authority.agent.to_hex(),g,id,authority.operation_id,serde_json::to_string(&event).unwrap()]).unwrap();
         if i == 0 {
             let owner: String = db
                 .query_row("SELECT owner FROM grants WHERE g=?", [g], |r| r.get(0))

@@ -194,6 +194,72 @@ impl Host {
         tx.commit()?;
         Ok(())
     }
+    // One journal transition for both helper callers. No await crosses the
+    // transaction: an attempt owns exactly this request on this stable unit.
+    fn finish_deployment(
+        &mut self,
+        a: &Authority,
+        unit_id: &str,
+        mut outcome: Outcome,
+        mut issue: Option<String>,
+    ) -> Result<Option<Event>> {
+        let keys = self.store.keys()?;
+        let tx = self.store.tx()?;
+        let current: Option<(bool, Option<String>)> = tx.query_row(
+            "SELECT cleaned,result FROM deployment_units WHERE agent=? AND generation=? AND unit_id=? AND operation=? AND revision=?",
+            params![a.agent.to_hex(), a.scope.generation, unit_id, a.operation_id, a.expected_revision+1],
+            |r| Ok((r.get(0)?,r.get(1)?)),
+        ).optional()?;
+        let Some((cleaned, saved)) = current else {
+            return Ok(None);
+        };
+        let mut terminal = None;
+        if let Some(saved) = saved {
+            let (event, header) = wire::verify(saved.as_bytes(), &a.scope.community, a.scope.host)?;
+            if let wire::Header::Result { result } = header {
+                ensure!(result.request == *a, "saved deployment receipt mismatch");
+                if matches!(
+                    result.outcome,
+                    Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
+                ) {
+                    outcome = result.outcome;
+                    terminal = Some(event);
+                }
+            }
+        }
+        if cleaned && a.action == Action::Cleanup {
+            outcome = Outcome::Cleaned;
+        }
+        if matches!(
+            outcome,
+            Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
+        ) {
+            issue = None;
+        }
+        let completed = cleaned || outcome == Outcome::Cleaned;
+        let event = match terminal {
+            Some(event) => event,
+            None => wire::result(
+                &keys,
+                &DeploymentResult {
+                    request: a.clone(),
+                    applied_revision: matches!(
+                        outcome,
+                        Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
+                    )
+                    .then_some(a.expected_revision + 1),
+                    outcome,
+                },
+                nostr::Timestamp::now().as_secs(),
+            )?,
+        };
+        tx.execute(
+            "UPDATE deployment_units SET cleaned=?,result=?,issue=? WHERE agent=? AND generation=? AND unit_id=? AND operation=? AND revision=?",
+            params![completed, serde_json::to_string(&event)?, issue, a.agent.to_hex(), a.scope.generation, unit_id, a.operation_id, a.expected_revision+1],
+        )?;
+        tx.commit()?;
+        Ok(Some(event))
+    }
     /// Reconcile a finite batch through the actual journal and fixed helper.
     /// Caller must explicitly enable and provide a compatible execution boundary.
     pub async fn reconcile_deployments(
@@ -297,11 +363,12 @@ impl Host {
             let command = wire::open_command(&self.store.keys()?, &event, &a);
             let valid_command = command.is_ok();
             let tx = self.store.tx()?;
-            let old:Option<(String,String,u64,bool,Option<String>)>=tx.query_row("SELECT unit_id,event,revision,cleanup,result FROM deployment_units WHERE agent=?",[a.agent.to_hex()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional()?;
+            let old:Option<(String,String,u64,bool,Option<String>,bool)>=tx.query_row("SELECT unit_id,event,revision,cleanup,result,cleaned FROM deployment_units WHERE agent=?",[a.agent.to_hex()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional()?;
+            let already_cleaned = old.as_ref().is_some_and(|row| row.5);
             let expired = nostr::Timestamp::now().as_secs() >= a.expires_at;
             let persisted_cleanup = old
                 .as_ref()
-                .is_some_and(|(_, saved, _, fenced, _)| saved == raw && *fenced);
+                .is_some_and(|(_, saved, _, fenced, _, _)| saved == raw && *fenced);
             if old.is_none() {
                 let count: i64 =
                     tx.query_row("SELECT count(*) FROM deployment_units", [], |r| r.get(0))?;
@@ -310,7 +377,7 @@ impl Host {
                     "deployment retention capacity reached; existing identities retained"
                 );
             }
-            if let Some((stable, saved, rev, fenced, result)) = &old {
+            if let Some((stable, saved, rev, fenced, result, _)) = &old {
                 ensure!(
                     stable == unit_id && (*rev < a.expected_revision + 1 || saved == raw),
                     "local placement conflict"
@@ -341,10 +408,13 @@ impl Host {
                     }
                 }
             }
-            tx.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET operation=excluded.operation,event=excluded.event,revision=excluded.revision,cleanup=max(cleanup,excluded.cleanup),cleaned=0,result=NULL,issue=NULL",params![a.agent.to_hex(),g,unit_id,op,raw,a.expected_revision+1,a.action==Action::Cleanup && valid_command && (!expired || persisted_cleanup)])?;
+            tx.execute("INSERT INTO deployment_units(agent,generation,unit_id,operation,event,revision,cleanup) VALUES(?,?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET operation=excluded.operation,event=excluded.event,revision=excluded.revision,cleanup=max(cleanup,excluded.cleanup),result=CASE WHEN operation=excluded.operation AND revision=excluded.revision THEN result ELSE NULL END,issue=CASE WHEN operation=excluded.operation AND revision=excluded.revision AND cleaned=0 THEN issue ELSE NULL END",params![a.agent.to_hex(),g,unit_id,op,raw,a.expected_revision+1,a.action==Action::Cleanup && valid_command && (!expired || persisted_cleanup)])?;
             tx.commit()?;
             let unit = crate::unit_id(&scope, unit_id);
             let applied = async {
+                if already_cleaned && a.action == Action::Cleanup && valid_command {
+                    return Ok(Outcome::Cleaned);
+                }
                 ensure!(
                     !expired || persisted_cleanup,
                     "original command expired; identity retained; explicit new operation required"
@@ -413,30 +483,14 @@ impl Host {
                     Some(e.to_string()),
                 ),
             };
-            let applied_revision = matches!(
-                outcome,
-                Outcome::Applied | Outcome::NeedsLogin | Outcome::Cleaned
-            )
-            .then_some(a.expected_revision + 1);
-            let cleaned = outcome == Outcome::Cleaned;
-            let result = wire::result(
-                &self.store.keys()?,
-                &DeploymentResult {
-                    request: a,
-                    outcome,
-                    applied_revision,
-                },
-                nostr::Timestamp::now().as_secs(),
-            )?;
-            // Bind the durable receipt by the accepted immutable operation.
-            self.store.0.execute(
-                "UPDATE deployment_units SET result=?,issue=?,cleaned=? WHERE generation=? AND operation=?",
-                params![serde_json::to_string(&result)?, issue, cleaned, g, op],
-            )?;
-            ensure!(
-                ws.send_event(result).await?.accepted,
-                "result pending relay delivery"
-            );
+            // A superseded attempt has no receipt to publish. If cleanup won
+            // concurrently, publish its exact retained terminal receipt instead.
+            if let Some(result) = self.finish_deployment(&a, unit_id, outcome, issue)? {
+                ensure!(
+                    ws.send_event(result).await?.accepted,
+                    "result pending relay delivery"
+                );
+            }
         }
         Ok(())
     }
@@ -446,16 +500,29 @@ impl Host {
         self.deployment_schema()?;
         let cursor_key = format!("deployment-cleanup:{g}");
         let cursor = self.deployment_cursor(&cursor_key)?;
-        let units: Vec<String> = self
+        let units: Vec<(String, String, String, u64, String)> = self
             .store
             .0
-            .prepare("SELECT unit_id FROM deployment_units WHERE generation=? AND cleanup=1 AND cleaned=0 ORDER BY (unit_id <= ?2),unit_id LIMIT 8")?
-            .query_map(params![g, cursor], |r| r.get(0))?
+            .prepare("SELECT unit_id,event,operation,revision,agent FROM deployment_units WHERE generation=? AND cleanup=1 AND cleaned=0 ORDER BY (unit_id <= ?2),unit_id LIMIT 8")?
+            .query_map(params![g, cursor], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?
             .collect::<std::result::Result<_, _>>()?;
         let scope = self.deployment_scope(g)?;
         self.advance_deployment_cursor(&format!("deployment-generations:{}", scope.community), g)?;
-        for id in units {
+        for (id, raw, operation, revision, agent) in units {
             self.advance_deployment_cursor(&cursor_key, &id)?;
+            let (_, wire::Header::Command { authority: a }) =
+                wire::verify(raw.as_bytes(), &scope.community, scope.owner)?
+            else {
+                anyhow::bail!("missing cleanup authority")
+            };
+            ensure!(
+                a.scope == scope
+                    && a.action == Action::Cleanup
+                    && a.operation_id == operation
+                    && a.expected_revision + 1 == revision
+                    && a.agent.to_hex() == agent,
+                "cleanup snapshot mismatch"
+            );
             let unit = crate::unit_id(&scope, &id);
             let result = async {
                 ensure!(
@@ -465,11 +532,12 @@ impl Host {
                 helper.remove_staged(&unit)
             }
             .await;
-            // A failed helper attempt remains durable and does not skip later units.
-            self.store.0.execute(
-                "UPDATE deployment_units SET cleaned=?,issue=? WHERE generation=? AND unit_id=?",
-                params![result.is_ok(), result.err().map(|e| e.to_string()), g, id],
-            )?;
+            let outcome = if result.is_ok() {
+                Outcome::Cleaned
+            } else {
+                Outcome::CleanupPending
+            };
+            self.finish_deployment(&a, &id, outcome, result.err().map(|e| e.to_string()))?;
         }
         Ok(())
     }
