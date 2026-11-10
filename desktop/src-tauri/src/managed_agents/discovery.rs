@@ -14,31 +14,28 @@ pub(crate) mod command_search;
 mod login_shell;
 mod presets;
 mod runtime_metadata;
-#[macro_use]
-mod windows_install;
-mod catalog;
-pub(crate) use catalog::KNOWN_ACP_RUNTIMES;
+use buzz_core_pkg::harness::presets::PRESET_HARNESSES;
+pub(crate) use buzz_core_pkg::harness::KNOWN_ACP_RUNTIMES;
+#[cfg(test)]
+use buzz_core_pkg::harness::{
+    BUZZ_AGENT_AVATAR_URL, CLAUDE_CODE_AVATAR_URL, CODEX_AVATAR_URL, GOOSE_AVATAR_URL,
+};
 pub use login_shell::{find_nvm_default_bin, login_shell_path};
 pub(crate) use login_shell::{find_via_login_shell, refresh_login_shell_path};
 #[cfg(test)]
 pub(crate) use login_shell::{
     is_login_shell_path_uninit, is_safe_nvm_tag, login_shell_candidates, parse_semver_tag,
 };
+use presets::preset_catalog_entry;
 pub(crate) use presets::{
     canonical_harness_command, command_for_runtime_id, preset_harness_definitions,
     preset_harness_ids,
 };
-use presets::{preset_catalog_entry, PRESET_HARNESSES};
 pub(crate) use runtime_metadata::EffortNormalization;
 pub(crate) use runtime_metadata::KnownAcpRuntime;
 #[cfg(test)]
 pub(crate) use runtime_metadata::GOOSE_EFFORT_NORMALIZATION;
 
-const GOOSE_AVATAR_URL: &str = "https://goose-docs.ai/img/logo_dark.png";
-const CLAUDE_CODE_AVATAR_URL: &str = "https://anthropic.gallerycdn.vsassets.io/extensions/anthropic/claude-code/2.1.77/1773707456892/Microsoft.VisualStudio.Services.Icons.Default";
-const CODEX_AVATAR_URL: &str = "https://openai.gallerycdn.vsassets.io/extensions/openai/chatgpt/26.5313.41514/1773706730621/Microsoft.VisualStudio.Services.Icons.Default";
-const BUZZ_AGENT_AVATAR_URL: &str =
-    "https://raw.githubusercontent.com/block/buzz/refs/heads/main/crates/buzz-agent/buzz-agent.png";
 fn common_binary_paths() -> &'static [PathBuf] {
     static PATHS: OnceLock<Vec<PathBuf>> = OnceLock::new();
     PATHS.get_or_init(|| {
@@ -157,7 +154,7 @@ pub(crate) fn known_acp_runtime(command: &str) -> Option<&'static KnownAcpRuntim
 }
 
 pub(crate) fn known_acp_runtime_exact(id: &str) -> Option<&'static KnownAcpRuntime> {
-    KNOWN_ACP_RUNTIMES.iter().find(|p| p.id == id)
+    buzz_core_pkg::harness::known_acp_runtime_exact(id)
 }
 
 /// The agent command a freshly-created agent defaults to when the create
@@ -323,12 +320,8 @@ pub fn try_record_agent_command(
 }
 
 fn default_agent_args(command: &str) -> Option<Vec<String>> {
-    match normalize_command_identity(command).as_str() {
-        "goose" => Some(vec!["acp".to_string()]),
-        "codex" | "codex-acp" | "claude-agent-acp" | "claude-code-acp" | "claude-code"
-        | "claudecode" | "buzz-agent" => Some(Vec::new()),
-        _ => None,
-    }
+    buzz_core_pkg::harness::default_args(&normalize_command_identity(command))
+        .map(|args| args.iter().map(|s| (*s).to_string()).collect())
 }
 
 pub fn normalize_agent_args(command: &str, agent_args: Vec<String>) -> Vec<String> {
@@ -756,43 +749,7 @@ pub fn missing_command_message(command: &str, role: &str) -> String {
     )
 }
 
-pub(crate) fn classify_runtime(
-    adapter_result: Option<(&str, PathBuf)>,
-    underlying_cli: Option<&str>,
-    underlying_cli_found: bool,
-) -> (AcpAvailabilityStatus, Option<String>, Option<String>) {
-    if let Some((cmd, path)) = adapter_result {
-        if underlying_cli.is_some() && !underlying_cli_found {
-            (
-                AcpAvailabilityStatus::CliMissing,
-                Some(cmd.to_string()),
-                Some(path.display().to_string()),
-            )
-        } else {
-            (
-                AcpAvailabilityStatus::Available,
-                Some(cmd.to_string()),
-                Some(path.display().to_string()),
-            )
-        }
-    } else if underlying_cli.is_some() && underlying_cli_found {
-        (AcpAvailabilityStatus::AdapterMissing, None, None)
-    } else {
-        (AcpAvailabilityStatus::NotInstalled, None, None)
-    }
-}
-
-/// The oldest `codex-acp` version supported by Buzz managed agents.
-///
-/// Older 1.x adapters are detected successfully, but can still bundle a Codex runtime
-/// that cannot use newer models. Adapter 1.6.2 bundles Codex 0.148.x, which rejects
-/// GPT-6 Astra even when the separately installed Codex CLI has been updated.
-/// Published adapter 1.10.0 depends on `@openai/codex ^0.153.3`.
-///
-/// Bump policy: raise this only when a newer adapter fixes a defect that breaks managed
-/// agents, and only to a version already published on npm — every user below the floor is
-/// offered a reinstall on their next discovery pass.
-pub(crate) const MIN_CODEX_ACP_VERSION: (u64, u64, u64) = (1, 10, 0);
+pub(crate) use buzz_core_pkg::harness::{classify_runtime, MIN_CODEX_ACP_VERSION};
 
 /// Probe the full version of a `codex-acp` binary by running `--version`.
 ///
@@ -878,17 +835,7 @@ pub(crate) fn probe_codex_acp_version_with_path(
         .take(4096)
         .read_to_end(&mut buf);
 
-    let stdout = String::from_utf8_lossy(&buf);
-    // Output format: "<package-name> <major>.<minor>.<patch>"
-    let version_str = stdout.split_whitespace().last()?;
-    let mut components = version_str.split('.');
-    let major = components.next()?.parse::<u64>().ok()?;
-    let minor = components.next()?.parse::<u64>().ok()?;
-    let patch = components.next()?.parse::<u64>().ok()?;
-    if components.next().is_some() {
-        return None;
-    }
-    Some((major, minor, patch))
+    buzz_core_pkg::harness::parse_version(&buf)
 }
 
 /// Classifies a resolved codex-acp binary path as [`AcpAvailabilityStatus::Available`]
@@ -901,10 +848,10 @@ pub(crate) fn probe_codex_acp_version_with_path(
 /// Used by `discover_acp_runtimes`, `cli_login_requirements`, and
 /// `install_acp_runtime_blocking` so the version-gate logic is not duplicated.
 pub(crate) fn codex_adapter_availability(path: &Path) -> AcpAvailabilityStatus {
-    match probe_codex_acp_version(path) {
-        Some(version) if version >= MIN_CODEX_ACP_VERSION => AcpAvailabilityStatus::Available,
-        _ => AcpAvailabilityStatus::AdapterOutdated,
-    }
+    buzz_core_pkg::harness::version_availability(
+        probe_codex_acp_version(path),
+        MIN_CODEX_ACP_VERSION,
+    )
 }
 
 /// Returns `true` when the codex-acp binary at `path` is below

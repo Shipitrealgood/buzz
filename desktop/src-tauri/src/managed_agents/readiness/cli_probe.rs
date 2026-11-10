@@ -21,33 +21,9 @@ pub(crate) fn augmented_path() -> Option<String> {
     )
 }
 
-/// Outcome of a CLI login-status probe.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ProbeOutcome {
-    /// The CLI reported a successful login (exit 0).
-    LoggedIn,
-    /// The CLI exited non-zero without a config-parse signal — treat as
-    /// "not authenticated."
-    LoggedOut,
-    /// The CLI exited non-zero and its stderr contains a config-parse error
-    /// (e.g. from `~/.codex/config.toml`). The user needs to fix their
-    /// config, not re-run login.
-    ConfigInvalid {
-        /// A trimmed excerpt of the stderr message to surface in the nudge.
-        stderr_excerpt: String,
-    },
-}
-
-/// Signals emitted to stderr by codex (and related CLI tools) when they
-/// fail to parse their config file. We check these to distinguish a
-/// config-parse failure from a genuine "not authenticated" exit.
-///
-/// The real codex error reads:
-///   `Error loading configuration: .../.codex/config.toml:... unknown variant ...`
-/// So we require BOTH "error loading configuration" AND "unknown variant" to be
-/// present, avoiding false positives from unrelated errors that mention only
-/// one term.
-const CONFIG_PARSE_SIGNALS: &[&str] = &["error loading configuration", "unknown variant"];
+#[cfg(test)]
+use buzz_core_pkg::harness::CONFIG_PARSE_SIGNALS;
+pub(crate) use buzz_core_pkg::harness::{classify_probe_output, ProbeOutcome};
 
 /// Run the probe at the resolved absolute path so the GUI-PATH gap is
 /// bypassed. Injects the same augmented PATH used for launched agents so
@@ -69,30 +45,6 @@ pub(crate) fn login_probe(
         Ok(o) if o.status.success() => ProbeOutcome::LoggedIn,
         Ok(o) => classify_probe_output(&o.stderr, false),
         Err(_) => ProbeOutcome::LoggedOut,
-    }
-}
-
-/// Classify collected probe output into a `ProbeOutcome`.
-///
-/// Shared between `login_probe` (which has the full `Output`) and the
-/// process-level timeout path in `probe_auth_status` (which drains stderr
-/// on a background thread and collects it separately).
-pub(crate) fn classify_probe_output(stderr_bytes: &[u8], exit_success: bool) -> ProbeOutcome {
-    if exit_success {
-        return ProbeOutcome::LoggedIn;
-    }
-    let stderr = String::from_utf8_lossy(stderr_bytes);
-    let stderr_lower = stderr.to_lowercase();
-    if CONFIG_PARSE_SIGNALS
-        .iter()
-        .all(|sig| stderr_lower.contains(sig))
-    {
-        let excerpt = stderr.trim().lines().next().unwrap_or("").to_string();
-        ProbeOutcome::ConfigInvalid {
-            stderr_excerpt: excerpt,
-        }
-    } else {
-        ProbeOutcome::LoggedOut
     }
 }
 

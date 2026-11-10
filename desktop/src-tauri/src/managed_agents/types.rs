@@ -637,17 +637,7 @@ pub struct ManagedAgentLogResponse {
     pub log_path: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum AcpAvailabilityStatus {
-    Available,
-    AdapterMissing,
-    /// Adapter binary is present but unsupported — either the deprecated
-    /// package or a version below the supported floor. Reinstall required.
-    AdapterOutdated,
-    CliMissing,
-    NotInstalled,
-}
+pub use buzz_core_pkg::harness::AcpAvailabilityStatus;
 
 /// Authentication/login status for a CLI-based ACP runtime. Serializes as a tagged union
 /// `{ status: "...", diagnostic?: "..." }` so the TypeScript side can exhaustively switch on `status`.

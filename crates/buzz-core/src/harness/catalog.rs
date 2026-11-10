@@ -9,7 +9,8 @@ use super::runtime_metadata::{
 };
 use super::{BUZZ_AGENT_AVATAR_URL, CLAUDE_CODE_AVATAR_URL, CODEX_AVATAR_URL, GOOSE_AVATAR_URL};
 
-pub(crate) const KNOWN_ACP_RUNTIMES: &[KnownAcpRuntime] = &[
+/// Main compiled builtin definitions.
+pub const KNOWN_ACP_RUNTIMES: &[KnownAcpRuntime] = &[
     KnownAcpRuntime {
         id: "goose",
         label: "Goose",

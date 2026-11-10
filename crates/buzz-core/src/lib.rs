@@ -99,3 +99,6 @@ pub mod host_deployment;
 
 /// Shared pure ACP model normalization and response types.
 pub mod agent_models;
+
+/// Portable main harness registry and probe interpretation.
+pub mod harness;
