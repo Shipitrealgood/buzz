@@ -182,25 +182,17 @@ impl Management {
             .collect();
         let mut current = None;
         let mut cleanup = None;
-        let latest_cleanup_revision = intents
-            .iter()
-            .filter(|i| i.protected.authority.action == Action::Cleanup)
-            .map(|i| i.protected.authority.expected_revision)
-            .max();
+        let mut missing_admitted = Vec::new();
         for intent in &intents {
             let p = &intent.protected.authority;
-            if p.action == Action::Cleanup && Some(p.expected_revision) < latest_cleanup_revision {
-                continue;
-            }
             let read = self.operation(device, signer, &p.operation_id).await?;
             if read.current {
                 ensure!(current.is_none(), "conflicting current placements");
                 current = Some((intent, read));
             } else if !read.admitted {
-                ensure!(
-                    intent.phase < 3 && intent.result.is_none(),
-                    "operation admission unresolved"
-                );
+                if intent.phase >= 3 || intent.result.is_some() {
+                    missing_admitted.push(intent);
+                }
                 if p.action == Action::Deploy && p.expected_revision > 0 {
                     ensure!(
                         p.expires_at <= now()?,
@@ -224,6 +216,19 @@ impl Management {
         )?;
         let revision = read.revision.context("missing placement revision")?;
         let unit = read.unit.context("missing placement unit")?;
+        // A retained replacement does not prove admission. Read older Cleanup
+        // rows too: one may still be the current failed predecessor. The relay
+        // may prune admitted replacements only after a later revision wins.
+        for missing in missing_admitted {
+            let p = &missing.protected.authority;
+            ensure!(
+                p.action == Action::Cleanup
+                    && p.expected_revision
+                        .checked_add(1)
+                        .is_some_and(|r| r < revision),
+                "operation admission unresolved"
+            );
+        }
         let reuse = None;
         if let Some(retained) = cleanup {
             let c = &retained.protected.authority;

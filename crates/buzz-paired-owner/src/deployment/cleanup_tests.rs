@@ -235,6 +235,141 @@ pub(super) async fn exercise(
             .event,
         deploy.event
     );
+    // H-1: A is still current Failed while its replacement B is retained but
+    // unadmitted. Reopen must preserve and reuse B for both Check and Retry.
+    let after_failed_id = &after_failed.protected.authority.operation_id;
+    responses.lock().unwrap()["by_operation"][after_failed_id] = missing.clone();
+    drop(device);
+    let mut device = Device::at(&dir.path().join("renew.sqlite")).unwrap();
+    for renew in [false, true] {
+        let plan = management
+            .plan_cleanup(&mut device, &signer, after_failed_id, renew)
+            .await
+            .expect("retained failed-Cleanup renewal must resume");
+        let reused = device
+            .retain_cleanup(&scope.community, owner, plan)
+            .unwrap();
+        assert_eq!(reused.event, after_failed.event);
+        assert_eq!(reused.protected.authority.operation_id, *after_failed_id);
+    }
+    management
+        .dispatch(&mut device, &signer, after_failed_id)
+        .await
+        .unwrap();
+    {
+        let mut replies = responses.lock().unwrap();
+        let rows = &mut replies["by_operation"];
+        rows[op]["revision"] = 3.into();
+        rows[new_id]["revision"] = 3.into();
+        rows[after_failed_id] = serde_json::json!({"event":after_failed.event,
+            "state":"cleanup-pending","revision":3,"unit_id":"ef".repeat(32)});
+    }
+    let plan = management
+        .plan_cleanup(&mut device, &signer, after_failed_id, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        device
+            .retain_cleanup(&scope.community, owner, plan)
+            .unwrap()
+            .event,
+        after_failed.event
+    );
+    let receipt = wire::result(
+        host,
+        &d::DeploymentResult {
+            request: after_failed.protected.authority.clone(),
+            outcome: d::Outcome::Cleaned,
+            applied_revision: Some(3),
+        },
+        now().unwrap(),
+    )
+    .unwrap();
+    responses.lock().unwrap()["by_operation"][after_failed_id]["state"] = "cleaned".into();
+    responses.lock().unwrap()["by_operation"][after_failed_id]["result"] =
+        serde_json::to_string(&receipt).unwrap().into();
+    assert!(
+        management
+            .cleanup_state(&mut device, &signer, after_failed_id)
+            .await
+            .unwrap()
+            .1
+    );
+    device
+        .deployment_advance(&scope.community, owner, after_failed_id, 4)
+        .unwrap();
+    assert!(device
+        .deployment_open(&scope.community, owner, &deploy.protected.authority)
+        .is_err());
+
+    // The same interrupted renewal after B expires still requires A's fresh
+    // current proof. Check retains exact B; explicit Retry can seal C at rev 2.
+    let expired_dir = tempfile::tempdir().unwrap();
+    let mut expired = Device::at(&expired_dir.path().join("expired-renew.sqlite")).unwrap();
+    expired.deployment_schema().unwrap();
+    for intent in [&deploy, &renewed] {
+        expired
+            .db
+            .execute(
+                "INSERT INTO deployment_intents VALUES(?,?,?,?)",
+                params![
+                    scope.community,
+                    owner.public_key().to_hex(),
+                    intent.protected.authority.operation_id,
+                    serde_json::to_string(intent).unwrap(),
+                ],
+            )
+            .unwrap();
+    }
+    let mut expires = after_failed.protected.authority.clone();
+    expires.expires_at = now().unwrap() - 1;
+    let expired_b = seed_intent(
+        &mut expired,
+        owner,
+        expires,
+        &d::Command::Cleanup {},
+        serde_json::json!({"cleanup_predecessor":op,"cleanup_unit":"ef".repeat(32)}),
+    );
+    let expired_b_id = &expired_b.protected.authority.operation_id;
+    *responses.lock().unwrap() = serde_json::json!({"by_operation":{
+        op:{"event":deploy.event,"state":"failed","revision":2,"unit_id":"ef".repeat(32)},
+        new_id:{"event":renewed.event,"state":"failed","revision":2,"unit_id":"ef".repeat(32)},
+        expired_b_id:missing,
+    }});
+    let check = management
+        .plan_cleanup(&mut expired, &signer, expired_b_id, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        expired
+            .retain_cleanup(&scope.community, owner, check)
+            .unwrap()
+            .event,
+        expired_b.event
+    );
+    let retry = management
+        .plan_cleanup(&mut expired, &signer, expired_b_id, true)
+        .await
+        .unwrap();
+    let c = expired
+        .retain_cleanup(&scope.community, owner, retry)
+        .unwrap();
+    assert_ne!(c.event, expired_b.event);
+    assert_eq!(c.protected.authority.expected_revision, 2);
+    assert!(expired
+        .deployment_open(&scope.community, owner, &deploy.protected.authority)
+        .is_err());
+    *responses.lock().unwrap() = serde_json::json!({"denied":true});
+    assert!(management
+        .plan_cleanup(
+            &mut expired,
+            &signer,
+            &c.protected.authority.operation_id,
+            true
+        )
+        .await
+        .is_err());
+
     // Even an expired command can complete from its fresh current signed receipt.
     let result = d::DeploymentResult {
         request: old.protected.authority.clone(),
