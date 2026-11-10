@@ -240,7 +240,24 @@ test("host catalog and model evidence remain exact-scope and freshness bound", a
     state: "needs-login",
     observation,
   };
-  assert.equal(currentHostedModels(setup, 1000), models);
+  for (const runtime of ["native/grok", "approved/claude"]) {
+    const mapped = {
+      ...setup,
+      runtime,
+      observation: { ...observation, runtime_id: runtime },
+    };
+    assert.equal(currentHostedModels(mapped, 1000), models);
+    assert.equal(
+      currentHostedModels(
+        {
+          ...mapped,
+          observation: { ...mapped.observation, login: "not-observed" },
+        },
+        1000,
+      ),
+      null,
+    );
+  }
   for (const [field, value] of [
     ["agent", "other"],
     ["runtime_id", "other"],

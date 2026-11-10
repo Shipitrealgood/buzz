@@ -403,7 +403,7 @@ fn prepare_refresh_refuses_live_unit_and_wrong_staging_uid_before_stop() {
 #[tokio::test]
 #[ignore = "requires a built buzz-acp binary supplied by BUZZ_TEST_ACP"]
 async fn actual_acp_models_uses_fixed_private_context_without_prompt_or_entitlement() {
-    let (dir, layout, prepared, mut cat, ctx) = fixture();
+    let (dir, layout, mut prepared, mut cat, ctx) = fixture();
     let _notify = std::os::unix::net::UnixDatagram::bind(&ctx.notify).unwrap();
     let harness =
         PathBuf::from(std::env::var_os("BUZZ_TEST_ACP").expect("explicit built ACP binary"));
@@ -432,41 +432,75 @@ for line in sys.stdin:
     let rt = cat.runtimes.get_mut("native/grok").unwrap();
     rt.harness.path = harness;
     rt.adapter.path = adapter;
-    for mode in ["normal", "empty", "error"] {
-        fs::write(ctx.home.join("fixture-mode"), mode).unwrap();
-        let e = Execution::new(
-            &prepared.instance,
-            Mode::Models,
-            nostr::Timestamp::now().as_secs(),
-        )
-        .unwrap();
-        let result =
-            crate::runtime_context::finite(&ctx, &prepared, &cat, &e, NetworkPolicy::Disabled)
-                .await
-                .unwrap();
-        assert!(result.finished);
-        assert_eq!(
-            result.login,
-            buzz_core::host_deployment::observation::LoginState::NotObserved
-        );
-        let reason = if mode == "error" {
-            buzz_core::host_deployment::observation::UnavailableReason::Execution
-        } else {
-            buzz_core::host_deployment::observation::UnavailableReason::NetworkDisabled
-        };
-        assert_eq!(
-            result.models,
-            buzz_core::host_deployment::observation::Models::Unavailable { reason }
-        );
-        assert!(
-            read_output(&layout.state_root, &prepared.instance.unit_id, &e)
-                .unwrap()
-                .is_some()
-        );
+    let runtime = cat.runtimes.remove("native/grok").unwrap();
+    for harness_id in ["grok", "claude"] {
+        let installed_id = format!("approved/{harness_id}");
+        let mut runtime = runtime.clone();
+        runtime.harness_id = Some(harness_id.into());
+        cat.runtimes = [(installed_id.clone(), runtime)].into();
+        cat.validate().unwrap();
+        prepared.instance.runtime_id = installed_id.clone();
+        prepared
+            .instance
+            .deployment
+            .as_mut()
+            .unwrap()
+            .config
+            .runtime_id = installed_id;
+        if harness_id == "claude" {
+            let login = Execution::new(
+                &prepared.instance,
+                Mode::Login,
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            let error = crate::runtime_context::finite(
+                &ctx,
+                &prepared,
+                &cat,
+                &login,
+                NetworkPolicy::Disabled,
+            )
+            .await
+            .unwrap_err();
+            assert!(error.to_string().contains("native login unsupported"));
+        }
+        for mode in ["normal", "empty", "error"] {
+            fs::write(ctx.home.join("fixture-mode"), mode).unwrap();
+            let e = Execution::new(
+                &prepared.instance,
+                Mode::Models,
+                nostr::Timestamp::now().as_secs(),
+            )
+            .unwrap();
+            let result =
+                crate::runtime_context::finite(&ctx, &prepared, &cat, &e, NetworkPolicy::Disabled)
+                    .await
+                    .unwrap();
+            assert!(result.finished);
+            assert_eq!(
+                result.login,
+                buzz_core::host_deployment::observation::LoginState::NotObserved
+            );
+            let reason = if mode == "error" {
+                buzz_core::host_deployment::observation::UnavailableReason::Execution
+            } else {
+                buzz_core::host_deployment::observation::UnavailableReason::NetworkDisabled
+            };
+            assert_eq!(
+                result.models,
+                buzz_core::host_deployment::observation::Models::Unavailable { reason }
+            );
+            assert!(
+                read_output(&layout.state_root, &prepared.instance.unit_id, &e)
+                    .unwrap()
+                    .is_some()
+            );
+        }
     }
     let methods = fs::read_to_string(ctx.home.join("acp-methods")).unwrap();
-    assert_eq!(methods.lines().filter(|m| *m == "initialize").count(), 3);
-    assert_eq!(methods.lines().filter(|m| *m == "session/new").count(), 3);
+    assert_eq!(methods.lines().filter(|m| *m == "initialize").count(), 6);
+    assert_eq!(methods.lines().filter(|m| *m == "session/new").count(), 6);
     assert!(!methods.contains("session/prompt"));
 }
 
