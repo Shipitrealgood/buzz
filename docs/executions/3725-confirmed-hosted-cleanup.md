@@ -1,6 +1,6 @@
 # #3725 confirmed hosted Cleanup execution
 
-Status: source implementation handed off for independent review; Windows gate held.
+Status: H-1/H-2 source repairs handed back for independent re-gate; Windows gate held.
 Executor releases exclusive write/test ownership with the final documentation commit in
 `/home/bryce/services/buzz-wt-3720-host-registration`, branch
 `proof/3720-host-registration-events`. Starting clean pin
@@ -117,3 +117,74 @@ NOT RUN. No board mutation, source-wide cleanup, protocol/schema/host change,
 feature activation, main/tag/release/updater change occurred. Recommended next
 gate: [fresh independent source review](../briefs/3725-confirmed-hosted-cleanup-review.md),
 then authorized supported-platform verification before claiming native acceptance.
+
+## H-1/H-2 repair handoff — 2026-11-10
+
+The conductor assigned only the two High findings in the unchanged
+[round-0 audit](../audits/post-audit/3725-confirmed-hosted-cleanup.md). Repair
+started at clean `6d7ca47d2d00560a7c6a221e475a52c107c0aab1` in the same worktree.
+No unrelated changes were present or absorbed. Signed repair commits:
+
+- `356b1b7b3c321c89e6b4ae8f1e3294ca87582477`: H-1, reconcile admitted Cleanup
+  before retained renewal. All candidates are read; an unadmitted replacement
+  cannot hide its current failed predecessor. A missing previously admitted
+  Cleanup is accepted as superseded only when a proven later revision exceeds
+  its admitted revision. Existing transaction winner checks and fence remain.
+- `faf59a0b3421c5410f807428d768a2e353e32396`: H-2, serialize confirmed local
+  finalization. Existing workspace, identity-mutation, then managed-agent-store
+  guards cover captured-session validation, assignment/record/key effects,
+  captured-owner/scoped tombstone enqueue and phase 4. Contention returns a
+  retryable error. No guard crosses a network await or recursive `Session::keys`;
+  nest regeneration starts after release. Ordinary deletion passes no confirmed
+  scope and preserves its existing best-effort behavior.
+
+The narrow `Session::with_local_commit` exposure was explicitly approved by the
+conductor. This uses existing writer boundaries, including identity import's
+`commit_imported_identity`; it adds no global writer redesign, journal, service,
+protocol, relay, host or UI change.
+
+Measured repair verification (Hermit activated, self-update disabled):
+
+| Command / source | Actual result |
+|---|---|
+| `cargo test --offline --locked -p buzz-paired-owner deployment_current_revision_refresh_launch_and_exact_retry -- --test-threads=1`, new H-1 regression with pre-fix production | Expected RED: **0 passed, 1 failed, 15 filtered**, 10.42s; reopen/retained B fails with “Admission has not been confirmed.” |
+| `cargo test --offline --locked -p buzz-paired-owner deployment -- --test-threads=1`, H-1 repaired source | **2 passed, 0 failed, 14 filtered**, 14.42s. Existing loopback fixture permission only. Covers Check and Retry exact B reuse, admission/Cleaned completion, expiry renewal requiring current proof, denial and permanent fence. |
+| `cargo fmt --package buzz-paired-owner --check` | PASS. |
+| `rustfmt --edition 2021 --config skip_children=true --check` on the five changed native files | PASS; source parsing/formatting only, not typechecking. |
+| `pnpm --dir desktop typecheck` | PASS, `tsc --noEmit`, exit 0. |
+| `CHECK_FILE_SIZES_BASE=6d7ca47d2d00560a7c6a221e475a52c107c0aab1 node desktop/scripts/check-file-sizes.mjs` | PASS after permitted read-only subprocess retry; sandbox attempt failed at `spawnSync git EPERM`. |
+| `git diff --check` | PASS. |
+
+The existing native exact-case fixture now injects contention separately for each
+writer guard and races both workspace mutation and real in-memory identity import
+at the shared finalizer's before-remove boundary. It asserts phase 3 until effects
+complete, phase 4 before writers enter, original-scope kind-5/9035 retention,
+absence of retention DBs for switched scope/owner combinations, and stale-session
+refusal. A test-only callback exposes that existing boundary. **These native
+assertions remain authored, uncompiled and unexecuted.** Identity persistence in
+the fixture is a synthetic ephemeral closure, not actual keyring import. The
+earlier injected archive failure/retry assertions remain intact.
+
+Native Linux compilation was not repeated: its established GLib/GIO dependency
+block precedes application compilation. Windows remains **NOT RUN**, with no
+export/workflow retry. During final repair handoff the conductor relayed explicit
+human approval: “are you waiting on me for that approval? if so it is approved.”
+This answered the exact question authorizing Cleanup source export to
+`Shipitrealgood/buzz:build/paired-hosts-canary`, its Windows tests/build and canary
+download, with no release/tag/updater or live relay/service/agent change. That
+resolves the prior export-authorization condition; the historical rejection above
+is preserved. Conductor sequencing still holds execution until the same reviewer
+finishes the H-1/H-2 re-gate and releases ownership back to this executor.
+Node/browser tests were not rerun for these Rust-only repairs: UI/API/fixture
+sources and existing browser build are unchanged from `6038d0981`; the round-0
+review independently measured 32 named Node cases and 4 mocked-IPC browser cases.
+Those receipts support only their unchanged browser/IPC behavior, not H-2.
+
+Measured repair delta `6d7ca47..faf59a0b3`: production Rust **5 files, +112/-45**;
+tests **2 files, +308/-0**. Production-path counts include the test-only boundary
+parameter. No between-file relocation, workflow or frontend delta in this repair.
+This receipt and the updated brief add documentation only. All owned command
+sessions are terminal; no detached build/server/test processes were started.
+Exclusive write/test ownership is released at the following documentation commit
+for the **same reviewer** to re-gate H-1/H-2 and introduced defects. Independent
+acceptance and supported-platform native execution remain outstanding.

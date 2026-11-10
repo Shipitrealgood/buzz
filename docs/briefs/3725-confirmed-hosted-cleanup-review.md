@@ -1,5 +1,56 @@
 # #3725 confirmed hosted Cleanup — independent review
 
+## Current handoff: H-1/H-2 re-gate
+
+The same reviewer should re-gate the two findings in the unchanged
+[round-0 report](../audits/post-audit/3725-confirmed-hosted-cleanup.md), plus defects
+introduced by these repairs. Repair range is
+`6d7ca47d2d00560a7c6a221e475a52c107c0aab1..faf59a0b3421c5410f807428d768a2e353e32396`:
+H-1 `356b1b7b3` and H-2 `faf59a0b3`, followed by documentation only. Same worktree
+and branch below; all executor processes stopped and ownership released.
+
+1. **H-1 current predecessor versus retained replacement.**
+   `crates/buzz-paired-owner/src/deployment/cleanup.rs:184` reads every candidate;
+   `:225` only tolerates missing previously admitted Cleanup when a later proven
+   revision supersedes it. Probe the exact Failed A → unadmitted B → reopen path
+   in `cleanup_tests.rs:238`, both Check/Retry reuse and eventual completion.
+   Expired B still needs fresh current A proof before explicit renewal. Owner
+   regression was measured RED before the production change and GREEN afterward:
+   2 deployment cases passed, 14 filtered. No new protocol or expanded matrix.
+2. **H-2 stable local commit.** `paired_hosts.rs:90` acquires workspace then
+   identity-mutation guards and validates the captured session without recursively
+   acquiring the workspace lock. `agents_hosted_cleanup.rs:199` then takes the
+   store lock and retains all guards through phase 4. Probe lock order against
+   workspace apply and identity import/recovery; no synchronous guard may cross
+   network await. `agents_deletion.rs:37` receives captured scope/keys directly;
+   it cannot reread the active global retention destination. Ordinary deletion
+   still selects the existing best-effort branch via `None`.
+3. **Native fixture limitation and introduced defects.**
+   `agents_hosted_cleanup_tests.rs:258` extends the existing exact Windows case
+   with separate contention refusals and concurrent workspace/identity writers at
+   the finalizer boundary. Check channel/thread lifetimes, completion ordering,
+   original-only retention and stale-session assertions. The identity writer
+   invokes `commit_imported_identity` with synthetic persistence. **This fixture
+   remains uncompiled/unrun**; formatting cannot certify Rust types or runtime
+   correctness. Existing archive failure/retry coverage remains intact. No real
+   keyring or full Tauri dispatch claim is supplied.
+
+Repair fmt, TypeScript, differential size and whitespace gates passed. UI/API and
+browser fixture source is unchanged from `6038d0981`, so round-0's independently
+measured 32 Node / 4 mock-IPC browser results carry forward only for that unchanged
+surface. Exact commands and delta (+112/-45 production, +308/-0 tests) are in the
+[repair receipt](../executions/3725-confirmed-hosted-cleanup.md#h-1h-2-repair-handoff--2026-11-10).
+No rerun of known-blocked Linux native compilation, Windows push or workflow
+dispatch occurred. Human export permission arrived during final handoff: the
+conductor relayed “are you waiting on me for that approval? if so it is approved”
+in response to the exact fork/branch, Windows tests/build and download question.
+The executor must wait for this re-gate and ownership release before resuming the
+approved Windows verification. Source re-gating does not substitute for that
+required native gate or authorize live work.
+
+The remainder is original implementation context. Its broad review checklist was
+assessed in round 0; reopen only on new evidence relevant to the bounded re-gate.
+
 ## Where the work lives
 
 Worktree `/home/bryce/services/buzz-wt-3720-host-registration`; branch
