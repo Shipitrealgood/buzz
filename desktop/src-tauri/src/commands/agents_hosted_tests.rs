@@ -4,15 +4,25 @@ use tauri::Manager;
 
 #[test]
 fn hosted_native_create_recovery_and_session_fence() {
+    fixture_process("hosted_native_create_recovery_and_session_fence", false);
+}
+#[test]
+fn hosted_native_cleanup_confirmation_retry_and_session_fence() {
+    fixture_process(
+        "hosted_native_cleanup_confirmation_retry_and_session_fence",
+        true,
+    );
+}
+fn fixture_process(name: &str, with_cleanup: bool) {
     const CHILD: &str = "BUZZ_HOSTED_PHASE_TEST_HOME";
     if let Some(home) = std::env::var_os(CHILD) {
-        return native_phases(std::path::Path::new(&home));
+        return native_phases(std::path::Path::new(&home), with_cleanup);
     }
     let home = tempfile::tempdir().unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            "commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence",
+            &format!("commands::agents::hosted::tests::{name}"),
             "--nocapture",
         ])
         .env(CHILD, home.path())
@@ -34,7 +44,7 @@ fn hosted_native_create_recovery_and_session_fence() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
-fn native_phases(home: &std::path::Path) {
+fn native_phases(home: &std::path::Path, with_cleanup: bool) {
     crate::managed_agents::storage::NO_KEYCHAIN_FOR_TEST
         .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::managed_agents::pin_nest_dir_for_test(home.join("nest"));
@@ -67,10 +77,11 @@ fn native_phases(home: &std::path::Path) {
     tauri::async_runtime::block_on(async {
         let state = app.state::<AppState>();
         let owner = state.signing_keys().unwrap();
+        let host = Keys::generate();
         let scope = buzz_core_pkg::paired_message::Scope {
             community: community.clone(),
             owner: owner.public_key(),
-            host: Keys::generate().public_key(),
+            host: host.public_key(),
             generation: "ab".repeat(32),
         };
         d::validate_scope(&scope).unwrap();
@@ -343,6 +354,18 @@ fn native_phases(home: &std::path::Path) {
         context.operation = root_operation;
         assert!(context.recover(app.handle(), &state).await.is_err());
         context.operation = "ef".repeat(32);
+        if with_cleanup {
+            cleanup_tests::exercise(
+                app.handle(),
+                &state,
+                &mut context,
+                &host,
+                &path,
+                &retention_scope.db_path,
+            )
+            .await;
+            return;
+        }
         state
             .workspace_apply_generation
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
@@ -350,3 +373,6 @@ fn native_phases(home: &std::path::Path) {
         assert_eq!(load_managed_agents(app.handle()).unwrap().len(), 1);
     });
 }
+
+#[path = "agents_hosted_cleanup_tests.rs"]
+mod cleanup_tests;

@@ -17,7 +17,17 @@ pub(super) struct Create<'a> {
 }
 impl Create<'_> {
     pub(super) fn check(&self) -> Result<(), String> {
-        self.session.keys().map(|_| ()).map_err(|e| e.to_string())
+        let keys = self.session.keys().map_err(|e| e.to_string())?;
+        if let Some(intent) = self
+            .device
+            .deployment_intent(&self.scope.community, &keys, &self.operation)
+            .map_err(|e| e.to_string())?
+        {
+            self.device
+                .deployment_open(&self.scope.community, &keys, &intent.protected.authority)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     pub(super) fn advance(&mut self, phase: u8) -> Result<(), String> {
@@ -133,6 +143,9 @@ impl Create<'_> {
         Ok(())
     }
 }
+
+#[path = "agents_hosted_cleanup.rs"]
+pub(super) mod cleanup;
 
 #[path = "agents_hosted_commands.rs"]
 mod commands;

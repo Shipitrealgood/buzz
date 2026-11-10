@@ -58,13 +58,19 @@ pub(crate) fn tombstone_managed_agent_pending(
     state: &AppState,
     agent_pubkey: &str,
 ) {
-    let result = (|| -> Result<(), String> {
-        let scope = crate::managed_agents::retention::active_retention_scope(app, state)?;
-        tombstone_managed_agent_at(&scope.db_path, &scope.owner_keys, agent_pubkey)
-    })();
-    if let Err(e) = result {
+    if let Err(e) = try_tombstone_managed_agent_pending(app, state, agent_pubkey) {
         eprintln!("buzz-desktop: agent-tombstone: {e}");
     }
+}
+
+/// Fallible shared enqueue for callers with a durable finalization retry witness.
+pub(crate) fn try_tombstone_managed_agent_pending<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    agent_pubkey: &str,
+) -> Result<(), String> {
+    let scope = crate::managed_agents::retention::active_retention_scope(app, state)?;
+    tombstone_managed_agent_at(&scope.db_path, &scope.owner_keys, agent_pubkey)
 }
 
 /// Scope-free core of [`tombstone_managed_agent_pending`], so the atomic
@@ -118,6 +124,21 @@ pub(crate) fn tombstone_managed_agent_at(
     let result = (|| -> Result<(), String> {
         let prior_head =
             get_retained_event(&conn, KIND_MANAGED_AGENT, &owner_pubkey, agent_pubkey)?;
+        // Retry after the atomic enqueue committed must preserve its persona
+        // payload even though the original managed-agent head is now gone.
+        if prior_head.is_none()
+            && get_retained_event(
+                &conn,
+                KIND_DELETE,
+                &owner_pubkey,
+                &tombstone_retention_d_tag(KIND_MANAGED_AGENT, agent_pubkey),
+            )?
+            .is_some()
+            && get_retained_event(&conn, KIND_IA_ARCHIVE_REQUEST, &owner_pubkey, agent_pubkey)?
+                .is_some()
+        {
+            return Ok(());
+        }
         let event = build_agent_delete(agent_pubkey, &owner_pubkey)?
             .custom_created_at(monotonic_created_at(
                 prior_head.as_ref().map(|row| row.created_at),

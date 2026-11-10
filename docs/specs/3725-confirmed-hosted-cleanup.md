@@ -101,3 +101,11 @@ Escalate before expanding if current operation queries cannot prove a proposed r
 
 **Self-review:** preserve immutable creation/transport; separate Cleanup from creation effects and runtime discovery; no deletion before authenticated current completion; permanent local/host fences prevent stale resurrection. Conductor explicitly ratified unadmitted refusal and runtime-independent Cleanup. No further product choice remains within this slice.
 **Planning verification:** accepted findings and targeted source trace; local citation/path and whitespace checks recorded in the [brief](../briefs/3725-confirmed-hosted-cleanup.md). No product edits, tests, builds, provider/live/key/journal/SSH actions or board mutation. All planning commands terminate; ownership transfers at the signed documentation commit.
+
+
+**Execution amendment (conductor, 2026-11-10):** the existing Windows Canary
+workflow is authorized after coherent local checks, including an exact nonzero
+new Cleanup native case, all prior native suites/ACL, both terminal jobs, and
+artifact/source/hash verification. Only a normal fast-forward to fork
+`Shipitrealgood/buzz:build/paired-hosts-canary` and explicit workflow dispatch
+are authorized. Installer execution and live/human acceptance remain separate.

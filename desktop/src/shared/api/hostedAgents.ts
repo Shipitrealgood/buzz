@@ -35,6 +35,7 @@ export type HostedObservation = {
     | { state: "unavailable"; reason: string };
 };
 export type HostedSetup = {
+  action?: "deploy" | "cleanup";
   scope: HostScope;
   operation: string;
   runtime: string;
@@ -59,7 +60,7 @@ export type HostedCatalog = {
   runtimes: { installedId: string; metadata: AcpRuntimeCatalogEntry | null }[];
 };
 export type HostedAction =
-  | { type: "check" | "retry" | "refresh" }
+  | { type: "check" | "retry" | "refresh" | "cleanup" }
   | { type: "launch"; model: string };
 export type AgentConfigurationSource =
   | { type: "local" }

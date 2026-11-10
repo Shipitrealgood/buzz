@@ -467,3 +467,54 @@ test("successful cached snapshot remains authoritative during refetch; only sett
   });
   assert.equal(surface.current().getAvailability(PK), undefined);
 });
+
+for (const owner of ["agents", "profile"]) {
+  for (const outcome of [
+    "Host cleanup pending",
+    "Current Cleanup read denied",
+    "confirmed",
+  ]) {
+    test(`${owner} hosted Delete ${outcome} never forces or sends shutdown`, async () => {
+      setup();
+      const hosted = {
+        ...agent,
+        backend: {
+          type: "registered_host",
+          scope: {
+            community: "https://community.example",
+            owner: "c".repeat(64),
+            host: "d".repeat(64),
+            generation: "e".repeat(64),
+          },
+        },
+      };
+      handlers.set("delete_managed_agent", () =>
+        outcome === "confirmed" ? null : Promise.reject(new Error(outcome)),
+      );
+      const surface = mount(owner, { agents: [hosted] });
+      commands.length = 0;
+      await act(async () => {
+        if (owner === "agents") await surface.current().handleDelete(PK);
+        else if (outcome === "confirmed")
+          await surface.current().deleteManagedAgentRecord(hosted);
+        else
+          await assert.rejects(
+            surface.current().deleteManagedAgentRecord(hosted),
+            new RegExp(outcome),
+          );
+      });
+      assert.deepEqual(
+        effects().map(([name]) => name),
+        [
+          "delete_managed_agent",
+          ...(outcome === "confirmed" ? ["remove_channel_member"] : []),
+        ],
+      );
+      assert.deepEqual(effects()[0][1], {
+        pubkey: PK,
+        forceRemoteDelete: null,
+      });
+      assert.deepEqual(confirms, []);
+    });
+  }
+}

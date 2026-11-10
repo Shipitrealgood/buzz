@@ -14,6 +14,9 @@ type Fixture = {
   models: boolean;
   missingModel: boolean;
   delayNext: boolean;
+  cleaned?: boolean;
+  localFailure?: boolean;
+  unadmitted?: boolean;
   release?: () => void;
   hostedStart?: number;
 };
@@ -87,6 +90,8 @@ async function open(page: Page, channel = false) {
         revision: fixture.setup.revision ?? 1,
         action_id: "75".repeat(32),
         expires_at: Math.floor(Date.now() / 1000) + (fixture.expire ? -1 : 120),
+        readiness: fixture.login ? "logged-in" : "logged-out",
+        availability: "available",
         login: fixture.login ? "succeeded" : "not-observed",
         models:
           fixture.login && fixture.models
@@ -134,12 +139,15 @@ async function open(page: Page, channel = false) {
         };
       if (command === "hosted_setup_token") return "76".repeat(32);
       if (command === "hosted_setup_list")
-        return fixture.setup
+        return fixture.setup && fixture.setup.state !== "deleted"
           ? [
               {
                 ...structuredClone(fixture.setup),
                 observation: null,
-                state: "unverified",
+                state:
+                  fixture.setup.action === "cleanup"
+                    ? "cleanup-pending"
+                    : "unverified",
               },
             ]
           : [];
@@ -246,6 +254,25 @@ async function open(page: Page, channel = false) {
           throw new Error("Current deployment read denied");
         if (!fixture.setup) throw new Error("No retained fixture setup");
         const action = args?.action as { type: string; model?: string };
+        if (action.type === "cleanup" && fixture.unadmitted)
+          throw new Error(
+            "Admission has not been confirmed; check status before deleting this hosted setup",
+          );
+        if (action.type === "cleanup" || fixture.setup.action === "cleanup") {
+          fixture.setup.action = "cleanup";
+          fixture.setup.operation = `cleanup-${"80".repeat(32)}`;
+          fixture.setup.observation = null;
+          fixture.setup.state = fixture.cleaned
+            ? fixture.localFailure
+              ? "cleanup-local-pending"
+              : "deleted"
+            : "cleanup-pending";
+          fixture.setup.phase = fixture.setup.state === "deleted" ? 4 : 3;
+          fixture.setup.error = fixture.localFailure
+            ? "Host cleanup confirmed; retry local removal"
+            : null;
+          if (fixture.setup.state === "deleted") record = null;
+        }
         if (action.type === "refresh") {
           fixture.setup.operation = "78".repeat(32);
           fixture.setup.revision = 2;
@@ -325,10 +352,10 @@ test("ordinary hosted form retains one setup through close, native login, explic
     );
   });
   const setup = page.getByTestId("hosted-agent-setup");
-  await expect(setup).toContainText("Needs login");
+  await expect(setup).toContainText("Host readiness and model setup");
   await expect(setup).toContainText("Networking is disabled");
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
   const firstHostedCalls = await page.evaluate(() => {
     const f = window.__HOSTED_SETUP_FIXTURE__;
@@ -358,24 +385,22 @@ test("ordinary hosted form retains one setup through close, native login, explic
   });
   // Native login alone does not update renderer models.
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
-  await setup
-    .getByRole("button", { name: "Refresh models", exact: true })
-    .click();
+  await setup.getByRole("button", { name: "Refresh", exact: true }).click();
   await setup.locator("#persona-model").click();
   await page
     .getByRole("button", { name: "Synthetic model", exact: true })
     .click();
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeEnabled();
   await expect(setup).toContainText("Runs on Synthetic workshop");
   await expect(setup).not.toContainText("buzz-host-activate");
   await expect(setup).not.toContainText("Complete native login");
   await waitForAnimations(page);
   await setup.screenshot({ path: "test-results/hosted-setup-models.png" });
-  await setup.getByRole("button", { name: "Launch", exact: true }).click();
+  await setup.getByRole("button", { name: "Start", exact: true }).click();
   await expect(setup).toContainText("Host networking is disabled");
   await setup
     .getByRole("button", { name: "Retry request", exact: true })
@@ -420,13 +445,11 @@ test("retained setup denies launch after expired or denied current evidence", as
     f.login = true;
     f.models = false;
   });
-  await setup
-    .getByRole("button", { name: "Refresh models", exact: true })
-    .click();
+  await setup.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
-  await expect(setup).toContainText("Native login: succeeded");
+  await expect(setup).toContainText("Host readiness: logged-in");
   await expect(setup).toContainText("Networking is disabled");
   await page.evaluate(() => {
     const f = window.__HOSTED_SETUP_FIXTURE__;
@@ -440,7 +463,7 @@ test("retained setup denies launch after expired or denied current evidence", as
     .getByRole("button", { name: "Synthetic model", exact: true })
     .click();
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeEnabled();
   await page.evaluate(() => {
     window.__HOSTED_SETUP_FIXTURE__.missingModel = true;
@@ -449,7 +472,7 @@ test("retained setup denies launch after expired or denied current evidence", as
     .getByRole("button", { name: "Check status", exact: true })
     .click();
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
   await expect(setup).toContainText(
     "Selected model: opaque/model:fixture (unavailable)",
@@ -464,7 +487,7 @@ test("retained setup denies launch after expired or denied current evidence", as
     .getByRole("button", { name: "Check status", exact: true })
     .click();
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
   await page.evaluate(() => {
     window.__HOSTED_SETUP_FIXTURE__.denied = true;
@@ -474,7 +497,7 @@ test("retained setup denies launch after expired or denied current evidence", as
     .click();
   await expect(setup.getByRole("alert")).toContainText("read denied");
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
 });
 
@@ -609,6 +632,93 @@ test("contextual hosted preparation keeps its identity through lost response and
     .click();
   await expect(setup.getByRole("alert")).toContainText("read denied");
   await expect(
-    setup.getByRole("button", { name: "Launch", exact: true }),
+    setup.getByRole("button", { name: "Start", exact: true }),
   ).toBeDisabled();
+});
+
+test("confirmed Cleanup stays recoverable without models through Close, denial and local-finalization retry", async ({
+  page,
+}) => {
+  await open(page);
+  await page
+    .getByRole("button", { name: "Prepare agent", exact: true })
+    .click();
+  const setup = page.getByTestId("hosted-agent-setup");
+  await expect(setup).toBeVisible();
+  await page.evaluate(() => {
+    const f = window.__HOSTED_SETUP_FIXTURE__;
+    f.models = false;
+    f.unadmitted = true;
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+  await setup
+    .getByRole("button", { name: "Delete agent", exact: true })
+    .click();
+  await expect(setup.getByRole("alert")).toContainText(
+    "Admission has not been confirmed",
+  );
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.unadmitted = false;
+  });
+  await setup
+    .getByRole("button", { name: "Delete agent", exact: true })
+    .click();
+  await expect(setup.getByRole("status")).toHaveText("Host cleanup pending");
+  await expect(
+    setup.getByRole("button", { name: "Start", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    setup.getByRole("button", { name: "Refresh", exact: true }),
+  ).toHaveCount(0);
+  await expect(setup.locator("#persona-model")).toHaveCount(0);
+  await setup.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByTestId("new-agent-card").click();
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Continue setup: Hosted synthetic agent",
+      exact: true,
+    })
+    .click();
+  await expect(setup.getByRole("status")).toHaveText("Host cleanup pending");
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.denied = true;
+  });
+  await setup
+    .getByRole("button", { name: "Check status", exact: true })
+    .click();
+  await expect(setup.getByRole("alert")).toContainText("read denied");
+  await expect(
+    setup.getByRole("button", { name: "Retry request", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() => {
+    const f = window.__HOSTED_SETUP_FIXTURE__;
+    f.denied = false;
+    f.cleaned = true;
+    f.localFailure = true;
+  });
+  await setup
+    .getByRole("button", { name: "Retry request", exact: true })
+    .click();
+  await expect(setup.getByRole("status")).toHaveText(
+    "Host cleanup confirmed; local removal pending",
+  );
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.localFailure = false;
+  });
+  await setup
+    .getByRole("button", { name: "Retry request", exact: true })
+    .click();
+  await expect(setup.getByRole("status")).toHaveText("Agent deletion complete");
+  const calls = await page.evaluate(
+    () => window.__HOSTED_SETUP_FIXTURE__.calls,
+  );
+  expect(
+    calls.filter((c) =>
+      /^(start_managed_agent|stop_managed_agent|deploy_to_provider|send_channel_message)$/.test(
+        c.command,
+      ),
+    ),
+  ).toEqual([]);
+  expect(calls.filter((c) => c.command === "create_persona")).toHaveLength(1);
 });

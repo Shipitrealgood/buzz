@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRegisteredHostLabel } from "../lib/hostDirectory";
 import {
   actOnHostedSetup,
@@ -28,6 +29,9 @@ export function HostedAgentSetup({
   onClose?: () => void;
 }) {
   const [setup, setSetup] = React.useState(initial);
+  const queryClient = useQueryClient();
+  const cleanup = setup.action === "cleanup";
+  const deleted = setup.state === "deleted";
   const hostLabel = useRegisteredHostLabel(initial.scope);
   const [model, setModel] = React.useState(initial.model ?? "");
   const [error, setError] = React.useState<string | null>(null);
@@ -68,6 +72,9 @@ export function HostedAgentSetup({
       )
         throw new Error("Setup scope changed.");
       setSetup(result);
+      if (result.state === "deleted") {
+        void queryClient.invalidateQueries({ queryKey: ["managed-agents"] });
+      }
       setNow(Date.now());
     } catch (cause) {
       if (request === generation.current)
@@ -86,6 +93,10 @@ export function HostedAgentSetup({
     "needs-login": "Host readiness and model setup",
     applied: "Deployment applied",
     failed: "Deployment failed",
+    "cleanup-pending": "Host cleanup pending",
+    "cleanup-failed": "Host cleanup failed; retry request",
+    "cleanup-local-pending": "Host cleanup confirmed; local removal pending",
+    deleted: "Agent deletion complete",
     conflict: "Placement conflict",
     unavailable: "Status unavailable",
   };
@@ -99,62 +110,66 @@ export function HostedAgentSetup({
         Runs on {hostLabel ?? truncateNpub(setup.scope.host)}
       </p>
       <p role="status">{labels[setup.state] ?? setup.state}</p>
-      {observation ? (
-        <div className="space-y-1 text-sm">
-          <p>
-            Host readiness:{" "}
-            {observation.readiness === "not-applicable"
-              ? "Authentication not checked by this harness"
-              : (observation.readiness ?? "Unknown — refresh required")}
+      {!cleanup ? (
+        <>
+          {observation ? (
+            <div className="space-y-1 text-sm">
+              <p>
+                Host readiness:{" "}
+                {observation.readiness === "not-applicable"
+                  ? "Authentication not checked by this harness"
+                  : (observation.readiness ?? "Unknown — refresh required")}
+              </p>
+              <p>Runtime: {observation.availability ?? "unknown"}</p>
+              <p>
+                Models:{" "}
+                {observation.models.state === "unavailable"
+                  ? observation.models.reason === "network-disabled"
+                    ? "Networking is disabled on this host"
+                    : observation.models.reason
+                  : observation.models.state}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm">
+              Readiness and models are pending or unavailable. Check status for
+              current evidence.
+            </p>
+          )}
+          <p className="text-sm">
+            Install and configure the native harness on{" "}
+            {hostLabel ?? "this host"} using its normal account and native
+            sign-in command, then Refresh. A login check and model list do not
+            establish subscription access or remaining usage.
           </p>
-          <p>Runtime: {observation.availability ?? "unknown"}</p>
-          <p>
-            Models:{" "}
-            {observation.models.state === "unavailable"
-              ? observation.models.reason === "network-disabled"
-                ? "Networking is disabled on this host"
-                : observation.models.reason
-              : observation.models.state}
-          </p>
-        </div>
-      ) : (
-        <p className="text-sm">
-          Readiness and models are pending or unavailable. Check status for
-          current evidence.
-        </p>
-      )}
-      <p className="text-sm">
-        Install and configure the native harness on {hostLabel ?? "this host"}{" "}
-        using its normal account and native sign-in command, then Refresh. A
-        login check and model list do not establish subscription access or
-        remaining usage.
-      </p>
-      <PersonaModelField
-        disabled={pending || !catalog}
-        isExplicitModelRequired
-        model={model}
-        modelSelectValue={model}
-        modelDropdownOptions={(catalog?.models ?? []).map((m) => ({
-          label: m.name ?? m.id,
-          value: m.id,
-        }))}
-        modelDiscoveryStatus={
-          !catalog
-            ? {
-                tone: "warning",
-                message:
-                  "Current host readiness and a fresh model list are required to start.",
-              }
-            : null
-        }
-        onModelValueChange={setModel}
-        onCustomModelChange={() => {}}
-        showCustomModelInput={false}
-        showSharedComputeAutoHint={false}
-        transition={{ duration: 0 }}
-      />
-      {model && !catalog?.models.some((entry) => entry.id === model) ? (
-        <p className="text-sm">Selected model: {model} (unavailable)</p>
+          <PersonaModelField
+            disabled={pending || !catalog}
+            isExplicitModelRequired
+            model={model}
+            modelSelectValue={model}
+            modelDropdownOptions={(catalog?.models ?? []).map((m) => ({
+              label: m.name ?? m.id,
+              value: m.id,
+            }))}
+            modelDiscoveryStatus={
+              !catalog
+                ? {
+                    tone: "warning",
+                    message:
+                      "Current host readiness and a fresh model list are required to start.",
+                  }
+                : null
+            }
+            onModelValueChange={setModel}
+            onCustomModelChange={() => {}}
+            showCustomModelInput={false}
+            showSharedComputeAutoHint={false}
+            transition={{ duration: 0 }}
+          />
+          {model && !catalog?.models.some((entry) => entry.id === model) ? (
+            <p className="text-sm">Selected model: {model} (unavailable)</p>
+          ) : null}
+        </>
       ) : null}
       {error || setup.error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -164,35 +179,56 @@ export function HostedAgentSetup({
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          disabled={pending}
+          disabled={pending || deleted}
           onClick={() => void act({ type: "check" })}
         >
           Check status
         </Button>
         <Button
           type="button"
-          disabled={pending || setup.state === "conflict"}
+          disabled={pending || deleted}
           onClick={() => void act({ type: "retry" })}
         >
           Retry request
         </Button>
-        <Button
-          type="button"
-          disabled={
-            pending ||
-            !["needs-login", "failed", "unadmitted"].includes(setup.state)
-          }
-          onClick={() => void act({ type: "refresh" })}
-        >
-          Refresh
-        </Button>
-        <Button
-          type="button"
-          disabled={pending || !catalog?.models.some((m) => m.id === model)}
-          onClick={() => void act({ type: "launch", model })}
-        >
-          Start
-        </Button>
+        {!cleanup ? (
+          <>
+            <Button
+              type="button"
+              disabled={
+                pending ||
+                !["needs-login", "failed", "unadmitted"].includes(setup.state)
+              }
+              onClick={() => void act({ type: "refresh" })}
+            >
+              Refresh
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || !catalog?.models.some((m) => m.id === model)}
+              onClick={() => void act({ type: "launch", model })}
+            >
+              Start
+            </Button>
+          </>
+        ) : null}
+        {!cleanup ? (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={pending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete ${setup.name}? This removes the hosted agent after the host confirms cleanup.`,
+                )
+              )
+                void act({ type: "cleanup" });
+            }}
+          >
+            Delete agent
+          </Button>
+        ) : null}
         {onClose ? (
           <Button type="button" variant="outline" onClick={onClose}>
             Close

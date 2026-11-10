@@ -7,19 +7,20 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedSetup {
-    scope: Scope,
-    operation: String,
-    runtime: String,
-    pubkey: String,
-    persona_id: Option<String>,
-    name: String,
-    phase: u8,
-    model: Option<String>,
-    state: String,
-    unit: Option<String>,
-    revision: Option<u64>,
-    observation: Option<Observation>,
-    error: Option<String>,
+    pub(super) scope: Scope,
+    pub(super) operation: String,
+    pub(super) runtime: String,
+    pub(super) pubkey: String,
+    pub(super) persona_id: Option<String>,
+    pub(super) name: String,
+    pub(super) phase: u8,
+    pub(super) model: Option<String>,
+    pub(super) state: String,
+    pub(super) unit: Option<String>,
+    pub(super) revision: Option<u64>,
+    pub(super) observation: Option<Observation>,
+    pub(super) error: Option<String>,
+    pub(super) action: String,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +44,12 @@ pub(super) fn retained_setup(
     runtime: String,
 ) -> HostedSetup {
     HostedSetup {
+        action: if intent.protected.authority.action == d::Action::Cleanup {
+            "cleanup"
+        } else {
+            "deploy"
+        }
+        .into(),
         scope: intent.protected.authority.scope.clone(),
         operation: intent.protected.authority.operation_id.clone(),
         runtime,
@@ -228,14 +235,39 @@ pub async fn hosted_setup_list(
     let mut setups = Vec::new();
     // A local list grants no current authority. Reads/actions reconcile exact
     // candidates explicitly, so one unavailable host never hides other setups.
-    for intent in intents {
+    for intent in &intents {
         let a = &intent.protected.authority;
         let key = (
             a.scope.host.to_hex(),
             a.scope.generation.clone(),
             a.agent.to_hex(),
         );
+        if let Some(last) = intents
+            .iter()
+            .filter(|other| {
+                other.protected.authority.scope == a.scope
+                    && other.protected.authority.agent == a.agent
+                    && other.protected.authority.action == d::Action::Cleanup
+            })
+            .max_by_key(|other| {
+                (
+                    other.protected.authority.expected_revision,
+                    other.protected.authority.expires_at,
+                    &other.protected.authority.operation_id,
+                )
+            })
+        {
+            if last.protected.authority.operation_id != a.operation_id {
+                continue;
+            }
+        }
         if newest.get(&key) != Some(&a.expected_revision) {
+            continue;
+        }
+        if a.action == d::Action::Cleanup {
+            if intent.phase < 4 {
+                setups.push(cleanup::retained(&device, &keys, &intent)?);
+            }
             continue;
         }
         let d::Command::Deploy { config, .. } =
@@ -255,6 +287,7 @@ pub async fn hosted_setup_list(
 /// Explicit continuation actions; the native owner supplies revisions and keys.
 pub enum HostedAction {
     Check,
+    Cleanup,
     Retry,
     Refresh,
     Launch { model: String },
@@ -269,6 +302,32 @@ pub async fn hosted_setup_action(
     runtime: String,
     action: HostedAction,
 ) -> Result<HostedSetup, String> {
+    enabled()?;
+    let session = Session::capture(&state, &scope.community, &scope.owner.to_hex())
+        .await
+        .map_err(|e| e.to_string())?;
+    let device = crate::commands::paired_hosts::device(&app).map_err(|e| e.to_string())?;
+    let keys = session.keys().map_err(|e| e.to_string())?;
+    let root = device
+        .deployment_intent(&scope.community, &keys, &operation)
+        .map_err(|e| e.to_string())?
+        .ok_or("Hosted setup not found")?;
+    if root.protected.authority.scope != scope {
+        return Err("Hosted scope changed".into());
+    }
+    if matches!(action, HostedAction::Cleanup) || cleanup::has_cleanup(&device, &keys, &root)? {
+        if matches!(action, HostedAction::Refresh | HostedAction::Launch { .. }) {
+            return Err("Cleanup retained; deployment cannot continue".into());
+        }
+        return cleanup::run(
+            &app,
+            &state,
+            scope,
+            operation,
+            !matches!(action, HostedAction::Check),
+        )
+        .await;
+    }
     let (mut create, mut management) = open(&app, &state, scope, operation, runtime).await?;
     create.latest(&mut management).await?;
     let mut error = None;

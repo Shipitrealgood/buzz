@@ -288,6 +288,7 @@ jobs:
           set -euo pipefail
           for case in \
             commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence \
+            commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence \
             managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary; do
             log="$RUNNER_TEMP/windows-native-tests/${case##*::}.log"
             cargo test --locked --target "$TARGET" --lib "$case" -- --exact | tee "$log"

@@ -394,6 +394,16 @@ captured relay/signer scope and `ensureRunning:false`. The placement summary's
 cloud + Runs on host key describes execution location; the existing “Not managed
 on this device” provenance predicate is unchanged.
 
+### Confirmed hosted deletion
+
+Normal Delete and setup Delete share native Cleanup. Pending or denied requests
+retain the identity and Check/Retry recovery; success means a current permitted,
+host-signed Cleaned receipt and completed local removal. Cleanup is independent
+of runtime availability, readiness and models. Its retained intent permanently
+fences old Deploy recovery, even after deletion. Never-admitted setups retain
+recovery until admission is confirmed. Close only dismisses the view. Ordinary
+local/provider deletion keeps its existing behavior.
+
 ## Channel-only runtime controls
 
 Desktop observer controls identify a channel, not a thread session. The harness
