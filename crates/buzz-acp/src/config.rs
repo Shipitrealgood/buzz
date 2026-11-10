@@ -447,6 +447,10 @@ pub struct CliArgs {
     #[arg(long, env = "BUZZ_ACP_MODEL")]
     pub model: Option<String>,
 
+    /// Fail before a prompt when the configured model is absent or rejected.
+    #[arg(long, env = "BUZZ_ACP_STRICT_MODEL")]
+    pub strict_model: bool,
+
     /// Persisted effort level value (e.g. "high", "medium", "low") to apply via
     /// `session/set_config_option` at the first session creation. The configId is
     /// resolved from the adapter's advertised `thought_level` capability — not
@@ -585,6 +589,8 @@ pub struct Config {
     pub memory_enabled: bool,
     /// Desired LLM model ID. Applied after every `session_new_full()`.
     pub model: Option<String>,
+    /// Require the configured model in every fresh ACP session; default off.
+    pub strict_model: bool,
     /// Persisted effort level value (e.g. "high", "medium", "low"). Held as a
     /// per-worker spawn-scoped value and applied at the first session creation
     /// by pairing with the adapter's advertised `thought_level` configId.
@@ -1218,6 +1224,7 @@ impl Config {
             typing_enabled: !args.no_typing,
             memory_enabled: args.memory && !args.no_memory,
             model,
+            strict_model: args.strict_model,
             effort_level: args.effort_level,
             session_title: args
                 .session_title
@@ -1599,6 +1606,7 @@ mod tests {
             typing_enabled: true,
             memory_enabled: true,
             model: None,
+            strict_model: false,
             effort_level: None,
             session_title: None,
             permission_mode: PermissionMode::BypassPermissions,
@@ -3244,5 +3252,19 @@ channels = "ALL"
             "Found secret-bearing env args without hide_env_values=true. \
              Add `hide_env_values = true` to each: {violations:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod strict_model_tests {
+    use super::*;
+    #[test]
+    fn strict_model_flag_is_default_off() {
+        let key = Keys::generate().secret_key().to_secret_hex();
+        let args = CliArgs::try_parse_from(["buzz-acp", "--private-key", &key]).unwrap();
+        assert!(!args.strict_model);
+        let args =
+            CliArgs::try_parse_from(["buzz-acp", "--private-key", &key, "--strict-model"]).unwrap();
+        assert!(args.strict_model);
     }
 }

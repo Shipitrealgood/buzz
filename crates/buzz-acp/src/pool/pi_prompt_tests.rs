@@ -8,6 +8,7 @@ fn owned_pi(acp: AcpClient, protocol_version: u32) -> OwnedAgent {
         state: SessionState::default(),
         model_capabilities: None,
         desired_model: None,
+        strict_model: false,
         model_overridden: false,
         desired_model_request_id: None,
         desired_model_pending_ack: false,

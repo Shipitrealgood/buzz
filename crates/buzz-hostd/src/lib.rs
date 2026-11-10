@@ -427,6 +427,7 @@ pub fn deployment_environment(i: &Instance) -> Result<BTreeMap<String, String>> 
         }
         if let buzz_core::host_deployment::ModelSelection::Selected { id } = &d.config.model {
             env.insert("BUZZ_ACP_MODEL".into(), id.clone());
+            env.insert("BUZZ_ACP_STRICT_MODEL".into(), "true".into());
         }
     }
     Ok(env)
