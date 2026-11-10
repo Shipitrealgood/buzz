@@ -143,3 +143,46 @@ Final process inspection found no checkout-owned build/test/runtime process.
 Owned source is committed; after the documentation commit the checkout is clean
 and exclusive write/test ownership is released. Independent review is not supplied
 by this executor.
+
+## M-1 repair — 2026-11-10
+
+Conductor-authorized fix-in-lane after the [independent review](../audits/post-audit/3721-host-discovery-windows.md).
+Clean repair baseline `f15313756c4b3f4e28d442f275532602e60e076f`;
+source repair `5d72b08d3e5ab7bbcd52711e17a43572e184e47b`. Same workspace,
+executor role and requested Astra/high; runtime identity still not independently
+exposed. Independent review is unchanged.
+
+**Read/source delta:** the existing inventory/session/scope/freshness/canonical
+mapping validation is factored into `Create::check_inventory`, without a record
+lookup. The first hosted branch in `create_managed_agent_phases` calls it before
+phase 1, key generation, process reconciliation, persistence and publication.
+`check_runtime` reuses it and retains the later record-command/args check. No
+rollback mechanism or new authority is introduced.
+
+Exact delta: `agents.rs` +2/-1; `agents_hosted.rs` +10/-2;
+`agents_hosted_tests.rs` +96/-6. Production +12/-3; fixture +96/-6;
+three files total +108/-9. The existing native fixture now checks missing
+inventory, absent runtime entry, unavailable runtime and unsupported config
+against empty intents, records and publication queue, plus no loopback publication
+connection. Its original valid identity/retry/recovery path follows unchanged;
+a disposable listener observes rejected cases and closes before that path.
+
+**Measured:** Desktop Rust fmt, `git diff --check`, and the existing differential
+size checker against the repair baseline PASS. Static source-order assertions
+confirm the early call precedes phase 1, prepare, persist, enqueue and profile
+publication; the shared early method has no `self.record()` dependency, and the
+late method still calls it. These are static checks, not executed native behavior.
+
+**Blocked/not run:** Hermit `HERMIT_SELF_UPDATE=false`,
+`cargo test --offline --lib hosted_native_create_recovery_and_session_fence --no-run`
+from `desktop/src-tauri` exits 101 before application compilation because GTK
+system metadata is missing (`gio-2.0 >= 2.70` in the retained
+[failure](../verification/3721-host-discovery/m1-native-build-blocker.txt), the same
+unresolved GLib/GObject environment gap). The Windows-only native fixture and its
+four new cases are NOT RUN. No dependency installation or replacement platform
+was attempted. The prior 99 independent passes stand for unchanged paths; they
+were not rerun or claimed as validation of this repair's native behavior.
+
+No live, provider, existing-agent or board action occurred. All repair processes
+exited. Source is committed; documentation follows, then clean ownership release.
+Next gate: same reviewer, limited to M-1 and defects introduced by this repair.

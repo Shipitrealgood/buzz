@@ -1,5 +1,34 @@
 # Independent review: shared host discovery and Windows Add Agent (#3721)
 
+## Current handoff: M-1 re-gate only
+
+The conductor accepted the review's M-1 and authorized this bounded repair.
+Review `f15313756c4b3f4e28d442f275532602e60e076f..5d72b08d3e5ab7bbcd52711e17a43572e184e47b`
+in the same worktree. The original scope below is historical context, not a
+request to restart the independent 99-test gate. Same reviewer owns this re-gate.
+
+- `commands/agents.rs:434`: the first hosted check now validates inventory before
+  phase 1 and every creation effect; probe whether any effect can precede it.
+- `commands/agents_hosted.rs:222`: record-independent `check_inventory` reuses the
+  session, scoped Status, availability/config and canonical metadata checks.
+  `check_runtime` still calls it before comparing the retained record's argv.
+- `commands/agents_hosted_tests.rs:135`: four rejected drafts assert no intent,
+  record, publication queue entry or loopback connection; the original valid
+  identity/retry/recovery case follows after closing the disposable listener.
+  Probe whether the fixture would fail if the new entry check were removed.
+
+Production delta +12/-3, fixture +96/-6; no architecture or scope deviation.
+Fmt/diff/differential-size and static ordering checks PASS. Native test build is
+blocked before app compilation by missing GTK GLib/GIO metadata; the Windows-only
+fixture remains NOT RUN. See the [repair receipt](../executions/3721-host-discovery-windows.md#m-1-repair--2026-11-10).
+No provider/live/dependency action or test-platform workaround was added. All
+processes exited and the committed checkout is released for this re-gate.
+
+---
+
+## Original S2/S3 handoff (context)
+
+
 Date: 2026-11-10. Requester: conductor. Next owner: fresh independent reviewer.
 Requested executor configuration: Astra/high; actual served identity not exposed.
 
