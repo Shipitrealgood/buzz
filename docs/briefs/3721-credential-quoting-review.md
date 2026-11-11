@@ -3,6 +3,16 @@
 2026-11-11. From codecodex `/root/hostd_credential_fix` to independent Chuck.
 Requested Astra/high; actual served configuration not exposed.
 
+**Current handoff: M-1 delta only.** Continuation from clean reviewer commit
+66f7c5ad3cb36ae29438450978cc8627c5a0e874. Source review stands. Inspect packet-v2
+OPERATOR/SOURCE and [receipt M-1](../executions/3721-credential-quoting-fix.md#m-1-packet-only-repair--2026-11-11):
+forward and rollback now pin the approved node PATH config, read-only. Original
+packet preserved; binary/four unit texts unchanged, no source edits or rebuild.
+New manifest `40ea4ea7ef5f16cab3757f271f13c61ebca52d65668faf3c5dc17b93d7a40afe`.
+Verify preservation of corrected config in both directions and unchanged payload
+bytes; all five bash blocks and both manifests passed. No suite rerun needed.
+Earlier sections below describe the original reviewed source scope.
+
 ## 1. Where work lives
 
 Worktree `/home/bryce/services/buzz-wt-3720-host-registration`, branch

@@ -1,6 +1,6 @@
 # #3721 credential quoting repair
 
-2026-11-11. **SOURCE AND NONLIVE PACKAGE PREPARED FOR INDEPENDENT REVIEW.**
+2026-11-11. **SOURCE REVIEWED; PACKET V2 M-1 REPAIR READY FOR DELTA REVIEW.**
 Native credential-value interpretation remains unproved; live approval required.
 Executor `/root/hostd_credential_fix`, codecodex; requested Astra/high, actual
 served model/reasoning metadata not exposed. Execute and brief applied.
@@ -93,7 +93,7 @@ readiness/`buzz-review-completed` claim.
 
 ## Hostd-only artifact and continuity
 
-Candidate root:
+Original candidate root (**operational packet superseded by v2 below**):
 `/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/`.
 Its `package/` is immutable after staging: binary0555/text0444. `evidence/`
 contains build and mutation logs. SOURCE.json records provenance and limits.
@@ -118,12 +118,14 @@ are unreachable and absent in frozen runtime symbols. Frozen runtime synthetic
 fixture passed against new executor. This supports same-source runtime behavior,
 not a claim that a rebuild would yield identical bytes. Retaining its exact path
 also preserves prepare's recorded launcher guard. deployment.json, template,
-HOME/PATH/workspace and catalog revision remain unchanged.
+HOME/workspace remain unchanged. The quoting repair preserves the separately
+approved current tool PATH and its catalog revision; the original packet
+incorrectly pinned the historical config. See M-1 below.
 
 ## Exact future rollout and rollback — not executed
 
 Full fixed-path commands and prefix-aware rollback are in
-[immutable OPERATOR.md](/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/package/OPERATOR.md).
+[current packet-v2 OPERATOR.md](/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/packet-v2/package/OPERATOR.md).
 Four proposed texts are frozen: original/replacement controller and original/
 replacement Jeff override. Controller differs only by hostd executable path;
 Jeff differs only by removing outer quotes from its two LoadCredential values.
@@ -161,3 +163,38 @@ then conductor grades and seeks precise live approval. Source/build/test process
 are terminal at handoff; no source mutation held. Final doc commit and clean
 worktree receipt are returned to conductor. No open product decision; native
 interpretation is the named unrun gate, not a hidden prerequisite workaround.
+
+
+## M-1 packet-only repair — 2026-11-11
+
+Clean continuation baseline `66f7c5ad3cb36ae29438450978cc8627c5a0e874`.
+Input: [independent M-1](../audits/post-audit/3721-credential-quoting-fix.md).
+Source accepted; only packet OPERATOR/SOURCE had a stale configuration pin.
+Read the approved PATH application's OPERATOR-RESULT.md. Measured its staged
+config SHA256 `1e140bed82e738072671e61a74803a79b6eda9e518eba7714a36a4369a77516c`;
+parsed comparison proves only local.tool_path changed, prepending
+`/home/bryce/.nvm/versions/node/v22.16.0/bin:`. Live config was not read or changed.
+
+Current immutable packet: `/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/packet-v2/package`.
+Supersedes original package's operational instructions; original manifest
+`d020fb8959017fbd54c92eb8e179275aaf4b652b8b18082811d5a8895249ab0f`
+and all original files remain unchanged. Current pins:
+
+- MANIFEST.sha256: `40ea4ea7ef5f16cab3757f271f13c61ebca52d65668faf3c5dc17b93d7a40afe`.
+- OPERATOR.md: `c3e683b3b90d4ace9891bc37290256f230580fe967b27d1ad7b4b5ad0446961b`.
+- SOURCE.json: `71b44a39bcf587f138d2be8c210a30071b908cc2709d2203aa2dc606ec117939`.
+
+Both directions now hash-check the accepted staged config at
+`/home/bryce/services/buzz-agents/releases/3721-trusted-host-path/node-v22.16.0/deployment.json`
+and compare it read-only against current config. Mismatch stops; no config copy,
+restoration or PATH regression is authorized. Binary/source and all four unit/
+override texts are unchanged. Controller still names the original immutable
+candidate binary; v2 preflight compares that file with its identical packaged
+copy. Source46f53f692 and binary97590329 remain the activation payload.
+
+Measured: v2 manifest7/7 and original7/7 pass; all original hashes unchanged;
+five payload files byte-identical; sole config-field delta verified; five shell
+blocks pass bash -n, none executed. No rebuild/suite rerun, product source edits,
+reviewer-report edits, live operations or board mutations. Original source and
+native-gate evidence/limits carry forward. Next: same reviewer's M-1-only gate.
+All owned commands terminal; final docs pin/clean status returned to conductor.
