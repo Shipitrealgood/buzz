@@ -1,12 +1,15 @@
 # #3721 credential quoting repair — independent post-audit
 
-2026-11-11. **REWORK: source is ready; the staged activation packet needs one
-configuration-pin correction before approval.** C=0/H=0/M=1/L=0. No source merge
-blocker or foundation gap found. This is not acceptance of the live pilot.
+2026-11-11. **MERGE-SAFE within the reviewed source/nonlive preparation scope:
+source and packet v2 are ready for separately approved activation.** Open findings
+C=0/H=0/M=0/L=0; historical M-1 is closed below. No source merge blocker or
+foundation gap found. This is not acceptance of the live pilot or authorization
+to activate it; native parsed values and delivery remain unproved.
 
 Reviewer `/root/hostd_credential_review`, codex-chuck. Requested configuration:
-gpt-6-astra/high; actual served model and effort not exposed. Initial review,
-rework rounds 0. Applied post-audit; no implementation edits or board mutations.
+gpt-6-astra/high; actual served model and effort not exposed. Initial review plus
+one packet-only re-gate, rework rounds 1. Applied post-audit; no implementation
+edits or board mutations.
 
 ## Pin, contract and scope
 
@@ -27,7 +30,7 @@ No live manager calls, configuration/journal/key reads or writes, providers,
 existing-agent operations, relay/Windows work, installs, push or deployment ran.
 Only this audit artifact is written and signed off.
 
-## M-1 (Medium, high confidence) — stale approved-configuration pin; rides #3721
+## M-1 (Medium, high confidence) — closed; stale approved-configuration pin; rides #3721
 
 **Read and measured.** [OPERATOR line 33](/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/package/OPERATOR.md:33)
 compares live deployment.json to the original frozen package. That file hashes
@@ -48,7 +51,7 @@ before quiescence. It fails safely but is not executable as the promised prepare
 rollout. Restoring the old configuration to satisfy it would regress the approved
 PATH and is not an acceptable remedy.
 
-**Proposed disposition:** original executor repairs packet OPERATOR/SOURCE and
+**Initial proposed disposition:** original executor repairs packet OPERATOR/SOURCE and
 associated manifest/receipt pins using the approved corrected file and hash;
 explicitly preserve this configuration in both directions. Retain the old packet
 as evidence and issue a clearly versioned replacement. No source fix or binary
@@ -93,8 +96,8 @@ journals/identity. Restoring the old override intentionally restores the known
 243/CREDENTIALS failure; old-hostd containment is not successful Jeff recovery.
 No additional supported finding in those prefixes.
 
-Minimalism 9/10, elegance 9/10, source correctness 9/10; packet correctness 8/10
-until M-1 is repaired. The implementation fixes the serializer class at its
+Minimalism 9/10, elegance 9/10, source correctness 9/10; packet correctness 9/10
+after the M-1 repair below (initially 8/10). The implementation fixes the serializer class at its
 production boundary without adding a provider-specific mechanism.
 
 ## Independent verification and limits
@@ -138,7 +141,45 @@ acceptance. Offline --test accepts even broken syntax and cannot discharge the
 native interpretation gate. That gate remains explicitly future and must precede
 provider execution under separate approval; it is not a hidden source PASS.
 
-Next: repair M-1, delta-only independent re-gate, then seek scoped live approval.
-Workspace test/write ownership is released after this report's signed commit.
+## M-1 delta-only re-gate — 2026-11-11
 
-quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=ran commits=09bbb43096fae862dee9b3f03e4cbcc9295c7d24..8e831be04193b4ade4e46b860cd2fdf6690938c8 findings=C=0/H=0/M=1/L=0 rework_rounds=0
+**Closed, high confidence.** Re-gated clean
+`eb2df36471f699291e08b4ba6930a2cc2771922a` against the original review commit
+`66f7c5ad3cb36ae29438450978cc8627c5a0e874`. Git delta contains only the execution
+receipt and review brief; production and tests are unchanged. Read their delta
+and independently compared both complete OPERATOR/SOURCE texts.
+
+Current instructions are [packet-v2 OPERATOR](/home/bryce/services/buzz-agents/releases/3721-credential-quoting/46f53f692a0d03779bd9e9168d6e1b986b32c1d1/packet-v2/package/OPERATOR.md:26).
+Forward and rollback now hash the approved staged configuration at
+`1e140bed82e738072671e61a74803a79b6eda9e518eba7714a36a4369a77516c`
+and compare it read-only with current configuration. I rehashed the staged file;
+live configuration was neither read nor changed. SOURCE pins the same approved
+file, and the packet expressly forbids restoring historical configuration.
+Original rejected packet remains intact. M-1's concrete failure is repaired.
+
+**Measured delta checks:** v2 manifest 7/7 and original manifest 7/7 passed;
+original manifest still hashes to the prior reviewed value. Hostd and all four
+unit/override texts are byte-identical across packets. Five v2 bash blocks pass
+`bash -n`; none executed. Text modes remain 0444, binary 0555. Verified v2 hashes:
+
+- MANIFEST.sha256: `40ea4ea7ef5f16cab3757f271f13c61ebca52d65668faf3c5dc17b93d7a40afe`.
+- OPERATOR.md: `c3e683b3b90d4ace9891bc37290256f230580fe967b27d1ad7b4b5ad0446961b`.
+- SOURCE.json: `71b44a39bcf587f138d2be8c210a30071b908cc2709d2203aa2dc606ec117939`.
+
+**Preservation read:** controller still references the original immutable binary;
+v2 preflight compares that executable to its identical manifested copy. The
+quiescence, exact before/after matching, foreign refusal, native parsed-value gate
+before controller restart, same-Jeff automatic reconciliation notice and
+prefix-aware rollback are unchanged. Added rollback config check is read-only.
+Current journal, identity, credentials, approved PATH and protected agents remain
+outside mutation scope. No new supported finding was introduced.
+
+Earlier source/suite/mutation/runtime evidence carries forward on unchanged
+source and payload; no rebuild, suite rerun or new probe campaign performed.
+Only packet-delta verification ran. All native/live/provider/human gates listed
+above remain NOT RUN. Next: conductor may present this concrete packet for scoped
+live approval. No additional code or preparation repair is required by this review.
+All reviewer commands are terminal; clean workspace ownership is released after
+this report's signed commit.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=merge-safe verify=ran commits=09bbb43096fae862dee9b3f03e4cbcc9295c7d24..eb2df36471f699291e08b4ba6930a2cc2771922a findings=C=0/H=0/M=0/L=0 rework_rounds=1
