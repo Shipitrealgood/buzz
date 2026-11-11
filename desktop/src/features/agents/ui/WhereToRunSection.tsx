@@ -78,11 +78,18 @@ export function WhereToRunFields({
   const selectedHost = hosts.find(
     (host) => hostDestinationValue(host) === draft.runOn,
   );
+  const directoryCurrent =
+    !directory.error &&
+    directory.data?.supported === true &&
+    directory.data.available === true;
+  const registrationStatus = (host: (typeof hosts)[number]) =>
+    host.state === "paired"
+      ? directoryCurrent
+        ? "Registered"
+        : "Saved registration · unavailable"
+      : hostRegistrationStatus(host);
   const hostAvailable =
-    !!selectedHost &&
-    selectedHost.state === "paired" &&
-    selectedHost.fresh &&
-    directory.data?.available === true;
+    !!selectedHost && selectedHost.state === "paired" && directoryCurrent;
   React.useEffect(() => {
     if (isHostMode && draft.hostAvailable !== hostAvailable)
       onDraftChange({ ...draft, hostAvailable });
@@ -95,7 +102,7 @@ export function WhereToRunFields({
       value: provider.id,
     })),
     ...hosts.map((host) => ({
-      label: `${host.label ?? "Linux host"} · ${truncateNpub(host.scope.host)} · ${hostRegistrationStatus(host)}`,
+      label: `${host.label ?? "Linux host"} · ${truncateNpub(host.scope.host)} · ${registrationStatus(host)}`,
       value: hostDestinationValue(host),
     })),
   ];
@@ -204,7 +211,7 @@ export function WhereToRunFields({
           {isHostMode ? (
             <p role="status">
               {selectedHost
-                ? hostRegistrationStatus(selectedHost)
+                ? registrationStatus(selectedHost)
                 : "Selected host is unavailable in this workspace."}{" "}
               Host runtime metadata is checked separately. Models remain pending
               until this new agent signs in on its host.

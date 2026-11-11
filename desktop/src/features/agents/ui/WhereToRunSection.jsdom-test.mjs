@@ -48,12 +48,12 @@ const host = {
   },
   state: "paired",
   label: "Workshop",
-  fresh: true,
+  fresh: false,
   runtimes: ["legacy/ignored"],
   requests: [],
   capacity: 10,
   catalog_revision: "12".repeat(32),
-  fresh_for_ms: 60000,
+  fresh_for_ms: 0,
 };
 let draft = emptyWhereToRunDraft;
 async function flush() {
@@ -98,10 +98,12 @@ afterEach(() => {
 
 test("actual Run on projects status truthfully and remains closed with legacy capability fields", async () => {
   for (const [state, fresh, expected] of [
-    ["paired", true, "Registered · deployment unavailable"],
-    ["paired", false, "Saved registration · refresh needed"],
+    ["paired", true, "Registered"],
+    ["paired", false, "Registered"],
     ["unpaired", true, "Revoked"],
     ["unpair-pending", true, "Revocation pending"],
+    ["pair-pending", false, "Registration pending"],
+    ["pair-expired", false, "Registration expired"],
     ["mystery", false, "Registration status unknown"],
   ]) {
     const row = { ...host, state, fresh };
@@ -118,6 +120,11 @@ test("actual Run on projects status truthfully and remains closed with legacy ca
     await flush();
     assert.ok(container.textContent.includes(expected), container.textContent);
     assert.equal(canSubmitWhereToRun(draft), false);
+    assert.equal(canSubmitWhereToRun(draft, true), state === "paired");
+    assert.doesNotMatch(
+      container.textContent,
+      /refresh needed|deployment unavailable/,
+    );
     assert.doesNotMatch(
       container.textContent,
       /legacy\/ignored|online|offline/,
@@ -174,5 +181,54 @@ test("unsupported and unavailable directories stay distinct from empty and keep 
         (b) => b.textContent === "Add Host",
       ),
     );
+  }
+});
+
+test("current registration eligibility rejects retained rows on directory failure or unsupported replies", async () => {
+  draft = {
+    ...emptyWhereToRunDraft,
+    runOn: hostDestinationValue(host),
+    destination: hostDestination(host),
+  };
+  list = async () => ({ supported: true, available: true, hosts: [host] });
+  await render();
+  assert.equal(canSubmitWhereToRun(draft, true), true);
+  for (const response of [
+    new Error("directory unavailable"),
+    { supported: true, available: false, hosts: [host] },
+    { supported: false, available: true, hosts: [host] },
+    { supported: true, available: true, hosts: [] },
+  ]) {
+    list = async () => {
+      if (response instanceof Error) throw response;
+      return response;
+    };
+    await render();
+    await act(async () =>
+      client.invalidateQueries({ queryKey: ["paired-hosts"] }),
+    );
+    await flush();
+    assert.equal(canSubmitWhereToRun(draft, true), false);
+    if (response instanceof Error || response.hosts.length) {
+      assert.match(container.textContent, /Saved registration · unavailable/);
+    }
+  }
+});
+
+test("host selection cannot borrow another owner or community registration", async () => {
+  for (const selected of [
+    { ...session, expectedOwner: "12".repeat(32) },
+    { ...session, expectedRelay: "wss://other.test" },
+    null,
+  ]) {
+    draft = {
+      ...emptyWhereToRunDraft,
+      runOn: hostDestinationValue(host),
+      destination: hostDestination(host),
+      hostAvailable: true,
+    };
+    list = async () => ({ supported: true, available: true, hosts: [host] });
+    await render(selected);
+    assert.equal(canSubmitWhereToRun(draft, true), false);
   }
 });

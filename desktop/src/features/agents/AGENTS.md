@@ -363,6 +363,15 @@ and provider-backed creation behavior remain independent of registration.
 
 ### Hosted Add Agent and continuation
 
+Run on requires an exact current owner/community paired registration in a
+supported, available, error-free directory. The separate registration challenge's
+`fresh` bit is not deployment readiness: native list calls may return `fresh:false`
+for valid registrations. Label these current rows Registered, and retained rows
+from an unavailable directory as saved/unavailable. Submission additionally
+requires the native setup token and exact-scope current, supported, unexpired
+hosted catalog. Keep the existing catalog expiry timer and native prepare-time
+revalidation; registration alone never grants deployment or online status.
+
 The real `AgentDialog` / `AgentDefinitionDialog` form selects an explicit
 configuration source. Hosted mode uses approved installed-ID → canonical Rust
 builtin/preset metadata; it never infers a harness from an installed-ID suffix.

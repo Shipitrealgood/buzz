@@ -19,13 +19,20 @@ type Fixture = {
   unadmitted?: boolean;
   release?: () => void;
   hostedStart?: number;
+  catalogMode?: "missing" | "wrong-scope" | "stale";
+  tokenPending?: boolean;
+  runtimeUnavailable?: boolean;
 };
 declare global {
   interface Window {
     __HOSTED_SETUP_FIXTURE__: Fixture;
   }
 }
-async function open(page: Page, channel = false) {
+async function open(
+  page: Page,
+  channel = false,
+  overrides: Partial<Fixture> = {},
+) {
   await page.addInitScript(() =>
     Object.defineProperty(navigator, "platform", {
       value: "Win32",
@@ -48,7 +55,7 @@ async function open(page: Page, channel = false) {
   );
   await page.goto("/");
   await page.getByTestId("open-agents-view").waitFor();
-  await page.evaluate(() => {
+  await page.evaluate((overrides) => {
     const api = (
       window as unknown as {
         __TAURI_INTERNALS__: {
@@ -77,6 +84,7 @@ async function open(page: Page, channel = false) {
       models: true,
       missingModel: false,
       delayNext: false,
+      ...overrides,
     };
     window.__HOSTED_SETUP_FIXTURE__ = fixture;
     let record: Record<string, unknown> | null = null;
@@ -129,15 +137,16 @@ async function open(page: Page, channel = false) {
               label: "Synthetic workshop",
               requests: [],
               runtimes: [],
-              fresh: true,
-              fresh_for_ms: 60000,
+              fresh: false,
+              fresh_for_ms: 0,
               inventory_id: null,
               catalog_revision: null,
               capacity: null,
             },
           ],
         };
-      if (command === "hosted_setup_token") return "76".repeat(32);
+      if (command === "hosted_setup_token")
+        return fixture.tokenPending ? new Promise(() => {}) : "76".repeat(32);
       if (command === "hosted_setup_list")
         return fixture.setup && fixture.setup.state !== "deleted"
           ? [
@@ -152,12 +161,19 @@ async function open(page: Page, channel = false) {
             ]
           : [];
       if (command === "hosted_catalog") {
-        if (!fixture.registered || fixture.denied)
+        if (
+          !fixture.registered ||
+          fixture.denied ||
+          fixture.catalogMode === "missing"
+        )
           throw new Error("Host metadata read denied");
         const catalog = {
           status: {
-            scope,
-            availability: "current",
+            scope:
+              fixture.catalogMode === "wrong-scope"
+                ? { ...scope, generation: "99".repeat(32) }
+                : scope,
+            availability: fixture.catalogMode === "stale" ? "stale" : "current",
             expires_at: Math.floor(Date.now() / 1000) + 120,
             capability: {
               state: "supported",
@@ -171,8 +187,10 @@ async function open(page: Page, channel = false) {
                 id: "grok",
                 label: "Grok Build",
                 avatar_url: "",
-                availability: "available",
-                command: "grok",
+                availability: fixture.runtimeUnavailable
+                  ? "cli_missing"
+                  : "available",
+                command: fixture.runtimeUnavailable ? null : "grok",
                 binary_path: null,
                 default_args: ["agent", "--always-approve", "stdio"],
                 mcp_command: null,
@@ -301,7 +319,7 @@ async function open(page: Page, channel = false) {
       }
       return previous(command, args);
     };
-  });
+  }, overrides);
   if (channel) {
     await page.getByTestId("channel-random").click();
     await page.getByTestId("channel-intro-action-create-agent").click();
@@ -317,9 +335,18 @@ async function open(page: Page, channel = false) {
   ).toBeVisible();
   await page.locator("#agent-run-on").press("Enter");
   await page.getByRole("menuitemradio", { name: /Synthetic workshop/ }).click();
+  if (
+    overrides.catalogMode === "missing" ||
+    overrides.catalogMode === "wrong-scope"
+  )
+    return;
   await expect(
     page.getByRole("button", { name: "Agent harness", exact: true }),
-  ).toContainText("Grok Build · native/grok");
+  ).toContainText(
+    overrides.runtimeUnavailable
+      ? "Choose a harness"
+      : "Grok Build · native/grok",
+  );
   await page.evaluate(() => {
     const f = window.__HOSTED_SETUP_FIXTURE__;
     f.hostedStart = f.calls.length;
@@ -333,6 +360,73 @@ async function open(page: Page, channel = false) {
   await page
     .getByRole("menuitemradio", { name: /Grok Build · native\/grok/ })
     .click();
+}
+
+test("Prepare uses verified hosted evidence with an unfresh registration and expires without interaction", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await open(page);
+  const prepare = page.getByRole("button", {
+    name: "Prepare agent",
+    exact: true,
+  });
+  await page.locator("#persona-display-name").fill("Fizz");
+  await expect(prepare).toBeEnabled();
+  await expect(page.locator("#agent-run-on")).toContainText("Registered");
+  await expect(page.locator("#agent-run-on")).not.toContainText(
+    "refresh needed",
+  );
+  await page.locator("#persona-display-name").fill("");
+  await expect(prepare).toBeDisabled();
+  await page.locator("#persona-display-name").fill("Fizz");
+  await expect(prepare).toBeEnabled();
+  const catalogReads = await page.evaluate(
+    () =>
+      window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+        (c) => c.command === "hosted_catalog",
+      ).length,
+  );
+  await page.clock.fastForward(120_001);
+  await expect(prepare).toBeDisabled();
+  await expect(
+    page.getByText(
+      "Host metadata is expired or unavailable. Reselect the host to refresh.",
+    ),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+          (c) => c.command === "hosted_catalog",
+        ).length,
+    ),
+  ).toBe(catalogReads);
+});
+
+for (const [reason, overrides] of [
+  ["missing token", { tokenPending: true }],
+  ["missing catalog", { catalogMode: "missing" }],
+  ["wrong-scope catalog", { catalogMode: "wrong-scope" }],
+  ["stale catalog", { catalogMode: "stale" }],
+  ["unavailable runtime", { runtimeUnavailable: true }],
+] as const) {
+  test(`Prepare rejects ${reason} despite a current paired registration`, async ({
+    page,
+  }) => {
+    await open(page, false, overrides);
+    await page.locator("#persona-display-name").fill("Fizz");
+    await expect(
+      page.getByRole("button", { name: "Prepare agent", exact: true }),
+    ).toBeDisabled();
+    expect(
+      await page.evaluate(() =>
+        window.__HOSTED_SETUP_FIXTURE__.calls.some(
+          (c) => c.command === "hosted_prepare",
+        ),
+      ),
+    ).toBe(false);
+  });
 }
 
 test("ordinary hosted form retains one setup through close, native login, explicit model refresh and offline failure", async ({
