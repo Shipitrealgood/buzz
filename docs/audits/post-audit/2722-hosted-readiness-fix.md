@@ -6,10 +6,12 @@ are not independently exposed; runtime identity is unknown. Rework round 0.
 
 ## Verdict and scope
 
-**Source/UI ACCEPT; no merge blockers. C=0 / H=0 / M=0 / L=0.** This bounded
-repair is merge-safe. Updated Windows artifact, native app execution and human
-pilot remain conductor-owned pending work; this is not full PR readiness or a
-`buzz-review-completed` attestation. No source repair or new prerequisite needed.
+**Source/UI, native Windows gate and test.26 installer artifact ACCEPT; no merge
+blockers. C=0 / H=0 / M=0 / L=0.** This bounded repair is merge-safe. Installer
+execution and remaining human pilot remain conductor-owned pending work; this is
+not full PR readiness or a `buzz-review-completed` attestation. No source repair
+or new prerequisite needed. The initial source/UI review is retained below; its
+native/artifact NOT RUN entries are superseded by the continuation evidence.
 Minimalism 9/10, elegance 9/10, correctness 9/10 within the reviewed scope.
 
 Workspace `/home/bryce/services/buzz-wt-3720-host-registration`, branch
@@ -103,7 +105,7 @@ mutation. Goose configuration support and operator Claude PATH repair excluded.
    The prior accepted native evidence is credited for unchanged code, not
    described as freshly executed Windows verification.
 
-## Independent verification ledger
+## Initial independent source/UI verification ledger
 
 All commands completed at the reviewed pin. Hermit activation was attempted and
 failed because its metadata cache is read-only in this sandbox; existing pinned
@@ -140,10 +142,84 @@ or execution, real hosted IPC/relay/provider/login/chat/service workflow and hum
 acceptance. Those exclusions are explicit in this bounded dispatch. The changed
 frontend was built and tested; new Windows artifact and pilot remain next gates.
 
+## Windows artifact continuation — same review, no source rework
+
+Receipt HEAD `ae335effbfb94357aa43b16fb8bbd90cd517c242`; exact built source
+`78232d95173b876babcee0f51b18f7c2a17dac0d`, wrapping accepted product
+`25b636dd608467eb1a66e7b61905706767a8feb5`. Read the
+[Windows execution receipt](../../executions/2722-hosted-readiness-windows-canary.md)
+and saved artifact/API/job records. **Measured locally:** full post-product delta
+contains only this source review and the Windows receipt; explicit `git diff
+--exit-code` for `desktop crates .github` passes. Source/UI acceptance is reused.
+No new build, test suite, source audit, workflow dispatch or live action ran.
+
+Evidence root:
+`/home/bryce/services/buzz-agents/releases/2722-hosted-readiness-canary/78232d95173b876babcee0f51b18f7c2a17dac0d/42930493604/`.
+Reviewer read `run.json`, `jobs.json`, `artifacts.json`, embedded source/build
+receipts, every individual native suite log, UTF-16 ACL log and relevant full
+job-log source/version/compiler/runner/build output. These are saved CI records,
+not a new independent GitHub retrieval. Native outcomes are **read from CI**;
+hashes, archive membership, extracted-byte equality, PE signature, distinct test
+count and Git continuity are **independently measured locally** with a reviewer
+script, not inferred from executor `verification.json` or `verify.py` success.
+
+[Run 42930493604](https://github.com/Shipitrealgood/buzz/actions/runs/42930493604)
+is completed/success, workflow_dispatch, run 26, **attempt 1**, exact built SHA
+above. Native job `130227724092` ran 00:20:01Z–00:35:53Z; installer job
+`130227724714` ran 00:20:00Z–00:32:52Z on 2026-11-11. Saved jobs and both artifact
+workflow_run records agree on source/run. Full logs show Windows-target Cargo
+compilation and `.exe` unit runners, plus test.26 NSIS output. Build is the
+existing unsigned, updater-disabled canary. No retry is recorded for this run.
+
+Eight native logs contain **111 distinct outer passing test names**, matching
+one nonzero summary each, zero failed/ignored: owner 16, shared harness 9,
+conversion 73, relay directory 7, paired-host session 3, and these three exact
+cases. Count excludes full-log grep echoes and child execution.
+
+| Exact native case | CI result independently read |
+| --- | --- |
+| `commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence` | 1 passed, 0 failed/ignored; 9.79s |
+| `commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence` | 1 passed, 0 failed/ignored; 10.45s |
+| `managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary` | 1 passed, 0 failed/ignored |
+
+Each matches the existing workflow's exact-case inventory
+([workflow:284](../../../.github/workflows/windows-canary.yml#L284)). The UTF-16
+ACL receipt says the owner used SQLite, another standard user read the control,
+and that user was denied DB/WAL/SHM. The full native log contains the same
+terminal result and the ACL job step succeeded. This proves the isolated Windows
+fixture result, not live host filesystem acceptance.
+
+Installer: **Buzz_0.5.29-test.26_x64-setup.exe**, **56,484,611 bytes**, PE header
+checked without execution. Both archives' digest/size equal saved GitHub artifact
+metadata. Every member equals its extracted bytes. Installer ZIP contains exactly
+installer plus build receipt; native ZIP contains exactly source receipt, eight
+suite logs and ACL log. Embedded receipts agree with source, version, target,
+filename and installer hash.
+
+| Artifact | Independently recomputed SHA-256 |
+| --- | --- |
+| Installer executable | `211c5e96db035e0b5fca58e627b598ddf9db30e12b50cc33f3d8d15f0a633144` |
+| Installer ZIP, artifact **13816845999**, 56,482,976 bytes | `cf9a67fb714cd4bc52abd53138b9c06aaf8ae5a43d0a80f8349f8050a3630626` |
+| Native ZIP, artifact **13816986961**, 5,411 bytes | `f5290973e4a846227274e36f2944c08e33253a519004c803e419cc45f71b5df2` |
+
+Saved metadata expires installer at 2026-11-18T00:32:21Z and native at
+2026-11-18T00:35:48Z; original ZIPs and extracted files remain locally retained.
+The owner expiry case passed in this first attempt (16-case owner suite: 23.75s).
+This does not repair or prove the prior test25 timing hypothesis; the accepted
+prior reliability follow-up remains open, without a new finding or rerun here.
+
+Remaining **NOT RUN**: installer execution, actual hosted native IPC/UI status
+journey, provider/login/models/chat/service workflow, remaining human pilot,
+mutation controls and full `just ci`. Conductor relayed explicit human confirmation
+that Claude now appears available after a separate approved host tool-path change.
+That is human harness-discovery evidence only; neither this review nor that report
+establishes successful Prepare, models, provider execution or conversation.
+
 ## Handoff and ownership release
 
-Recommend conductor accept the source/UI repair and proceed to the separately
-authorized Windows artifact and human pilot. Keep registration freshness separate
+Recommend conductor accept the verified test.26 artifact and proceed to the
+separately authorized Windows installation and one disposable Claude Prepare
+pilot. Source/UI and bounded native/artifact acceptance stand. Keep registration freshness separate
 from deployment catalog readiness; do not add challenge machinery, global cache
 changes or provider support work to this repair. No new findings need routing.
 Existing prior-review reliability follow-up is not newly evaluated or closed here.
