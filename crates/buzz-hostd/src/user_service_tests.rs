@@ -68,6 +68,154 @@ fn calls(dir: &Path) -> String {
 }
 
 #[tokio::test]
+async fn credential_assignments_preserve_paths_and_repair_only_exact_legacy_override() {
+    for component in ["plain", "space %n back\\slash \"quote\" $dollar :colon"] {
+        let (dir, mut service, prepared, cat) = fixture();
+        let state = dir.path().join(component);
+        fs::rename(&service.staging, &state).unwrap();
+        service = UserService::installed(&state).unwrap();
+        let id = &prepared.instance.unit_id;
+        let local = cat.local.as_ref().unwrap();
+        service.stage(&prepared.instance).unwrap();
+        service.action("prepare", id).await.unwrap();
+        let dropin = local
+            .unit_dir
+            .join(format!("buzz-hosted-agent@{id}.service.d"));
+        let file = dropin.join("50-buzz.conf");
+        let correct = fs::read_to_string(&file).unwrap();
+        let expected: Vec<_> = ["instance", "execution"]
+            .map(|name| {
+                format!(
+                    "LoadCredential={name}:{}/hosted/{id}/{name}",
+                    state.display().to_string().replace('%', "%%")
+                )
+            })
+            .into();
+        assert_eq!(
+            correct
+                .lines()
+                .filter(|l| l.starts_with("LoadCredential="))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        let identity = fs::read(service.dir(id).join("instance")).unwrap();
+        // Reproduce the exact former generator, including ExecStart's distinct quoting.
+        let legacy = format!("[Service]\nExecStart=\nExecStart={} --user-service {} {}\nLoadCredential={}\nLoadCredential={}\n",
+            quote(&local.launcher).unwrap().replace('$', "$$"), quote(&state).unwrap().replace('$', "$$"), id,
+            quote(Path::new(&format!("instance:{}/hosted/{id}/instance", state.display()))).unwrap(),
+            quote(Path::new(&format!("execution:{}/hosted/{id}/execution", state.display()))).unwrap());
+        write_bytes(&dropin, "50-buzz.conf", legacy.as_bytes()).unwrap();
+        let reopened = UserService::installed(&state).unwrap();
+        reopened.action("prepare", id).await.unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), correct);
+        assert_eq!(
+            fs::read(service.dir(id).join("instance")).unwrap(),
+            identity
+        );
+        reopened.action("prepare", id).await.unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), correct);
+        for foreign in [
+            format!("{legacy}# operator edit\n"),
+            legacy.replace("instance:", "other:"),
+            legacy.replace("/instance", "/foreign"),
+            legacy.replace("/usr/bin/true", "/usr/bin/false"),
+            format!("{correct}Environment=FOREIGN=1\n"),
+        ] {
+            write_bytes(&dropin, "50-buzz.conf", foreign.as_bytes()).unwrap();
+            let before = calls(dir.path()).matches("daemon-reload").count();
+            assert!(reopened
+                .action("prepare", id)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("foreign user override"));
+            assert_eq!(fs::read_to_string(&file).unwrap(), foreign);
+            assert_eq!(calls(dir.path()).matches("daemon-reload").count(), before);
+        }
+        assert!(!calls(dir.path()).contains(" start "));
+    }
+}
+
+#[test]
+fn credential_paths_keep_existing_control_and_utf8_rejection() {
+    use std::os::unix::ffi::OsStrExt;
+    let (_dir, service, prepared, cat) = fixture();
+    for path in [
+        Path::new("/tmp/new\nline"),
+        Path::new("/tmp/tab\tpath"),
+        Path::new(std::ffi::OsStr::from_bytes(b"/tmp/\xff")),
+    ] {
+        let invalid = UserService {
+            staging: path.into(),
+        };
+        assert!(invalid
+            .override_text(
+                cat.local.as_ref().unwrap(),
+                &prepared.instance.unit_id,
+                false
+            )
+            .is_err());
+    }
+    assert!(service
+        .override_text(
+            cat.local.as_ref().unwrap(),
+            &prepared.instance.unit_id,
+            false
+        )
+        .is_ok());
+}
+
+#[tokio::test]
+#[ignore = "requires offline native systemd --test and disposable socket permission; syntax only"]
+async fn generated_credentials_parse_offline_without_starting_a_service() {
+    let (dir, service, prepared, cat) = fixture();
+    let id = &prepared.instance.unit_id;
+    service.stage(&prepared.instance).unwrap();
+    service.action("prepare", id).await.unwrap();
+    for name in ["basic.target", "shutdown.target"] {
+        fs::write(
+            cat.local.as_ref().unwrap().unit_dir.join(name),
+            "[Unit]\nDefaultDependencies=no\n",
+        )
+        .unwrap();
+    }
+    let runtime = dir.path().join("private-runtime");
+    fs::DirBuilder::new().mode(0o700).create(&runtime).unwrap();
+    let output = tokio::time::timeout(
+        Duration::from_secs(15),
+        Command::new("/usr/lib/systemd/systemd")
+            .args([
+                "--user",
+                "--test",
+                &format!("--unit=buzz-hosted-agent@{id}.service"),
+            ])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", dir.path())
+            .env("XDG_CONFIG_HOME", dir.path())
+            .env("XDG_RUNTIME_DIR", runtime)
+            .env("SYSTEMD_UNIT_PATH", &cat.local.as_ref().unwrap().unit_dir)
+            .env("SYSTEMD_GENERATOR_PATH", "")
+            .env("SYSTEMD_ENVIRONMENT_GENERATOR_PATH", "")
+            .env("SYSTEMD_LOG_TARGET", "console")
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Load State: loaded"));
+    // --test computes and prints a transaction; it never executes it. It does not
+    // expose parsed credential values, so this is deliberately only a syntax check.
+    assert!(!calls(dir.path()).contains(" start "));
+}
+
+#[tokio::test]
 async fn prepare_replay_restart_and_identity_fences_precede_effects() {
     let (dir, service, mut prepared, catalog) = fixture();
     let id = prepared.instance.unit_id.clone();

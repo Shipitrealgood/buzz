@@ -403,10 +403,13 @@ impl UserService {
             fs::DirBuilder::new().mode(0o700).create(&dropin)?;
         }
         directory(&dropin)?;
-        let text = format!("[Service]\nExecStart=\nExecStart={} --user-service {} {}\nLoadCredential={}\nLoadCredential={}\n", quote(&local.launcher)?.replace('$', "$$"), quote(&self.staging)?.replace('$', "$$"), id, quote(Path::new(&format!("instance:{}", self.dir(id).join("instance").display())))?, quote(Path::new(&format!("execution:{}", self.dir(id).join("execution").display())))?);
+        let text = self.override_text(local, id, false)?;
         if dropin.join("50-buzz.conf").try_exists()? {
+            let old = private_file(&dropin.join("50-buzz.conf"), 8192)?;
+            // Prepare already checked the retained identity, service location and inactivity.
+            // Repair only our exact former serialization, never an edited/foreign override.
             ensure!(
-                private_file(&dropin.join("50-buzz.conf"), 8192)? == text.as_bytes(),
+                old == text.as_bytes() || old == self.override_text(local, id, true)?.as_bytes(),
                 "foreign user override"
             );
         }
@@ -414,6 +417,30 @@ impl UserService {
         system(local, &["daemon-reload"], None).await?;
         show(local, id).await?;
         Ok(())
+    }
+    fn override_text(&self, local: &LocalContext, id: &str, legacy: bool) -> Result<String> {
+        let credential = |name: &str| -> Result<String> {
+            let path = self.dir(id).join(name);
+            if legacy {
+                // Exact pre-repair bytes are recognized solely for same-instance retry.
+                quote(Path::new(&format!("{name}:{}", path.display())))
+            } else {
+                // LoadCredential splits at ':', then expands specifiers. Unlike ExecStart,
+                // its source path is not shell-quoted or backslash-unescaped.
+                Ok(format!(
+                    "{name}:{}",
+                    service_path(&path)?.replace('%', "%%")
+                ))
+            }
+        };
+        Ok(format!(
+            "[Service]\nExecStart=\nExecStart={} --user-service {} {}\nLoadCredential={}\nLoadCredential={}\n",
+            quote(&local.launcher)?.replace('$', "$$"),
+            quote(&self.staging)?.replace('$', "$$"),
+            id,
+            credential("instance")?,
+            credential("execution")?,
+        ))
     }
     async fn cleanup(&self, id: &str) -> Result<String> {
         let dir = self.dir(id);
@@ -523,12 +550,16 @@ fn remove_file(p: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn quote(p: &Path) -> Result<String> {
+fn service_path(p: &Path) -> Result<&str> {
     let s = p.to_str().ok_or_else(|| anyhow!("non-UTF8 service path"))?;
     ensure!(!s.chars().any(char::is_control), "invalid service path");
+    Ok(s)
+}
+fn quote(p: &Path) -> Result<String> {
     Ok(format!(
         "\"{}\"",
-        s.replace('\\', "\\\\")
+        service_path(p)?
+            .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('%', "%%")
     ))
