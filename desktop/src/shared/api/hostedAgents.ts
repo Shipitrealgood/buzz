@@ -64,7 +64,7 @@ export type HostedAction =
   | { type: "launch"; model: string };
 export type AgentConfigurationSource =
   | { type: "local" }
-  | { type: "hosted"; key: string };
+  | { type: "hosted"; key: string; scope: HostScope; catalogRevision?: string };
 export const LOCAL_CONFIGURATION: AgentConfigurationSource = { type: "local" };
 export const hostedSetupToken = () => invokeTauri<string>("hosted_setup_token");
 export async function hostedCatalog(scope: HostScope): Promise<HostedCatalog> {
@@ -84,6 +84,36 @@ export async function hostedCatalog(scope: HostScope): Promise<HostedCatalog> {
         runtime.metadata && fromRawAcpRuntimeCatalogEntry(runtime.metadata),
     })),
   };
+}
+/** Independent discovery has no setup token or identity side effects. */
+export async function hostedModels(input: {
+  scope: HostScope;
+  runtime: string;
+  catalogRevision: string;
+}): Promise<AgentModelsResponse> {
+  const result = await invokeTauri<
+    Pick<HostedObservation, "models" | "readiness" | "availability">
+  >("hosted_models", input);
+  if (
+    result.availability !== "available" ||
+    !["logged-in", "not-applicable"].includes(result.readiness ?? "unknown")
+  )
+    throw new Error(
+      "Host harness is not ready. Sign in on the host and retry discovery.",
+    );
+  if (result.models.state === "available") return result.models.catalog;
+  if (result.models.state === "empty")
+    return {
+      agentName: "Host harness",
+      agentVersion: "",
+      models: [],
+      supportsSwitching: false,
+      agentDefaultModel: null,
+      selectedModel: null,
+    };
+  throw new Error(
+    `Host models unavailable (${result.models.state === "unavailable" ? result.models.reason : "unsupported"}).`,
+  );
 }
 export const listHostedSetups = (
   expectedRelay: string,

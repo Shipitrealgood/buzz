@@ -1038,10 +1038,26 @@ not supply the host-scoped session or private read permissions. V2 has no legacy
 
 ### Current scope and registration refresh
 
-`buzz-hostd registration run` handles registration only. It does not invoke the
-provisioning poller, runtime catalog or privileged service helper, and does not
-adopt existing agents. Agent creation, subscription login and process lifecycle
-require their own execution and authorization integration.
+`buzz-hostd registration run` retains registration and its opt-in trusted-account
+deployment path. On that path, two explicit private 43103 operations,
+`models-query` and `models`, discover one approved installed runtime before agent
+creation. The query carries the accepted ack, nonce, runtime ID and catalog
+revision; it carries no agent identity, command, environment or credential.
+Responses contain correlated, bounded shared model/readiness data. They never
+update `latest_status_id` or enrollment state. The existing transient mailbox
+quota, retention, owner/community/host/generation admission and live invalidation
+apply; new model entries additionally require an active binding at read/replay.
+
+Hostd reads current authorized evidence before invoking the extracted finite
+runner under the configured account HOME and normal native login. It saves the
+exact reply before publication; a completed query replay never reruns discovery.
+Revocation prevents subsequent execution, publication and reads; a previously
+admitted finite process may finish. Timeouts are unavailable, never empty models.
+The owner subscribes before publishing, verifies exact peer/request correlation,
+and closes after the bounded query. No temporary agent or service is created.
+Actual Create still uses main identity/configuration creation and existing host
+prepare/start; the selected model and readiness are checked again at launch.
+Relay, hostd and desktop upgrades are all required; older endpoints fail closed.
 
 The [controller](crates/buzz-hostd/src/registration_refresh.rs) retains the existing
 NIP-42-authenticated WebSocket and a generation-scoped live REQ. It subscribes
@@ -1063,6 +1079,7 @@ six failed attempts; a full healthy backstop interval resets that budget.
 The relay still reauthorizes its live view on same-community registry mutations
 and its own periodic timer; per-generation high-water deduplication suppresses
 unrelated notifications, but does not remove those server-side database wakes.
-No relay protocol, schema, generic transport or agent execution behavior changes.
+The model operations extend this private mailbox only; no schema, generic RPC,
+HTTP service or identity migration is introduced.
 See the [refresh review brief](docs/briefs/3750-registration-refresh.md) for measured
 bounds, verification receipts and remaining native Windows observations.

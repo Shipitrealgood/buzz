@@ -89,7 +89,7 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
             serde_json::from_value::<CreateManagedAgentRequest>(json!({
             "name":"Isolated hosted agent", "personaId":"one-definition", "systemPrompt":"A safe fixture prompt", "agentCommand":"grok", "agentArgs":["agent","--always-approve","stdio"],
             "backend":{"type":"registered_host","scope":scope}, "relayUrl":relay,
-            "spawnAfterCreate":false, "startOnAppLaunch":false
+            "spawnAfterCreate":false, "startOnAppLaunch":false, "model":"initial-host-model"
         })).unwrap()
         };
         assert!(hosted_setup_token().is_err());
@@ -339,6 +339,12 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
         else {
             panic!("fixture deployment")
         };
+        assert_eq!(
+            config.model,
+            d::ModelSelection::Selected {
+                id: "initial-host-model".into()
+            }
+        );
         config.model = d::ModelSelection::Selected {
             id: "opaque/model:fixture".into(),
         };

@@ -4630,6 +4630,7 @@ mod postgres_tests {
             generation: "aa".repeat(32),
         };
         let status = buzz_core::host_deployment::Status {
+            inventory: None,
             scope,
             availability: buzz_core::host_deployment::Availability::Current,
             capability: buzz_core::host_deployment::Capability::Unsupported {},

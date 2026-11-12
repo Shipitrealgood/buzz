@@ -135,7 +135,10 @@ impl Db {
         require(!incompatible)?;
         if v2 {
             let operation = p.request.ok_or_else(denied)?;
-            let signer = if matches!(p.op.as_str(), "pair-claim" | "status-query" | "unpair") {
+            let signer = if matches!(
+                p.op.as_str(),
+                "pair-claim" | "status-query" | "models-query" | "unpair"
+            ) {
                 &p.owner
             } else {
                 &p.host
@@ -144,6 +147,13 @@ impl Db {
                 "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND request_id=$3 AND event_json::jsonb->>'pubkey'=encode($4,'hex') AND event_id<>$5)"
             ).bind(t).bind(&p.generation[..]).bind(&operation[..]).bind(&signer[..]).bind(&p.id[..]).fetch_one(tx.conn()).await?;
             require(!conflict)?;
+        }
+        if v2 && matches!(p.op.as_str(), "models-query" | "models") {
+            require(
+                binding
+                    .as_ref()
+                    .is_some_and(|b| b.get::<&str, _>("state") == "active"),
+            )?;
         }
         if let Some(old) = sqlx::query(
             r#"SELECT route_json, event_json FROM paired_host_events
@@ -286,7 +296,7 @@ impl Db {
                         .bind(t).bind(&p.generation[..]).bind(seq).execute(tx.conn()).await?;
                 }
             }
-            "status-query" | "status" if v2 => {
+            "status-query" | "status" | "models-query" | "models" if v2 => {
                 phases::admit_transient(&mut tx, p).await?;
                 let b = binding.ok_or_else(denied)?;
                 require(
@@ -295,12 +305,12 @@ impl Db {
                         && p.expiry - p.created <= 60,
                 )?;
                 let parent = p.prev.ok_or_else(denied)?;
-                if p.op == "status-query" {
+                if matches!(p.op.as_str(), "status-query" | "models-query") {
                     require(parent.as_slice() == b.get::<Vec<u8>, _>("ack_id"))?;
                 } else {
                     let matches: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND event_id=$5 AND operation='status-query' AND expires_at>=$6)"
-                    ).bind(t).bind(&p.generation[..]).bind(&p.owner[..]).bind(&p.host[..]).bind(&parent[..]).bind(p.expiry).fetch_one(tx.conn()).await?;
+                        "SELECT EXISTS(SELECT 1 FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND event_id=$5 AND operation=$7 AND expires_at>=$6)"
+                    ).bind(t).bind(&p.generation[..]).bind(&p.owner[..]).bind(&p.host[..]).bind(&parent[..]).bind(p.expiry).bind(if p.op == "models" { "models-query" } else { "status-query" }).fetch_one(tx.conn()).await?;
                     require(matches)?;
                 }
                 insert(&mut tx, p, None).await?;

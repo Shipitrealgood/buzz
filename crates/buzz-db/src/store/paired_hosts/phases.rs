@@ -180,7 +180,7 @@ async fn prune(tx: &mut AdmittedTx, p: &Packet) -> Result<()> {
            WHERE e.community_id = $1 AND e.generation = $2
            AND e.owner_key = $3 AND e.host_key = $4 AND e.received_at < now()-
            CASE WHEN (e.event_json::jsonb->>'kind')::int=43103 THEN interval '5 minutes' ELSE interval '7 days' END
-           AND e.operation IN ('inventory-query', 'inventory', 'status-query', 'status', 'challenge', 'key-offer')
+           AND e.operation IN ('inventory-query', 'inventory', 'status-query', 'status', 'models-query', 'models', 'challenge', 'key-offer')
            AND NOT EXISTS (SELECT 1 FROM paired_host_requests r
            WHERE r.community_id = e.community_id AND r.generation = e.generation
            AND e.event_id IN(r.generation_challenge_id, r.offer_id))

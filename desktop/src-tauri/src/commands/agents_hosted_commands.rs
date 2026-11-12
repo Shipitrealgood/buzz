@@ -156,6 +156,40 @@ pub async fn hosted_catalog(
     catalog(&create)
 }
 
+/// Read independent host models before any identity, profile or placement write.
+#[tauri::command]
+pub async fn hosted_models(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    scope: Scope,
+    runtime: String,
+    catalog_revision: String,
+) -> Result<buzz_core_pkg::host_registry::HostModels, String> {
+    let (create, _) = open(&app, &state, scope.clone(), String::new(), runtime.clone()).await?;
+    create
+        .status
+        .permits(
+            &scope,
+            &catalog_revision,
+            &runtime,
+            nostr::Timestamp::now().as_secs(),
+        )
+        .map_err(|_| "Host runtime changed or unavailable".to_string())?;
+    let signer = || create.session.keys();
+    let mut registry =
+        buzz_paired_owner::registry::Registry::connect_guarded(&scope.community, &signer)
+            .await
+            .map_err(|_| "Host discovery unavailable".to_string())?;
+    let result = registry
+        .models(&signer, &scope, &runtime, &catalog_revision)
+        .await;
+    let closed = registry.disconnect().await;
+    create.session.keys().map_err(|e| e.to_string())?;
+    let result = result.map_err(|_| "Host models unavailable or timed out".to_string())?;
+    closed.map_err(|_| "Host discovery connection failed".to_string())?;
+    Ok(result)
+}
+
 pub(super) fn catalog(create: &Create<'_>) -> Result<HostedCatalog, String> {
     let runtimes = match &create.status.capability {
         d::Capability::Supported {

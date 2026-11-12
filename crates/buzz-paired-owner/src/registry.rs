@@ -854,6 +854,117 @@ impl Registry {
         }
         Ok((scope, current.state != "dead"))
     }
+    /// Query one installed runtime without creating an agent or durable create intent.
+    pub async fn models<F>(
+        &mut self,
+        signer: &F,
+        scope: &Scope,
+        runtime: &str,
+        revision: &str,
+    ) -> Result<wire::HostModels>
+    where
+        F: Fn() -> Result<Keys>,
+    {
+        session(scope, &self.community, &signer()?)?;
+        self.subscribe(&signer()?).await?;
+        let page = self
+            .page(&signer()?, query("binding", Some(&scope.generation), None)?)
+            .await?;
+        let binding: RegistryBinding = serde_json::from_value(page.data)?;
+        ensure!(
+            binding.state == "active"
+                && binding.owner == scope.owner.to_hex()
+                && binding.host == scope.host.to_hex()
+                && binding.generation == scope.generation,
+            "host unavailable"
+        );
+        let ack = self
+            .evidence(&signer()?, &scope.generation, &binding.ack_id)
+            .await?;
+        let (_, Body::PairAck { claim_id }) =
+            wire::open(&signer()?, scope, &ack, ack.created_at.as_secs())?
+        else {
+            bail!("invalid enrollment")
+        };
+        ensure!(
+            ack.pubkey == scope.host && claim_id == binding.claim_id,
+            "invalid enrollment"
+        );
+        let request = wire::ModelsQuery {
+            ack_id: binding.ack_id,
+            nonce: random()?,
+            runtime_id: runtime.into(),
+            catalog_revision: revision.into(),
+        };
+        let issued = now()?;
+        let event = wire::seal(
+            &signer()?,
+            scope,
+            Body::ModelsQuery {
+                request: request.clone(),
+            },
+            random()?,
+            Some(request.ack_id.clone()),
+            issued,
+            issued + 60,
+        )?;
+        let parent = event.id.to_hex();
+        self.publish(&signer()?, event).await?;
+        tokio::time::timeout(
+            Duration::from_secs((issued + 60).saturating_sub(now()?)),
+            async {
+                loop {
+                    let mut q = query("messages", Some(&scope.generation), None)?;
+                    let mut complete = false;
+                    for _ in 0..22 {
+                        let page = self.page(&signer()?, q.clone()).await?;
+                        let wall = now()?;
+                        for entry in page.data["events"].as_array().context("missing messages")? {
+                            if entry["op"] != "models"
+                                || entry["expires_at"].as_u64().is_none_or(|t| t <= wall)
+                            {
+                                continue;
+                            }
+                            let e = self
+                                .evidence(
+                                    &signer()?,
+                                    &scope.generation,
+                                    entry["id"].as_str().context("missing event ID")?,
+                                )
+                                .await?;
+                            let (h, body) = wire::open(&signer()?, scope, &e, now()?)?;
+                            if h.parent.as_deref() != Some(&parent) {
+                                continue;
+                            }
+                            let Body::Models { result } = body else {
+                                bail!("invalid models response")
+                            };
+                            ensure!(
+                                e.pubkey == scope.host
+                                    && result.request == request
+                                    && h.expires_at == issued + 60
+                                    && result.observed_at.saturating_add(30) >= issued,
+                                "models response mismatch"
+                            );
+                            session(scope, &self.community, &signer()?)?;
+                            return Ok(result);
+                        }
+                        if page.complete {
+                            complete = true;
+                            break;
+                        }
+                        q.cursor = page.next_cursor;
+                    }
+                    ensure!(complete, "models mailbox page bound exceeded");
+                    ensure!(now()? < issued + 60, "host models timed out");
+                    self.wait_for_refresh(&signer()?, Duration::from_secs(5))
+                        .await?;
+                }
+            },
+        )
+        .await
+        .context("host models timed out")?
+    }
     /// Fetch one exact retained event; knowing its ID never supplies authorization.
     pub async fn evidence(&mut self, keys: &Keys, g: &str, id: &str) -> Result<Event> {
         let reply = self
@@ -923,5 +1034,169 @@ mod registration_adapter_tests {
         let other = Keys::generate();
         assert!(device.registry_hosts(origin, &other).unwrap().is_empty());
         assert!(device.view(origin, &other, &scope).is_err());
+    }
+    #[tokio::test]
+    async fn models_wire_adapter_correlates_host_runtime_revision_nonce_and_parent() {
+        use futures_util::{SinkExt, StreamExt};
+        for fault in [
+            "ok",
+            "runtime",
+            "revision",
+            "nonce",
+            "parent",
+            "host",
+            "generation",
+        ] {
+            let owner = Keys::generate();
+            let host = Keys::generate();
+            let relay = Keys::generate();
+            let scope = Scope {
+                community: "https://models.test".into(),
+                owner: owner.public_key(),
+                host: host.public_key(),
+                generation: "aa".repeat(32),
+            };
+            let issued = now().unwrap();
+            let claim = "bb".repeat(32);
+            let ack = wire::seal(
+                &host,
+                &scope,
+                Body::PairAck {
+                    claim_id: claim.clone(),
+                },
+                "cc".repeat(32),
+                Some(claim.clone()),
+                issued,
+                issued + 600,
+            )
+            .unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let relay_key = relay.public_key();
+            let served_scope = scope.clone();
+            let peer = tokio::spawn(async move {
+                let (tcp, _) = listener.accept().await.unwrap();
+                let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+                let mut response: Option<Event> = None;
+                while let Some(Ok(frame)) = ws.next().await {
+                    if !frame.is_text() {
+                        continue;
+                    }
+                    let Ok(text) = frame.to_text() else { continue };
+                    let message: Value = serde_json::from_str(text).unwrap();
+                    if message[0] == "EVENT" {
+                        let e: Event = serde_json::from_value(message[1].clone()).unwrap();
+                        let (request_header, Body::ModelsQuery { mut request }) =
+                            wire::open(&host, &served_scope, &e, issued).unwrap()
+                        else {
+                            panic!("request")
+                        };
+                        match fault {
+                            "runtime" => request.runtime_id = "other/harness".into(),
+                            "revision" => request.catalog_revision = "ee".repeat(32),
+                            "nonce" => request.nonce = "ee".repeat(32),
+                            _ => {}
+                        }
+                        let mut reply_scope = served_scope.clone();
+                        if fault == "generation" {
+                            reply_scope.generation = "ff".repeat(32);
+                        }
+                        let other = Keys::generate();
+                        if fault == "host" {
+                            reply_scope.host = other.public_key();
+                        }
+                        let result = wire::HostModels {
+                            request,
+                            observed_at: issued,
+                            models: buzz_core::host_deployment::observation::Models::Empty,
+                            readiness: buzz_core::harness::Readiness::LoggedIn,
+                            availability: buzz_core::harness::AcpAvailabilityStatus::Available,
+                        };
+                        response = Some(
+                            wire::seal(
+                                if fault == "host" { &other } else { &host },
+                                &reply_scope,
+                                Body::Models { result },
+                                "dd".repeat(32),
+                                Some(if fault == "parent" {
+                                    "ff".repeat(32)
+                                } else {
+                                    e.id.to_hex()
+                                }),
+                                issued,
+                                request_header.expires_at,
+                            )
+                            .unwrap(),
+                        );
+                        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                            json!(["OK", e.id, true, ""]).to_string().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    } else if message[0] == "REQ" {
+                        let q: Query =
+                            serde_json::from_value(message[2]["host_registry"].clone()).unwrap();
+                        let data = match q.view.as_str() {
+                            "live" => json!({}),
+                            "binding" => {
+                                json!({"generation":served_scope.generation,"owner":served_scope.owner,"host":served_scope.host,"state":"active","claim_id":claim,"ack_id":ack.id,"tombstone_id":null,"latest_status_id":null})
+                            }
+                            "evidence" => {
+                                json!({"event":if q.event_id.as_deref()==Some(&ack.id.to_hex()) {&ack} else {response.as_ref().unwrap()}})
+                            }
+                            "messages" => {
+                                json!({"events":[{"op":"models","id":response.as_ref().unwrap().id,"expires_at":issued+60}]})
+                            }
+                            _ => panic!("unexpected view"),
+                        };
+                        let page = wire::Reply {
+                            v: 2,
+                            community: served_scope.community.clone(),
+                            recipient: served_scope.owner.to_hex(),
+                            op: "registry-page".into(),
+                            query: q,
+                            high_water: "00".repeat(32),
+                            data,
+                            next_cursor: None,
+                            complete: true,
+                        };
+                        let event = wire::reply(&relay, served_scope.owner, page, issued).unwrap();
+                        for frame in [
+                            json!(["EVENT", message[1], event]),
+                            json!(["EOSE", message[1]]),
+                        ] {
+                            ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                                frame.to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        }
+                    }
+                }
+            });
+            let ws = NostrWsConnection::connect(&format!("ws://{address}"))
+                .await
+                .unwrap();
+            let mut registry =
+                Registry::from_authenticated(&scope.community, owner.public_key(), relay_key, ws)
+                    .unwrap();
+            let result = tokio::time::timeout(
+                Duration::from_secs(2),
+                registry.models(
+                    &|| Ok(owner.clone()),
+                    &scope,
+                    "main/claude",
+                    &"11".repeat(32),
+                ),
+            )
+            .await;
+            if fault == "ok" {
+                assert!(matches!(&result, Ok(Ok(_))), "{fault}: {result:?}");
+            } else {
+                assert!(!matches!(result, Ok(Ok(_))), "{fault}");
+            }
+            registry.disconnect().await.unwrap();
+            peer.await.unwrap();
+        }
     }
 }

@@ -50,8 +50,44 @@ pub fn object<T: DeserializeOwned>(raw: &[u8], limit: usize) -> Result<T, Error>
     serde_json::from_slice(raw).map_err(|_| Error::Message)
 }
 
-/// Operation-specific encrypted data. Every variant has a closed schema.
+/// Exact installed runtime query; no agent identity or caller-controlled execution data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelsQuery {
+    /// Accepted enrollment acknowledgment.
+    pub ack_id: String,
+    /// Fresh request challenge.
+    pub nonce: String,
+    /// Exact approved installed runtime.
+    pub runtime_id: String,
+    /// Current installed catalog revision.
+    pub catalog_revision: String,
+}
+impl ModelsQuery {
+    fn valid(&self) -> bool {
+        identifier(&self.ack_id)
+            && identifier(&self.nonce)
+            && crate::paired_message::runtime_id(&self.runtime_id)
+            && identifier(&self.catalog_revision)
+    }
+}
+/// Independent, bounded host discovery evidence without an agent envelope.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostModels {
+    /// Exact request context.
+    pub request: ModelsQuery,
+    /// Host observation time.
+    pub observed_at: u64,
+    /// Shared main model projection.
+    pub models: crate::host_deployment::observation::Models,
+    /// Native account readiness, independent of model enumeration.
+    pub readiness: crate::harness::Readiness,
+    /// Installed runtime classification.
+    pub availability: crate::harness::AcpAvailabilityStatus,
+}
+/// Operation-specific encrypted data. Every variant has a closed schema.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Body {
     /// Console proof is visible only to the host.
@@ -84,6 +120,16 @@ pub enum Body {
         /// Short private display label.
         label: String,
     },
+    /// On-demand discovery before agent creation.
+    ModelsQuery {
+        /// Exact selected runtime and enrollment.
+        request: ModelsQuery,
+    },
+    /// Correlated host response, never execution authority.
+    Models {
+        /// Sanitized discovery evidence.
+        result: HostModels,
+    },
     /// Owner's restrictive intent.
     Unpair {
         /// Accepted enrollment acknowledgment.
@@ -103,6 +149,8 @@ impl Body {
             Self::PairAck { .. } => "pair-ack",
             Self::StatusQuery { .. } => "status-query",
             Self::Status { .. } => "status",
+            Self::ModelsQuery { .. } => "models-query",
+            Self::Models { .. } => "models",
             Self::Unpair { .. } => "unpair",
             Self::Unpaired { .. } => "unpaired",
         }
@@ -124,6 +172,16 @@ impl Body {
                     && *sequence > 0
                     && matches!(state.as_str(), "active" | "revoked")
                     && crate::paired_message::display_name(label)
+            }
+            Self::ModelsQuery { request } => request.valid(),
+            Self::Models { result } => {
+                result.request.valid()
+                    && match &result.models {
+                        crate::host_deployment::observation::Models::Available { catalog } => {
+                            crate::host_deployment::observation::validate_models(catalog).is_ok()
+                        }
+                        _ => true,
+                    }
             }
             Self::Unpair { ack_id } | Self::Unpaired { ack_id } => identifier(ack_id),
         }
@@ -166,8 +224,8 @@ impl Header {
     /// Author role for an operation; unknown operations are rejected.
     pub fn owner_sends(&self) -> Result<bool, Error> {
         match self.op.as_str() {
-            "pair-claim" | "status-query" | "unpair" => Ok(true),
-            "pair-ack" | "status" | "unpaired" => Ok(false),
+            "pair-claim" | "status-query" | "models-query" | "unpair" => Ok(true),
+            "pair-ack" | "status" | "models" | "unpaired" => Ok(false),
             _ => Err(Error::Message),
         }
     }
@@ -396,6 +454,15 @@ pub fn open(keys: &Keys, scope: &Scope, e: &Event, now: u64) -> Result<(Header, 
         Body::PairAck { claim_id } if h.parent.as_ref() != Some(claim_id) => {
             return Err(Error::Message)
         }
+        Body::ModelsQuery { request } if h.parent.as_ref() != Some(&request.ack_id) => {
+            return Err(Error::Message)
+        }
+        Body::Models { result }
+            if result.observed_at > now.saturating_add(30)
+                || result.observed_at >= h.expires_at =>
+        {
+            return Err(Error::Message)
+        }
         Body::StatusQuery { ack_id, .. } | Body::Unpair { ack_id } | Body::Unpaired { ack_id }
             if h.parent.as_ref() != Some(ack_id) =>
         {
@@ -596,6 +663,87 @@ mod tests {
             host: h.public_key(),
         };
         (o, h, s)
+    }
+    #[test]
+    fn model_query_is_agent_free_closed_scoped_and_correlated() {
+        let (o, h, s) = scope();
+        let request = ModelsQuery {
+            ack_id: "11".repeat(32),
+            nonce: "22".repeat(32),
+            runtime_id: "main/claude".into(),
+            catalog_revision: "33".repeat(32),
+        };
+        let body = Body::ModelsQuery {
+            request: request.clone(),
+        };
+        let query = seal(
+            &o,
+            &s,
+            body.clone(),
+            "44".repeat(32),
+            Some(request.ack_id.clone()),
+            100,
+            160,
+        )
+        .unwrap();
+        assert_eq!(open(&h, &s, &query, 101).unwrap().1, body);
+        let wrong = seal(
+            &o,
+            &s,
+            body.clone(),
+            "45".repeat(32),
+            Some("ff".repeat(32)),
+            100,
+            160,
+        )
+        .unwrap();
+        assert!(open(&h, &s, &wrong, 101).is_err());
+        for field in ["owner", "host", "community", "generation"] {
+            let mut foreign = s.clone();
+            match field {
+                "owner" => foreign.owner = Keys::generate().public_key(),
+                "host" => foreign.host = Keys::generate().public_key(),
+                "community" => foreign.community = "https://other.test".into(),
+                _ => foreign.generation = "ff".repeat(32),
+            }
+            assert!(open(&h, &foreign, &query, 101).is_err(), "{field}");
+        }
+        let mut raw = serde_json::to_value(&body).unwrap();
+        raw["request"]["command"] = serde_json::json!("arbitrary");
+        assert!(serde_json::from_value::<Body>(raw).is_err());
+        let result = HostModels {
+            request,
+            observed_at: 102,
+            models: crate::host_deployment::observation::Models::Empty,
+            readiness: crate::harness::Readiness::LoggedIn,
+            availability: crate::harness::AcpAvailabilityStatus::Available,
+        };
+        let reply = seal(
+            &h,
+            &s,
+            Body::Models {
+                result: result.clone(),
+            },
+            "55".repeat(32),
+            Some(query.id.to_hex()),
+            102,
+            160,
+        )
+        .unwrap();
+        let (header, decoded) = open(&o, &s, &reply, 103).unwrap();
+        assert_eq!(header.parent, Some(query.id.to_hex()));
+        assert_eq!(decoded, Body::Models { result });
+        assert!(open(&o, &s, &reply, 160).is_err());
+        assert!(seal(
+            &o,
+            &s,
+            decoded,
+            "66".repeat(32),
+            Some(query.id.to_hex()),
+            102,
+            160
+        )
+        .is_err());
     }
     #[test]
     fn strict_signed_v2_roundtrip_and_v1_separation() {

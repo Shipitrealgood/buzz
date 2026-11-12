@@ -1,5 +1,6 @@
 import {
   LOCAL_CONFIGURATION,
+  hostedModels,
   type AgentConfigurationSource,
 } from "@/shared/api/hostedAgents";
 import * as React from "react";
@@ -248,8 +249,16 @@ export function usePersonaModelDiscovery({
   const selectedRuntimeLabel = selectedRuntime?.label;
   const selectedRuntimeDefaultArgs = selectedRuntime?.defaultArgs;
   const selectedRuntimeDefinitionEnv = selectedRuntime?.definitionEnv;
+  const hostedDiscoveryKey =
+    source.type === "hosted" && source.catalogRevision && selectedRuntime
+      ? JSON.stringify({
+          scope: source.scope,
+          runtime: selectedRuntime.id,
+          catalogRevision: source.catalogRevision,
+        })
+      : null;
   const canDiscoverModelOptions =
-    source.type === "local" &&
+    (source.type === "local" || hostedDiscoveryKey !== null) &&
     open &&
     modelFieldVisible &&
     selectedRuntime?.availability === "available" &&
@@ -268,6 +277,7 @@ export function usePersonaModelDiscovery({
     }
 
     return JSON.stringify({
+      host: hostedDiscoveryKey,
       agentCommand: discoveryAgentCommand,
       agentArgs: modelDiscoveryArgsKey,
       provider: trimmedProvider,
@@ -275,6 +285,7 @@ export function usePersonaModelDiscovery({
     });
   }, [
     canDiscoverModelOptions,
+    hostedDiscoveryKey,
     discoveryAgentCommand,
     modelDiscoveryArgsKey,
     modelDiscoveryEnvKey,
@@ -330,13 +341,17 @@ export function usePersonaModelDiscovery({
     setModelDiscoveryStatusKey(activeModelDiscoveryKey);
     setModelDiscoveryLoading(true);
     function runModelDiscovery() {
-      void discoverAgentModels({
-        agentCommand: activeAgentCommand,
-        agentArgs: selectedRuntimeDefaultArgs ?? [],
-        provider: trimmedProvider || undefined,
-        envVars,
-        definitionEnv: selectedRuntimeDefinitionEnv ?? {},
-      })
+      void (
+        hostedDiscoveryKey
+          ? hostedModels(JSON.parse(hostedDiscoveryKey))
+          : discoverAgentModels({
+              agentCommand: activeAgentCommand,
+              agentArgs: selectedRuntimeDefaultArgs ?? [],
+              provider: trimmedProvider || undefined,
+              envVars,
+              definitionEnv: selectedRuntimeDefinitionEnv ?? {},
+            })
+      )
         .then((response) => {
           if (modelDiscoveryRequestRef.current !== requestId) {
             return;
@@ -365,11 +380,17 @@ export function usePersonaModelDiscovery({
           setModelDiscoveryData(null);
           setModelDiscoveryDataKey(null);
           setModelDiscoveryStatus(
-            formatModelDiscoveryErrorStatus(
-              error,
-              trimmedProvider,
-              selectedRuntimeLabel,
-            ),
+            hostedDiscoveryKey
+              ? {
+                  tone: "warning",
+                  message:
+                    "Host models unavailable. Check the host harness login and reopen this screen to retry.",
+                }
+              : formatModelDiscoveryErrorStatus(
+                  error,
+                  trimmedProvider,
+                  selectedRuntimeLabel,
+                ),
           );
           setModelDiscoveryStatusKey(activeModelDiscoveryKey);
         })
@@ -382,7 +403,10 @@ export function usePersonaModelDiscovery({
 
     if (!shouldDebounceModelDiscovery) {
       runModelDiscovery();
-      return;
+      return () => {
+        if (modelDiscoveryRequestRef.current === requestId)
+          modelDiscoveryRequestRef.current += 1;
+      };
     }
 
     const timeout = window.setTimeout(
@@ -398,6 +422,7 @@ export function usePersonaModelDiscovery({
       }
     };
   }, [
+    hostedDiscoveryKey,
     discoveryAgentCommand,
     envVars,
     modelDiscoveryKey,
@@ -440,19 +465,11 @@ export function usePersonaModelDiscovery({
     modelDiscoveryPending,
   });
 
-  if (source.type === "hosted")
-    return {
-      discoveredModelOptions: [],
-      modelDiscoveryLoading: false,
-      modelDiscoveryStatus: {
-        tone: "muted" as const,
-        message:
-          "Models remain pending until this agent is prepared and signs in on its host.",
-      },
-      modelDiscoverySuccessfulEmpty: false,
-      agentDefaultModel: null,
-    };
   return {
+    availableModelIds: activeModelDiscoveryData?.models.map((m) => m.id) ?? [],
+    explicitDefaultModel:
+      activeModelDiscoveryData?.models.find(isHarnessDefaultModelEntry)?.id ??
+      null,
     discoveredModelOptions,
     modelDiscoveryLoading: modelDiscoveryPending,
     modelDiscoveryStatus:

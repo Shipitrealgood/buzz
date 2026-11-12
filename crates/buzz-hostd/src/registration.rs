@@ -234,6 +234,108 @@ impl Host {
         tx.commit()?;
         Ok(())
     }
+    /// One authorized, selected-runtime probe; journal the exact reply before sending.
+    pub async fn receive_models(
+        &mut self,
+        g: &str,
+        e: &Event,
+        catalog: &crate::Catalog,
+        revision: &str,
+        clock: &Clock,
+    ) -> Result<()> {
+        use crate::runtime_context::{discover_models, Context, NetworkPolicy};
+        use buzz_core::host_deployment::observation::{Models, UnavailableReason};
+        let keys = self.store.keys()?;
+        let (h, request) = {
+            let tx = self.store.tx()?;
+            let (scope, ack, state) = store::binding(&tx, g, keys.public_key())?;
+            let (h, Body::ModelsQuery { request }) = wire::open(&keys, &scope, e, clock.wall)?
+            else {
+                anyhow::bail!("invalid models query")
+            };
+            ensure!(
+                state == "active" && e.pubkey == scope.owner && request.ack_id == ack,
+                "inactive or invalid models query"
+            );
+            store::check_clock(&tx, clock)?;
+            if tx.execute(
+                "UPDATE sent SET pending=1 WHERE g=? AND parent=? AND op='models'",
+                params![g, e.id.to_hex()],
+            )? != 0
+            {
+                tx.commit()?;
+                return Ok(());
+            }
+            tx.commit()?;
+            (h, request)
+        };
+        ensure!(
+            catalog.community.as_deref() == Some(&h.community)
+                && request.catalog_revision == revision
+                && catalog.current(revision)?,
+            "catalog changed"
+        );
+        let local = catalog
+            .local
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("trusted context required"))?;
+        let rt = catalog
+            .runtimes
+            .get(&request.runtime_id)
+            .ok_or_else(|| anyhow::anyhow!("runtime unavailable"))?;
+        let context = Context {
+            account: Some(local.clone()),
+            home: local.home.clone(),
+            runtime: local.home.clone(),
+            notify: Default::default(),
+        };
+        // Leave room for sealing/publication; no SQLite transaction spans the provider process.
+        let deadline = h.expires_at.saturating_sub(2);
+        let (models, readiness, availability) = tokio::time::timeout(
+            std::time::Duration::from_secs(deadline.saturating_sub(clock.refresh()?.wall)),
+            discover_models(&context, rt, deadline, NetworkPolicy::TrustedAccount),
+        )
+        .await??;
+        let current = clock.refresh()?;
+        let mut result = wire::HostModels {
+            request,
+            observed_at: current.wall,
+            models,
+            readiness: readiness.ok_or_else(|| anyhow::anyhow!("readiness unavailable"))?,
+            availability: availability
+                .ok_or_else(|| anyhow::anyhow!("availability unavailable"))?,
+        };
+        if serde_json::to_vec(&result)?.len() > 6000 {
+            result.models = Models::Unavailable {
+                reason: UnavailableReason::Oversized,
+            };
+        }
+        let tx = self.store.tx()?;
+        let (scope, ack, state) = store::binding(&tx, g, keys.public_key())?;
+        ensure!(
+            state == "active" && ack == result.request.ack_id && current.wall < h.expires_at,
+            "discovery expired or revoked"
+        );
+        let response = wire::seal(
+            &keys,
+            &scope,
+            Body::Models { result },
+            store::random()?,
+            Some(e.id.to_hex()),
+            current.wall,
+            h.expires_at,
+        )?;
+        store::save(
+            &tx,
+            g,
+            "models",
+            &e.id.to_hex(),
+            &response.id.to_hex(),
+            &packet(&response)?,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     /// Persist local revocation before any network delivery; no service changes.
     pub fn revoke(&mut self, g: &str, clock: &Clock) -> Result<()> {
         let keys = self.store.keys()?;
@@ -250,8 +352,8 @@ impl Host {
     fn pending_generation(&self, generation: Option<&str>) -> Result<Vec<Event>> {
         // Readiness replies confer no authority after expiry. Expire their
         // retry obligation explicitly; immutable ack/tombstone evidence stays.
-        self.store.0.execute("UPDATE sent SET pending=0 WHERE op='status' AND pending=1 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<=unixepoch()",[])?;
-        self.store.0.execute("DELETE FROM sent WHERE op='status' AND pending=0 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<unixepoch()-300",[])?;
+        self.store.0.execute("UPDATE sent SET pending=0 WHERE op IN ('status','models') AND pending=1 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<=unixepoch()",[])?;
+        self.store.0.execute("DELETE FROM sent WHERE op IN ('status','models') AND pending=0 AND json_extract(packet,'$.event.kind')=43103 AND json_extract(packet,'$.route.expires_at')<unixepoch()-300",[])?;
 
         let mut q=self.store.0.prepare("SELECT packet FROM sent WHERE pending=1 AND json_extract(packet,'$.event.kind')=43103 AND (?1 IS NULL OR g=?1) ORDER BY CASE op WHEN 'unpaired' THEN 0 ELSE 1 END,rowid LIMIT 8")?;
         let rows = q.query_map([generation], |r| r.get::<_, String>(0))?;
@@ -327,6 +429,19 @@ impl Host {
         label: &str,
         clock: &Clock,
     ) -> Result<()> {
+        self.reconcile_catalog(ws, relay, g, label, clock, None)
+            .await
+    }
+    /// Reconcile with optional operator-configured discovery, never a remote execution context.
+    pub async fn reconcile_catalog(
+        &mut self,
+        ws: &mut buzz_ws_client::NostrWsConnection,
+        relay: PublicKey,
+        g: &str,
+        label: &str,
+        clock: &Clock,
+        catalog: Option<(&crate::Catalog, &str)>,
+    ) -> Result<()> {
         let query = |view: &str, event_id: Option<String>| -> Result<wire::Query> {
             Ok(wire::Query {
                 v: 2,
@@ -391,10 +506,12 @@ impl Host {
                     .iter()
                     .take(100)
                 {
-                    if !matches!(reference["op"].as_str(), Some("status-query" | "unpair"))
-                        || reference["expires_at"]
-                            .as_u64()
-                            .is_none_or(|expiry| expiry <= current.wall)
+                    if !matches!(
+                        reference["op"].as_str(),
+                        Some("status-query" | "models-query" | "unpair")
+                    ) || reference["expires_at"]
+                        .as_u64()
+                        .is_none_or(|expiry| expiry <= current.wall)
                     {
                         continue;
                     }
@@ -410,7 +527,14 @@ impl Host {
                     )?;
                     // References only reduce needless crypto; exact evidence is
                     // independently verified before any durable local effect.
-                    self.receive(g, &e, label, &clock.refresh()?)?;
+                    if reference["op"] == "models-query" {
+                        if let Some((catalog, revision)) = catalog {
+                            self.receive_models(g, &e, catalog, revision, &clock.refresh()?)
+                                .await?;
+                        }
+                    } else {
+                        self.receive(g, &e, label, &clock.refresh()?)?;
+                    }
                 }
                 if messages.complete {
                     complete = true;
@@ -522,7 +646,7 @@ fn revoke(
         params![e.id.to_hex(), scope.generation],
     )?;
     tx.execute(
-        "UPDATE sent SET pending=0 WHERE g=? AND op IN ('status','pair-ack')",
+        "UPDATE sent SET pending=0 WHERE g=? AND op IN ('status','models','pair-ack')",
         [&scope.generation],
     )?;
     Ok(())

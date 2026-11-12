@@ -98,8 +98,14 @@ impl Create<'_> {
                 .map_err(|e| e.to_string())?,
                 channel_add_policy: "owner_only".into(),
             },
-            // New identity has no native authentication/model catalog yet.
-            model: d::ModelSelection::PendingLogin {},
+            // New creation carries the exact selected host model; final launch rechecks it.
+            model: d::ModelSelection::Selected {
+                id: record
+                    .model
+                    .clone()
+                    .filter(|m| !m.trim().is_empty())
+                    .ok_or("Select a host model before creating the agent")?,
+            },
             provider: None,
             system_prompt: serde_json::from_value(payload["system_prompt"].clone())
                 .map_err(|e| e.to_string())?,

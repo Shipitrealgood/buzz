@@ -56,12 +56,14 @@ async fn run_with_helper(
             let result = tokio::time::timeout(ATTEMPT, async {
                 let mut ws = settings.connect().await?;
                 host.authenticate(&mut ws, &g).await?;
-                host.reconcile(
+                let catalog = helper.as_ref().map(|h| h.catalog()).transpose()?;
+                host.reconcile_catalog(
                     &mut ws,
                     settings.relay,
                     &g,
                     &settings.label,
                     &RegistrationClock::read()?,
+                    catalog.as_ref().map(|(c, r)| (c, r.as_str())),
                 )
                 .await?;
                 deployment(&mut host, &mut ws, &g, &settings, dir).await?;
@@ -231,12 +233,17 @@ async fn connected(
         if refresh && now >= next_refresh {
             refresh = false;
             tokio::time::timeout(ATTEMPT, async {
-                host.reconcile(
+                let catalog = settings
+                    .deployment
+                    .then(|| buzz_hostd::deployment::Helper::installed(dir)?.catalog())
+                    .transpose()?;
+                host.reconcile_catalog(
                     ws,
                     settings.relay,
                     g,
                     &settings.label,
                     &RegistrationClock::read()?,
+                    catalog.as_ref().map(|(c, r)| (c, r.as_str())),
                 )
                 .await
             })

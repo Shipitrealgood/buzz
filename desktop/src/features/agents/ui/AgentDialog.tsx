@@ -298,7 +298,14 @@ function AgentCreateDialogRouter({
     <AgentRunLocationProvider runLocation={runLocationForRunOn(runDraft.runOn)}>
       <AgentDefinitionDialog
         configurationSource={
-          scope ? { type: "hosted", key: scopeKey } : undefined
+          scope
+            ? {
+                type: "hosted",
+                key: scopeKey,
+                scope,
+                catalogRevision: catalog?.status.capability.catalog_revision,
+              }
+            : undefined
         }
         createRunSection={(effortOptions) => (
           <>
@@ -319,7 +326,7 @@ function AgentCreateDialogRouter({
                       ? "Host metadata is expired or unavailable. Reselect the host to refresh."
                       : !hostRuntimes.length
                         ? "No supported installed harnesses on this host."
-                        : "Choose an installed host harness, then prepare this agent.")}
+                        : "Choose an installed host harness and model, then create this agent.")}
               </p>
             ) : null}
             {retained.map((item) => (
@@ -416,8 +423,9 @@ function AgentCreateDialogRouter({
             if (!current.current.alive || request !== generation.current)
               return;
             if (typeof submitted === "object") {
-              setSetup(submitted.hosted);
               onDirtyChange?.(false);
+              if (submitted.hosted.error) setSetup(submitted.hosted);
+              else onOpenChange(false);
             } else if (submitted) {
               onDirtyChange?.(false);
               onOpenChange(false);
@@ -445,9 +453,7 @@ function AgentCreateDialogRouter({
                 : "loading"
             : runtimeCatalogStatus
         }
-        submitLabel={
-          scope ? "Prepare agent" : (submitLabel ?? copy.submitLabel)
-        }
+        submitLabel={submitLabel ?? copy.submitLabel}
         title={copy.title}
       />
     </AgentRunLocationProvider>

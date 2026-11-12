@@ -15,9 +15,16 @@ const discovered = {
 };
 const calls = [];
 let discover = () => Promise.resolve(discovered);
+let hostDiscover = () =>
+  Promise.resolve({
+    availability: "available",
+    readiness: "logged-in",
+    models: { state: "available", catalog: discovered },
+  });
 const tauriMock = {
-  invoke(command) {
+  invoke(command, input) {
     calls.push(command);
+    if (command === "hosted_models") return hostDiscover(input);
     if (command === "discover_agent_models") return discover();
     return Promise.reject(new Error(`unmocked Tauri command: ${command}`));
   },
@@ -127,4 +134,92 @@ test("a missing Databricks host settles discovery instead of loading forever", a
 
   assert.equal(state.modelDiscoveryLoading, false);
   assert.match(state.modelDiscoveryStatus?.message ?? "", /DATABRICKS_HOST/);
+});
+
+test("host discovery shares picker/cache, scopes runtime and ignores late replies without creating agents", async () => {
+  mountRoot();
+  const pending = [];
+  const requests = [];
+  hostDiscover = (input) => {
+    requests.push(input);
+    return new Promise((resolve) => pending.push(resolve));
+  };
+  let result;
+  function HostedProbe({
+    host,
+    runtimeId = "main/claude",
+    revision = "revision-a",
+  }) {
+    result = usePersonaModelDiscovery({
+      source: {
+        type: "hosted",
+        key: host,
+        scope: {
+          community: "https://fixture.test",
+          owner: "owner",
+          host,
+          generation: "g",
+        },
+        catalogRevision: revision,
+      },
+      envVars,
+      isCustomProviderEditing: false,
+      modelFieldVisible: true,
+      open: true,
+      provider: "",
+      selectedRuntime: runtime(runtimeId),
+    });
+    return null;
+  }
+  const renderHost = (host, runtimeId, revision) =>
+    act(async () => {
+      root.render(
+        React.createElement(HostedProbe, { host, runtimeId, revision }),
+      );
+    });
+  const response = (id) => ({
+    availability: "available",
+    readiness: "logged-in",
+    models: {
+      state: "available",
+      catalog: { ...discovered, models: [{ id, name: id, description: null }] },
+    },
+  });
+  const start = calls.length;
+  await renderHost("one");
+  assert.equal(result.modelDiscoveryLoading, true);
+  await renderHost("two");
+  await act(async () => pending[0](response("obsolete")));
+  assert.deepEqual(result.availableModelIds, []);
+  await act(async () => pending[1](response("default")));
+  assert.deepEqual(result.availableModelIds, ["default"]);
+  assert.equal(result.explicitDefaultModel, "default");
+  assert.equal(result.discoveredModelOptions[0].id, "");
+  await renderHost("two");
+  assert.equal(requests.length, 2, "same scoped input reuses cache");
+  await renderHost("two", "other-installed-id");
+  assert.deepEqual(result.availableModelIds, []);
+  await act(async () => pending[2](response("explicit")));
+  assert.equal(result.explicitDefaultModel, null);
+  await renderHost("two", "other-installed-id", "revision-b");
+  assert.deepEqual(result.availableModelIds, []);
+  await act(async () =>
+    pending[3]({
+      availability: "available",
+      readiness: "logged-in",
+      models: { state: "unavailable", reason: "timeout" },
+    }),
+  );
+  assert.equal(result.modelDiscoveryLoading, false);
+  assert.equal(result.modelDiscoverySuccessfulEmpty, false);
+  assert.deepEqual(result.availableModelIds, []);
+  assert.match(result.modelDiscoveryStatus.message, /timeout|unavailable/i);
+  assert.deepEqual(
+    calls.slice(start),
+    Array(4).fill("hosted_models"),
+    "no local discovery, key, profile or create IPC",
+  );
+  assert.equal(requests[1].scope.host, "two");
+  assert.equal(requests[2].runtime, "other-installed-id");
+  assert.equal(requests[3].catalogRevision, "revision-b");
 });

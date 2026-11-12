@@ -326,7 +326,7 @@ async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
     if let Some(ceiling) = c.registry.generation() {
         if g != ceiling
             || h.host != who.to_hex()
-            || !matches!(h.op.as_str(), "pair-ack" | "status" | "unpaired")
+            || !matches!(h.op.as_str(), "pair-ack" | "status" | "models" | "unpaired")
         {
             return Err(());
         }

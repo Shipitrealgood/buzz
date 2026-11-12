@@ -369,15 +369,22 @@ supported, available, error-free directory. The separate registration challenge'
 for valid registrations. Label these current rows Registered, and retained rows
 from an unavailable directory as saved/unavailable. Submission additionally
 requires the native setup token and exact-scope current, supported, unexpired
-hosted catalog. Keep the existing catalog expiry timer and native prepare-time
+hosted catalog. Keep the existing catalog expiry timer and native Create-time
 revalidation; registration alone never grants deployment or online status.
 
 The real `AgentDialog` / `AgentDefinitionDialog` form selects an explicit
 configuration source. Hosted mode uses approved installed-ID → canonical Rust
 builtin/preset metadata; it never infers a harness from an installed-ID suffix.
 Two installed IDs may share a harness and remain separate picker choices.
-Local runtime-file, ACP-command, authentication and model discovery do not run
-for that source. Provider/static/custom model choices cannot grant hosted launch.
+Local runtime-file, ACP-command and authentication discovery do not run for that
+source. The shared model picker queries the selected host/runtime/catalog through
+native `hosted_models` before Create, with no agent identity or service effects.
+Cache and async results are scoped by owner/community/host/generation/runtime and
+catalog revision; host changes cannot adopt an earlier reply. There is no new
+model-list TTL. Only returned IDs are selectable; the blank default choice maps
+to an exact returned `default` ID when present. An unavailable or unanswered query
+never becomes an empty successful catalog. Provider/static/custom model choices
+cannot grant hosted launch.
 Name, prompt, access and authored configuration validation remain shared.
 Unsupported command/environment/provider overrides fail natively, never strip
 silently to claim preparation.
@@ -386,8 +393,11 @@ One native setup token belongs to one explicit draft. Both submit callers use a
 synchronous latch before avatar/definition effects and retain that definition
 for retries. A submitted retry keeps its exact installed ID and host scope;
 canonical harness equality cannot substitute a different visible choice.
-Preparation uses the main native identity, attestation, record and
-profile phases with the protected existing intent journal. Hosted IPC responses
+Create uses the main native identity, attestation, record and profile phases with
+the protected existing intent journal and `Selected` model. Successful new
+creation closes the form; no Prepare/Refresh/Launch discovery step intervenes.
+Legacy unfinished setups retain PendingLogin and Check/Retry/Refresh/Launch/Cleanup
+without identity migration. Hosted IPC responses
 contain no key, auth tag, ciphertext or arbitrary recovery snapshot. Closing a
 prepared form keeps its identity; reopening lists the latest exact scoped intent
 locally, and explicit Check status / Retry / Refresh models / Launch obtain current
@@ -398,7 +408,7 @@ instance editor). Linked-definition Edit keeps its existing meaning. No polling 
 Login outcome, model availability, deployment application and conversational
 presence are separate facts. Fresh current-revision model observations permit
 only exact returned IDs; expiry invalidates launch without a network request.
-Native login occurs in this new agent's host context. Channel attachment uses
+Native login remains in the trusted host account's normal HOME. Channel attachment uses
 captured relay/signer scope and `ensureRunning:false`. The placement summary's
 cloud + Runs on host key describes execution location; the existing “Not managed
 on this device” provenance predicate is unchanged.

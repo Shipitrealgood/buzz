@@ -787,6 +787,14 @@ async fn current_native_status_is_independent_of_history_models_and_entitlement(
 #[tokio::test]
 #[ignore = "requires built BUZZ_TEST_RUNTIME and BUZZ_TEST_ACP; synthetic executables only"]
 async fn actual_user_runtime_prepare_refresh_selected_conversation_and_cleanup() {
+    actual_user_runtime_journey(false).await;
+}
+#[tokio::test]
+#[ignore = "requires built BUZZ_TEST_RUNTIME and BUZZ_TEST_ACP; synthetic executables only"]
+async fn actual_host_first_models_then_selected_start_without_preparation_effects() {
+    actual_user_runtime_journey(true).await;
+}
+async fn actual_user_runtime_journey(host_first: bool) {
     use buzz_core::{
         harness::Readiness,
         host_deployment::{observation::Models, ModelSelection},
@@ -822,6 +830,7 @@ for line in sys.stdin:
             r#"#!/usr/bin/python3
 import os,sys,json,socket
 if sys.argv[1:]==['models','--json']:
+ open('discovery-invoked','a').write('.')
  os.execv({acp:?},[{acp:?},'models','--json'])
 assert sys.argv[1:]==[]
 assert os.getcwd()=={workspace:?}
@@ -862,6 +871,154 @@ s=socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM);s.connect(os.environ['NOTIFY_S
         .config
         .runtime_id = "main/claude".into();
     let cat = save_catalog(&service, &mut prepared, &cat);
+    if host_first {
+        use buzz_core::host_registry::{self as w, Body};
+        let mut host = crate::registration::Host::at(&service.staging, true).unwrap();
+        let owner = nostr::Keys::generate();
+        let clock = crate::registration::RegistrationClock::read().unwrap();
+        let invitation: serde_json::Value =
+            serde_json::from_str(&host.offer("https://fixture.test".into(), &clock).unwrap())
+                .unwrap();
+        let scope = buzz_core::paired_message::Scope {
+            community: "https://fixture.test".into(),
+            owner: owner.public_key(),
+            host: host.public_key().unwrap(),
+            generation: invitation["generation"].as_str().unwrap().into(),
+        };
+        let claim = w::seal(
+            &owner,
+            &scope,
+            Body::PairClaim {
+                proof: invitation["proof"].as_str().unwrap().into(),
+            },
+            "11".repeat(32),
+            None,
+            clock.wall,
+            clock.wall + 600,
+        )
+        .unwrap();
+        host.claim(&scope.generation, &claim, &clock).unwrap();
+        let ack = host.pending().unwrap().remove(0);
+        host.delivered(&ack.id.to_hex()).unwrap();
+        let request = w::ModelsQuery {
+            ack_id: ack.id.to_hex(),
+            nonce: "22".repeat(32),
+            runtime_id: "main/claude".into(),
+            catalog_revision: prepared.instance.revision.clone(),
+        };
+        let event = w::seal(
+            &owner,
+            &scope,
+            Body::ModelsQuery {
+                request: request.clone(),
+            },
+            "33".repeat(32),
+            Some(ack.id.to_hex()),
+            clock.wall,
+            clock.wall + 60,
+        )
+        .unwrap();
+        for field in ["runtime", "revision", "ack"] {
+            let mut wrong = request.clone();
+            match field {
+                "runtime" => wrong.runtime_id = "main/missing".into(),
+                "revision" => wrong.catalog_revision = "ff".repeat(32),
+                _ => wrong.ack_id = "ff".repeat(32),
+            }
+            let bad = w::seal(
+                &owner,
+                &scope,
+                Body::ModelsQuery { request: wrong },
+                "44".repeat(32),
+                Some(ack.id.to_hex()),
+                clock.wall,
+                clock.wall + 60,
+            )
+            .unwrap();
+            assert!(
+                host.receive_models(
+                    &scope.generation,
+                    &bad,
+                    &cat,
+                    &prepared.instance.revision,
+                    &clock
+                )
+                .await
+                .is_err(),
+                "{field}"
+            );
+        }
+        assert!(!workspace.join("discovery-invoked").exists());
+        host.receive_models(
+            &scope.generation,
+            &event,
+            &cat,
+            &prepared.instance.revision,
+            &clock,
+        )
+        .await
+        .unwrap();
+        let reply = host.pending().unwrap().remove(0);
+        let (_, Body::Models { result }) = w::open(&owner, &scope, &reply, clock.wall).unwrap()
+        else {
+            panic!("models")
+        };
+        assert_eq!(result.request, request);
+        assert!(
+            matches!(result.models,Models::Available { ref catalog } if catalog.models.iter().any(|m| m.id=="chosen"))
+        );
+        assert_eq!(result.readiness, Readiness::LoggedIn);
+        host.delivered(&reply.id.to_hex()).unwrap();
+        drop(host);
+        let mut host = crate::registration::Host::at(&service.staging, false).unwrap();
+        host.receive_models(
+            &scope.generation,
+            &event,
+            &cat,
+            &prepared.instance.revision,
+            &clock,
+        )
+        .await
+        .unwrap();
+        assert_eq!(host.pending().unwrap()[0].id, reply.id);
+        assert_eq!(
+            fs::read_to_string(workspace.join("discovery-invoked")).unwrap(),
+            ".",
+            "lost reply retry must not reexecute"
+        );
+        assert_eq!(calls(dir.path()), "");
+        assert_eq!(
+            fs::read_dir(service.root()).unwrap().count(),
+            0,
+            "no identity/service staging before Create"
+        );
+        assert!(!cat
+            .local
+            .as_ref()
+            .unwrap()
+            .home
+            .read_dir()
+            .unwrap()
+            .any(|e| e
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".buzz-action")));
+        host.revoke(&scope.generation, &clock).unwrap();
+        assert!(host
+            .receive_models(
+                &scope.generation,
+                &event,
+                &cat,
+                &prepared.instance.revision,
+                &clock
+            )
+            .await
+            .is_err());
+        prepared.instance.deployment.as_mut().unwrap().config.model = ModelSelection::Selected {
+            id: "chosen".into(),
+        };
+    }
     let id = prepared.instance.unit_id.clone();
     let id = id.as_str();
     service.stage(&prepared.instance).unwrap();
@@ -882,32 +1039,34 @@ s=socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM);s.connect(os.environ['NOTIFY_S
         .kill_on_drop(true);
         c
     };
-    let action: Execution =
-        serde_json::from_str(&service.action("models", id).await.unwrap()).unwrap();
-    let status = run().status().await.unwrap();
-    assert!(status.success());
-    fs::remove_file(dir.path().join("active")).unwrap();
-    let result: ActionResult = serde_json::from_str(
-        &service
-            .request("observe", id, Some(&action.nonce))
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(result.readiness, Some(Readiness::LoggedIn));
-    assert!(
-        matches!(result.models,Models::Available { ref catalog } if catalog.models.iter().any(|m| m.id=="chosen"))
-    );
-    assert_eq!(
-        result.login,
-        buzz_core::host_deployment::observation::LoginState::NotObserved
-    );
-    prepared.instance.deployment.as_mut().unwrap().revision += 1;
-    prepared.instance.deployment.as_mut().unwrap().config.model = ModelSelection::Selected {
-        id: "chosen".into(),
-    };
-    service.stage(&prepared.instance).unwrap();
-    service.action("prepare", id).await.unwrap();
+    if !host_first {
+        let action: Execution =
+            serde_json::from_str(&service.action("models", id).await.unwrap()).unwrap();
+        let status = run().status().await.unwrap();
+        assert!(status.success());
+        fs::remove_file(dir.path().join("active")).unwrap();
+        let result: ActionResult = serde_json::from_str(
+            &service
+                .request("observe", id, Some(&action.nonce))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result.readiness, Some(Readiness::LoggedIn));
+        assert!(
+            matches!(result.models,Models::Available { ref catalog } if catalog.models.iter().any(|m| m.id=="chosen"))
+        );
+        assert_eq!(
+            result.login,
+            buzz_core::host_deployment::observation::LoginState::NotObserved
+        );
+        prepared.instance.deployment.as_mut().unwrap().revision += 1;
+        prepared.instance.deployment.as_mut().unwrap().config.model = ModelSelection::Selected {
+            id: "chosen".into(),
+        };
+        service.stage(&prepared.instance).unwrap();
+        service.action("prepare", id).await.unwrap();
+    }
     assert_eq!(service.action("start", id).await.unwrap(), "active\n");
     let mut buf = [0; 32];
     while socket.recv(&mut buf).is_ok() {}

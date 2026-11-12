@@ -234,35 +234,6 @@ async fn finite_inner(
         "native login is external"
     );
     ensure!(execution.mode != Mode::Conversation, "finite mode required");
-    let (availability, readiness) = if context.account.is_some() {
-        if notify_started {
-            notify(&context.notify)?;
-        }
-        let facts = crate::discovery::inspect(context, rt).await;
-        let readiness = crate::discovery::readiness(context, rt, &facts).await;
-        (Some(facts.availability), Some(readiness))
-    } else {
-        (None, None)
-    };
-    let mut command = match execution.mode {
-        Mode::Login => {
-            ensure!(
-                rt.harness_id.as_deref() == Some("grok"),
-                "native login unsupported"
-            );
-            let mut c = context.command(&rt.adapter.path);
-            c.args(["login", "--device-auth"]);
-            c
-        }
-        Mode::Models => {
-            let mut c = context.command(&rt.harness.path);
-            c.args(["models", "--json"])
-                .env("BUZZ_ACP_AGENT_COMMAND", &rt.adapter.path)
-                .env("BUZZ_ACP_AGENT_ARGS", rt.args.join(","));
-            c
-        }
-        Mode::Conversation => unreachable!(),
-    };
     let mut result = ActionResult {
         execution: execution.clone(),
         finished: false,
@@ -277,28 +248,155 @@ async fn finite_inner(
             reason: UnavailableReason::NetworkDisabled,
         },
         login_output: String::new(),
-        availability,
-        readiness,
+        availability: None,
+        readiness: None,
+    };
+    execution.validate(i, nostr::Timestamp::now().as_secs())?;
+    if execution.mode == Mode::Models {
+        if notify_started {
+            notify(&context.notify)?;
+        }
+        let (models, readiness, availability) =
+            discover_models(context, rt, execution.deadline, policy).await?;
+        result.models = models;
+        result.readiness = readiness;
+        result.availability = availability;
+    } else {
+        ensure!(
+            rt.harness_id.as_deref() == Some("grok"),
+            "native login unsupported"
+        );
+        let mut command = context.command(&rt.adapter.path);
+        command.args(["login", "--device-auth"]);
+        let (_, failure, success) = capture_finite(
+            context,
+            &mut command,
+            execution.deadline,
+            notify_started,
+            Some(&mut result),
+        )
+        .await?;
+        result.login_at = Some(nostr::Timestamp::now().as_secs().min(execution.deadline));
+        result.login = if success {
+            LoginState::Succeeded
+        } else if failure == Some(UnavailableReason::Timeout) {
+            LoginState::Cancelled
+        } else {
+            LoginState::Failed
+        };
+    }
+    result.finished = true;
+    result.observed_at = nostr::Timestamp::now().as_secs().min(execution.deadline);
+    result.login_output.clear();
+    if notify_started {
+        publish(&context.home, &result)?;
+    }
+    let live = context.runtime.join(execution.filename());
+    if context.runtime != context.home && live.try_exists()? {
+        fs::remove_file(live)?;
+    }
+    // systemd KillMode=control-group reaps any descendants when this main process exits.
+    Ok(result)
+}
+/// Discover from the trusted context without an agent, prepared instance or service writes.
+pub async fn discover_models(
+    context: &Context,
+    rt: &crate::Runtime,
+    deadline: u64,
+    policy: NetworkPolicy,
+) -> Result<(
+    Models,
+    Option<buzz_core::harness::Readiness>,
+    Option<buzz_core::harness::AcpAvailabilityStatus>,
+)> {
+    ensure!(
+        nostr::Timestamp::now().as_secs() < deadline,
+        "discovery expired"
+    );
+    let (availability, readiness) = if context.account.is_some() {
+        let facts = crate::discovery::inspect(context, rt).await;
+        let readiness = crate::discovery::readiness(context, rt, &facts).await;
+        (Some(facts.availability), Some(readiness))
+    } else {
+        (None, None)
     };
     if context.account.is_some()
-        && result.availability != Some(buzz_core::harness::AcpAvailabilityStatus::Available)
+        && availability != Some(buzz_core::harness::AcpAvailabilityStatus::Available)
     {
-        result.finished = true;
-        result.models = Models::Unavailable {
-            reason: UnavailableReason::Execution,
-        };
-        if notify_started {
-            publish(&context.home, &result)?;
-        }
-        return Ok(result);
+        return Ok((
+            Models::Unavailable {
+                reason: UnavailableReason::Execution,
+            },
+            readiness,
+            availability,
+        ));
     }
-    execution.validate(i, nostr::Timestamp::now().as_secs())?;
+    ensure!(
+        nostr::Timestamp::now().as_secs() < deadline,
+        "discovery expired"
+    );
+    let mut command = context.command(&rt.harness.path);
+    command
+        .args(["models", "--json"])
+        .env("BUZZ_ACP_AGENT_COMMAND", &rt.adapter.path)
+        .env("BUZZ_ACP_AGENT_ARGS", rt.args.join(","));
+    let (out, failure, success) =
+        capture_finite(context, &mut command, deadline, false, None).await?;
+    let parsed = if success {
+        serde_json::from_slice::<serde_json::Value>(&out)
+            .ok()
+            .map(|raw| buzz_core::agent_models::normalize_agent_models(&raw, None))
+    } else {
+        None
+    };
+    let local = match parsed {
+        Some(c) if buzz_core::host_deployment::observation::validate_models(&c).is_ok() => {
+            if c.models.is_empty() {
+                Models::Empty
+            } else {
+                Models::Available { catalog: c }
+            }
+        }
+        Some(_) => Models::Unavailable {
+            reason: UnavailableReason::Oversized,
+        },
+        None => Models::Unavailable {
+            reason: failure.unwrap_or(if success {
+                UnavailableReason::InvalidOutput
+            } else {
+                UnavailableReason::Execution
+            }),
+        },
+    };
+    // Enumerating cached/local models offline cannot establish online readiness.
+    let models = if rt.harness_id.is_none() {
+        Models::Unsupported
+    } else {
+        match (policy, local) {
+            (NetworkPolicy::Disabled, Models::Available { .. } | Models::Empty) => {
+                Models::Unavailable {
+                    reason: UnavailableReason::NetworkDisabled,
+                }
+            }
+            (_, other) => other,
+        }
+    };
+
+    Ok((models, readiness, availability))
+}
+async fn capture_finite(
+    context: &Context,
+    command: &mut Command,
+    deadline: u64,
+    notify_started: bool,
+    mut login: Option<&mut ActionResult>,
+) -> Result<(Vec<u8>, Option<UnavailableReason>, bool)> {
     command.process_group(0);
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    let _group = ProcessGroup(
+    let group = ProcessGroup(
         rustix::process::Pid::from_raw(
             child.id().ok_or_else(|| anyhow!("missing child ID"))? as i32
         )
@@ -318,9 +416,7 @@ async fn finite_inner(
         notify(&context.notify)?;
     }
     let timeout = tokio::time::sleep(Duration::from_secs(
-        execution
-            .deadline
-            .saturating_sub(nostr::Timestamp::now().as_secs()),
+        deadline.saturating_sub(nostr::Timestamp::now().as_secs()),
     ));
     tokio::pin!(timeout);
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -340,10 +436,10 @@ async fn finite_inner(
         if out.len() + err.len() > 65536 {
             break Some(UnavailableReason::Oversized);
         }
-        if execution.mode == Mode::Login {
+        if let Some(result) = login.as_deref_mut() {
             result.login_output =
                 String::from_utf8_lossy(&out).into_owned() + &String::from_utf8_lossy(&err);
-            publish(&context.runtime, &result)?;
+            publish(&context.runtime, result)?;
         }
     };
     if status.is_none() {
@@ -351,71 +447,8 @@ async fn finite_inner(
         child.wait().await?;
     }
     let success = failure.is_none() && status.is_some_and(|s| s.success());
-    result.finished = true;
-    result.observed_at = nostr::Timestamp::now().as_secs().min(execution.deadline);
-    result.login_output.clear();
-    if execution.mode == Mode::Login {
-        result.login_at = Some(result.observed_at);
-        result.login = if success {
-            LoginState::Succeeded
-        } else if failure == Some(UnavailableReason::Timeout) {
-            LoginState::Cancelled
-        } else {
-            LoginState::Failed
-        };
-    } else {
-        let parsed = if success {
-            serde_json::from_slice::<serde_json::Value>(&out)
-                .ok()
-                .map(|raw| buzz_core::agent_models::normalize_agent_models(&raw, None))
-        } else {
-            None
-        };
-        let local = match parsed {
-            Some(c) if buzz_core::host_deployment::observation::validate_models(&c).is_ok() => {
-                if c.models.is_empty() {
-                    Models::Empty
-                } else {
-                    Models::Available { catalog: c }
-                }
-            }
-            Some(_) => Models::Unavailable {
-                reason: UnavailableReason::Oversized,
-            },
-            None => Models::Unavailable {
-                reason: failure.unwrap_or(if success {
-                    UnavailableReason::InvalidOutput
-                } else {
-                    UnavailableReason::Execution
-                }),
-            },
-        };
-        // Enumerating cached/local models offline cannot establish online readiness.
-        result.models = if rt.harness_id.is_none() {
-            Models::Unsupported
-        } else {
-            match (policy, local) {
-                (NetworkPolicy::Disabled, Models::Available { .. } | Models::Empty) => {
-                    Models::Unavailable {
-                        reason: UnavailableReason::NetworkDisabled,
-                    }
-                }
-                (_, other) => other,
-            }
-        };
-    }
-    // Terminate descendants before publishing the terminal receipt; systemd also
-    // confirms the service cgroup is empty before observe exposes this result.
-    drop(_group);
-    if notify_started {
-        publish(&context.home, &result)?;
-    }
-    let live = context.runtime.join(execution.filename());
-    if context.runtime != context.home && live.try_exists()? {
-        fs::remove_file(live)?;
-    }
-    // systemd KillMode=control-group reaps any descendants when this main process exits.
-    Ok(result)
+    drop(group);
+    Ok((out, failure, success))
 }
 /// Validate installed credentials and run one fixed mode; called by the actual binary.
 pub async fn run() -> Result<()> {

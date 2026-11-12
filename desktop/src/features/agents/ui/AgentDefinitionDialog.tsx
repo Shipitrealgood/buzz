@@ -227,7 +227,9 @@ export function AgentDefinitionDialog({
     setModel(initialValues.model ?? "");
     setIsCustomModelEditing(false);
     setProvider(initialValues.provider ?? "");
-    setAiConfigurationMode(initialAgentAiConfigurationMode(initialValues));
+    setAiConfigurationMode(
+      hosted ? "custom" : initialAgentAiConfigurationMode(initialValues),
+    );
     setIsCustomProviderEditing(false);
     const nextNamePoolText =
       "namePool" in initialValues
@@ -378,7 +380,7 @@ export function AgentDefinitionDialog({
       systemPrompt: systemPrompt,
       acpCommand: acpCommand.trim() || "buzz-acp",
       runtime: runtimeForSubmit,
-      model: modelForSubmit,
+      model: hosted ? (hostedModel ?? undefined) : modelForSubmit,
       provider: providerForSubmit,
       namePool: namePoolInput,
       envVars,
@@ -513,19 +515,6 @@ export function AgentDefinitionDialog({
     selectedRuntime?.availability === "available";
   // Gate model/provider validity through missingNormalizedFields — single
   // source of truth with the readiness gate so display and Save can't drift.
-  const canSubmit =
-    canSubmitPersonaDialog({ displayName, isPending }) &&
-    (!isCreateMode || runtime.trim().length > 0) &&
-    (!isCreateMode || selectedRuntimeIsAvailable) &&
-    (!isCreateMode || !createSubmitBlocked) &&
-    // Crash-loop guard, create AND edit: an empty allowlist would crash
-    // every instance minted from this definition at startup.
-    personaBehaviorDraftValid(behaviorDraft) &&
-    // D1: localModeSatisfied covers both missingNormalizedFields AND
-    // missingEnvKeys — credential env keys now block submit, not just display.
-    localModeSatisfied &&
-    (hosted || customAiPairSatisfied) &&
-    !isAvatarUploadPending;
 
   // Merge global env as the base layer so credential keys satisfied via global
   // config are available to model discovery — same rationale as in AgentInstanceEditDialog.
@@ -535,6 +524,8 @@ export function AgentDefinitionDialog({
   );
   const {
     discoveredModelOptions,
+    availableModelIds,
+    explicitDefaultModel,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
     agentDefaultModel,
@@ -552,6 +543,25 @@ export function AgentDefinitionDialog({
       : "",
     selectedRuntime,
   });
+  const hostedModel =
+    !modelDiscoveryLoading && availableModelIds.includes(model)
+      ? model
+      : !modelDiscoveryLoading && model === ""
+        ? explicitDefaultModel
+        : null;
+  const canSubmit =
+    canSubmitPersonaDialog({ displayName, isPending }) &&
+    (!isCreateMode || runtime.trim().length > 0) &&
+    (!isCreateMode || selectedRuntimeIsAvailable) &&
+    (!isCreateMode || !createSubmitBlocked) &&
+    // Crash-loop guard, create AND edit: an empty allowlist would crash
+    // every instance minted from this definition at startup.
+    personaBehaviorDraftValid(behaviorDraft) &&
+    // D1: localModeSatisfied covers both missingNormalizedFields AND
+    // missingEnvKeys — credential env keys now block submit, not just display.
+    localModeSatisfied &&
+    (hosted ? hostedModel !== null : customAiPairSatisfied) &&
+    !isAvatarUploadPending;
   const staticModelOptions = hosted
     ? []
     : getPersonaModelOptions(runtime, effectiveProvider);
@@ -565,7 +575,10 @@ export function AgentDefinitionDialog({
     selectValue: modelSelectValue,
     showCustomInput: showCustomModelInput,
   } = relayMeshModelPickerState({
-    discoveredOptions: discoveredModelOptions,
+    discoveredOptions:
+      hosted && !explicitDefaultModel
+        ? (discoveredModelOptions?.filter((m) => m.id !== "") ?? null)
+        : discoveredModelOptions,
     fallbackOptions: staticModelOptions,
     knownOptions: discoveredModelOptions ?? runtimeModelOptions,
     isCustomEditing: isCustomModelEditing,
@@ -928,7 +941,7 @@ export function AgentDefinitionDialog({
           <AnimatePresence initial={false}>
             {modelFieldVisible && aiConfigurationMode === "custom" ? (
               <PersonaModelField
-                disabled={isPending || hosted}
+                disabled={isPending}
                 isExplicitModelRequired={!hosted && isExplicitModelRequired}
                 model={model}
                 modelDiscoveryStatus={modelDiscoveryStatus}

@@ -420,7 +420,8 @@ async fn create_managed_agent_in<R: tauri::Runtime>(
 pub(crate) mod hosted;
 #[cfg(windows)]
 pub use hosted::{
-    hosted_catalog, hosted_prepare, hosted_setup_action, hosted_setup_list, hosted_setup_token,
+    hosted_catalog, hosted_models, hosted_prepare, hosted_setup_action, hosted_setup_list,
+    hosted_setup_token,
 };
 
 async fn create_managed_agent_phases<R: tauri::Runtime>(

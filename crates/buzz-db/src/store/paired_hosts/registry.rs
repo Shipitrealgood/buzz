@@ -210,8 +210,8 @@ impl Db {
                         "evidence" => {
                             let id = wire::bytes(r.query.event_id.as_deref().ok_or_else(denied)?)
                                 .map_err(|_| denied())?;
-                            let raw:String=sqlx::query_scalar("SELECT event_json FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND event_id=$5 AND (event_json::jsonb->>'kind')::int=43103 AND (operation<>'pair-claim' OR event_id=$6)")
-                                .bind(t).bind(&g[..]).bind(b.get::<Vec<u8>,_>("owner_key")).bind(b.get::<Vec<u8>,_>("host_key")).bind(&id[..]).bind(b.get::<Vec<u8>,_>("claim_id")).fetch_optional(tx.conn()).await?.ok_or_else(denied)?;
+                            let raw:String=sqlx::query_scalar("SELECT event_json FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND event_id=$5 AND (event_json::jsonb->>'kind')::int=43103 AND (operation<>'pair-claim' OR event_id=$6) AND (operation NOT IN ('models-query','models') OR $7)")
+                                .bind(t).bind(&g[..]).bind(b.get::<Vec<u8>,_>("owner_key")).bind(b.get::<Vec<u8>,_>("host_key")).bind(&id[..]).bind(b.get::<Vec<u8>,_>("claim_id")).bind(!recovery && b.get::<&str,_>("state")=="active").fetch_optional(tx.conn()).await?.ok_or_else(denied)?;
                             json!({"event":serde_json::from_str::<Value>(&raw)?})
                         }
                         "messages" => {
@@ -225,8 +225,8 @@ impl Db {
                             if r.after.is_some() && after < b.get::<i64, _>("retention_floor") {
                                 return Err(DbError::PairedCursorPruned);
                             }
-                            let rows=sqlx::query("SELECT event_id,seq,operation,expires_at FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND seq>$5 AND (operation<>'pair-claim' OR event_id=$6) AND (event_json::jsonb->>'kind')::int=43103 ORDER BY seq LIMIT 101")
-                                .bind(t).bind(&g[..]).bind(b.get::<Vec<u8>,_>("owner_key")).bind(b.get::<Vec<u8>,_>("host_key")).bind(after).bind(b.get::<Vec<u8>,_>("claim_id")).fetch_all(tx.conn()).await?;
+                            let rows=sqlx::query("SELECT event_id,seq,operation,expires_at FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND owner_key=$3 AND host_key=$4 AND seq>$5 AND (operation<>'pair-claim' OR event_id=$6) AND (event_json::jsonb->>'kind')::int=43103 AND (operation NOT IN ('models-query','models') OR $7) ORDER BY seq LIMIT 101")
+                                .bind(t).bind(&g[..]).bind(b.get::<Vec<u8>,_>("owner_key")).bind(b.get::<Vec<u8>,_>("host_key")).bind(after).bind(b.get::<Vec<u8>,_>("claim_id")).bind(!recovery && b.get::<&str,_>("state")=="active").fetch_all(tx.conn()).await?;
                             if rows.len() > 100 {
                                 next = Some(rows[99].get::<i64, _>("seq").to_string());
                             }
