@@ -492,12 +492,18 @@ pub fn open_reply(keys: &Keys, relay: PublicKey, q: &Query, e: &Event, now: u64)
     if e.pubkey != relay
         || recipient != keys.public_key().to_hex()
         || echoed != *q
-        || e.created_at.as_secs() > now + 30
+        || e.created_at.as_secs() > now.checked_add(30).ok_or(Error)?
     {
         return Err(Error);
     }
     let r: Reply = decrypted(keys, &e, 45 * 1024)?;
-    if r.query != *q || now >= r.expires_at || r.expires_at > now + PERMIT_SECONDS {
+    // Bound issued lifetime by the authenticated signer clock, not the reader clock.
+    let latest_expiry = e
+        .created_at
+        .as_secs()
+        .checked_add(PERMIT_SECONDS)
+        .ok_or(Error)?;
+    if r.query != *q || now >= r.expires_at || r.expires_at > latest_expiry {
         return Err(Error);
     }
     Ok(r)

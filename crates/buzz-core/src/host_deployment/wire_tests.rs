@@ -84,26 +84,48 @@ fn result_binding_and_permit_challenge_are_not_interchangeable() {
     a.operation_id = "cc".repeat(32);
     assert!(open_result(&owner, &e, &a).is_err());
     let relay = Keys::generate();
-    let q = Query {
-        v: 1,
-        scope: a.scope.clone(),
-        view: "permit".into(),
-        nonce: "dd".repeat(32),
-        operation_id: Some(a.operation_id.clone()),
-    };
-    let response = Reply {
-        query: q.clone(),
-        expires_at: 120,
-        data: serde_json::json!({"authority":a,"unit_id":"bb".repeat(32),"revision":2}),
-    };
-    let permit = reply(&relay, host.public_key(), &response, 110).unwrap();
-    assert!(open_reply(&host, relay.public_key(), &q, &permit, 110).is_ok());
-    assert!(open_reply(&host, relay.public_key(), &q, &permit, 120).is_err());
-    let mut foreign = q.clone();
-    foreign.nonce = "ee".repeat(32);
-    assert!(open_reply(&host, relay.public_key(), &foreign, &permit, 110).is_err());
-    assert!(open_reply(&owner, relay.public_key(), &q, &permit, 110).is_err());
-    assert!(open_reply(&host, owner.public_key(), &q, &permit, 110).is_err());
+    for view in ["status", "operation", "permit"] {
+        let q = Query {
+            v: 1,
+            scope: a.scope.clone(),
+            view: view.into(),
+            nonce: "dd".repeat(32),
+            operation_id: (view != "status").then(|| a.operation_id.clone()),
+        };
+        for (signed_at, expires_at, reader_at, valid) in [
+            (110, 120, 109, true),
+            (110, 120, 110, true),
+            (110, 120, 120, false),
+            (110, 121, 110, false),
+            (111, 120, 110, true),  // Signing after the DB read is supported.
+            (109, 120, 109, false), // DB ahead of signer remains unsupported.
+            (140, 150, 110, true),  // Existing future-event boundary is inclusive.
+            (141, 151, 110, false),
+            (u64::MAX - 5, u64::MAX, u64::MAX - 30, false),
+            (110, 120, u64::MAX, false),
+        ] {
+            let response = Reply {
+                query: q.clone(),
+                expires_at,
+                data: serde_json::json!({"authority":a,"unit_id":"bb".repeat(32),"revision":2}),
+            };
+            let event = reply(&relay, host.public_key(), &response, signed_at).unwrap();
+            assert_eq!(
+                open_reply(&host, relay.public_key(), &q, &event, reader_at).is_ok(),
+                valid,
+                "{view}: signed={signed_at}, expiry={expires_at}, reader={reader_at}"
+            );
+            let mut foreign = q.clone();
+            foreign.nonce = "ee".repeat(32);
+            assert!(open_reply(&host, relay.public_key(), &foreign, &event, 110).is_err());
+            assert!(open_reply(&owner, relay.public_key(), &q, &event, 110).is_err());
+            assert!(open_reply(&host, owner.public_key(), &q, &event, 110).is_err());
+            let mut altered = serde_json::to_value(&event).unwrap();
+            altered["sig"] = "00".repeat(64).into();
+            let altered: Event = serde_json::from_value(altered).unwrap();
+            assert!(open_reply(&host, relay.public_key(), &q, &altered, 110).is_err());
+        }
+    }
 }
 #[test]
 fn status_is_host_signed_scoped_and_expires() {

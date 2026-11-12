@@ -390,9 +390,13 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                 if served.lock().unwrap().get("denied") == Some(&Value::Bool(true)) {
                     socket
                         .send(tokio_tungstenite::tungstenite::Message::Text(
-                            serde_json::json!(["CLOSED", msg[1], "restricted: read denied"])
-                                .to_string()
-                                .into(),
+                            serde_json::json!([
+                                "CLOSED",
+                                msg[1],
+                                "SECRET_SENTINEL: private denial"
+                            ])
+                            .to_string()
+                            .into(),
                         ))
                         .await
                         .unwrap();
@@ -400,9 +404,17 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                 }
                 let query: wire::Query =
                     serde_json::from_value(msg[2]["host_deployment"].clone()).unwrap();
+                let mode = served.lock().unwrap()["reply_mode"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_owned();
                 let reply = wire::Reply {
                     query: query.clone(),
-                    expires_at: now().unwrap() + wire::PERMIT_SECONDS,
+                    expires_at: if mode == "invalid" {
+                        0
+                    } else {
+                        now().unwrap() + wire::PERMIT_SECONDS
+                    },
                     data: {
                         let data = served.lock().unwrap().clone();
                         if let Some(by_operation) = data.get("by_operation") {
@@ -413,14 +425,20 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                     },
                 };
                 let event = wire::reply(&relay, query.scope.owner, &reply, now().unwrap()).unwrap();
-                socket
-                    .send(tokio_tungstenite::tungstenite::Message::Text(
-                        serde_json::json!(["EVENT", msg[1], event])
-                            .to_string()
-                            .into(),
-                    ))
-                    .await
-                    .unwrap();
+                for _ in 0..match mode.as_str() {
+                    "missing" => 0,
+                    "duplicate" => 2,
+                    _ => 1,
+                } {
+                    socket
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            serde_json::json!(["EVENT", msg[1], event])
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                }
                 socket
                     .send(tokio_tungstenite::tungstenite::Message::Text(
                         serde_json::json!(["EOSE", msg[1]]).to_string().into(),
@@ -465,11 +483,49 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
     for event in sent.lock().unwrap().iter() {
         assert_eq!(*event, first.event);
     }
-    *responses.lock().unwrap() = serde_json::json!({"denied":true});
-    assert!(management
-        .operation(&mut device, &signer, &authority.operation_id)
-        .await
-        .is_err());
+    for (fixture, category) in [
+        (serde_json::json!({"denied":true}), "read-closed"),
+        (serde_json::json!({"reply_mode":"invalid"}), "reply-invalid"),
+        (
+            serde_json::json!({"reply_mode":"duplicate"}),
+            "reply-duplicate",
+        ),
+        (serde_json::json!({"reply_mode":"missing"}), "reply-missing"),
+    ] {
+        *responses.lock().unwrap() = fixture;
+        let error = management
+            .operation(&mut device, &signer, &authority.operation_id)
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(operation_error_category(&error), category);
+        assert!(!error.to_string().contains("SECRET_SENTINEL"));
+    }
+    use buzz_ws_client::WsClientError;
+    for (error, category) in [
+        (
+            anyhow::anyhow!("SECRET_SENTINEL: local path or credential"),
+            "operation-read-failed",
+        ),
+        (
+            WsClientError::UnexpectedMessage("SECRET_SENTINEL".into()).into(),
+            "operation-read-failed",
+        ),
+        (
+            WsClientError::WebSocket(tokio_tungstenite::tungstenite::Error::Io(
+                std::io::Error::other("SECRET_SENTINEL"),
+            ))
+            .into(),
+            "operation-read-failed",
+        ),
+        (WsClientError::Timeout.into(), "read-timeout"),
+        (WsClientError::ConnectionClosed.into(), "read-closed"),
+    ] {
+        assert_eq!(
+            operation_error_category(&error.context("SECRET_SENTINEL: context")),
+            category
+        );
+    }
     *responses.lock().unwrap() = admitted;
     let read = management
         .operation(

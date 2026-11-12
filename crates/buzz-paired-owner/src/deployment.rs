@@ -13,6 +13,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroizing;
 
+/// Payload-free category for a failed setup operation read, including local failures.
+pub fn operation_error_category(error: &anyhow::Error) -> &'static str {
+    use buzz_ws_client::WsClientError;
+    match error.downcast_ref::<WsClientError>() {
+        Some(WsClientError::UnexpectedMessage(message)) => match message.as_str() {
+            "reply-invalid" => "reply-invalid",
+            "reply-duplicate" => "reply-duplicate",
+            "reply-missing" => "reply-missing",
+            "read-closed" => "read-closed",
+            _ => "operation-read-failed",
+        },
+        Some(WsClientError::Timeout) => "read-timeout",
+        Some(WsClientError::ConnectionClosed) => "read-closed",
+        _ => "operation-read-failed",
+    }
+}
+
 /// One atomic native intent. The recovery snapshot contains no agent secret;
 /// that identity is recovered exclusively from the original command ciphertext.
 #[derive(Serialize, Deserialize)]

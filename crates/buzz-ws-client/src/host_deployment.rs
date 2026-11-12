@@ -13,8 +13,7 @@ impl NostrWsConnection {
         query: &Query,
         mut observe: impl FnMut(&RelayMessage) -> Result<(), WsClientError>,
     ) -> Result<Reply, WsClientError> {
-        let invalid =
-            || WsClientError::UnexpectedMessage("invalid private deployment response".into());
+        let invalid = || WsClientError::UnexpectedMessage("reply-invalid".into());
         query.validate().map_err(|_| invalid())?;
         let sub = format!("deployment-{}", query.nonce);
         self.send_raw(&serde_json::json!(["REQ",sub,{"kinds":[43104],"#p":[keys.public_key().to_hex()],"host_deployment":query}])).await?;
@@ -31,7 +30,7 @@ impl NostrWsConnection {
                     event,
                 } if subscription_id == sub => {
                     if reply.is_some() {
-                        return Err(invalid());
+                        return Err(WsClientError::UnexpectedMessage("reply-duplicate".into()));
                     }
                     reply = Some(
                         wire::open_reply(keys, relay, query, &event, Timestamp::now().as_secs())
@@ -39,11 +38,14 @@ impl NostrWsConnection {
                     );
                 }
                 RelayMessage::Eose { subscription_id } if subscription_id == sub => {
-                    return reply.ok_or_else(invalid)
+                    return reply
+                        .ok_or_else(|| WsClientError::UnexpectedMessage("reply-missing".into()))
                 }
                 RelayMessage::Closed {
                     subscription_id, ..
-                } if subscription_id == sub => return Err(invalid()),
+                } if subscription_id == sub => {
+                    return Err(WsClientError::UnexpectedMessage("read-closed".into()))
+                }
                 other => observe(&other)?,
             }
         }

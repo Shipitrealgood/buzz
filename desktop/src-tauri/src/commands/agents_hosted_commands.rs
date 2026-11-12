@@ -128,10 +128,11 @@ pub(super) async fn setup(
                 }
             }
         }
-        Err(_) => {
-            response
-                .error
-                .get_or_insert("Current deployment evidence unavailable or read denied".into());
+        Err(error) => {
+            let category = buzz_paired_owner::deployment::operation_error_category(&error);
+            response.error.get_or_insert_with(|| {
+                format!("Current deployment evidence unavailable or read denied ({category})")
+            });
         }
     }
     create.check()?;
