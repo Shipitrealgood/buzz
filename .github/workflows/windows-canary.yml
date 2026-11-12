@@ -259,6 +259,16 @@ jobs:
           cargo test --locked --target "$TARGET" -p buzz-paired-owner --lib | tee "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
           grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$RUNNER_TEMP/windows-native-tests/paired-owner-tests.log"
 
+      - name: Verify signed host deployment replies on Windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/windows-native-tests/host-deployment-tests.log"
+          cargo test --locked --target "$TARGET" -p buzz-core --lib host_deployment | tee "$log"
+          grep -Eq '^test result: ok\. 13 passed; 0 failed; 0 ignored;' "$log"
+          test "$(grep -Ec '^test host_deployment::.* \.\.\. ok$' "$log")" -eq 13
+          grep -Fx 'test host_deployment::wire_tests::result_binding_and_permit_challenge_are_not_interchangeable ... ok' "$log"
+
       # Main discovery extraction moved the portable metadata/classifier and
       # Windows installer-string cases from Desktop into buzz-core.
       - name: Verify shared main harness facts on Windows
