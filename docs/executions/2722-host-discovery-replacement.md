@@ -42,8 +42,8 @@ PendingLogin/Check/Retry/Refresh/Launch/Cleanup flows remain.
 ## Measured change size and adaptations
 
 Against baseline, standard Git line diff with inline test sections separated:
-**17 production files, +649 / -189 = +460 net**. Moves receive no discount.
-Tests: +758 / -28 across seven test regions/files (larger than the spec estimate,
+**17 production files, +654 / -189 = +465 net** after the bounded H1/M1 repair. Moves receive no discount.
+Tests: +876 / -30 across nine test regions/files (larger than the spec estimate,
 including real signed-response and current runtime fixtures). Contract docs before
 these handoff artifacts: +38 / -11. No new production file, kind, table or service.
 
@@ -99,3 +99,52 @@ Fresh independent reviewer should assess these gaps and the request-to-Create
 chain. Rollout requires coordinated relay, hostd and desktop upgrades, native
 Windows verification and a separately approved human journey. All live activation
 is held. Jeff/test1 and existing Claude/Grok/Scout state remain untouched.
+
+
+## Independent-review repair: H1 / M1
+
+Starting clean review pin: `8496d726dda6c0402500bedb39e14cc3d8f9c57b`.
+Read the independent report at `docs/audits/post-audit/2722-host-discovery-replacement.md`;
+conductor accepted only its H1 and M1 as this continuation's repair scope.
+
+H1: `hosted_models` now carries its own `#[cfg(windows)]` handler registration,
+matching the existing Windows-only command export. M1: the real `AgentDialog`
+submit boundary closes only for accepted `pending`/`applied` without an error.
+Failed, conflict, needs-login, unverified and error-bearing responses render the
+existing recovery surface. Pending dismissal makes no running claim. No new state,
+polling, native policy or relay fixture repair was added.
+
+Measured repair delta: two existing production files **+7 / -2**, test changes
+**+118 / -2** in two existing test files. Full baseline production remains 17 files,
+**+654 / -189 = +465 net** (overlapping earlier added lines explain the difference
+from summing delta additions). Inline Rust test additions (core 81, owner 164) are
+counted as tests; moves/deletions receive no discount.
+
+Measured focused gates on the repair:
+
+- `pnpm --dir desktop build:e2e`: passed, including `tsc`; only ordinary bundle
+  size/dynamic-import warnings. This produces a local mock-browser bundle, not
+  a native installer or release.
+- `pnpm --dir desktop typecheck`: passed.
+- From `desktop`, `pnpm exec playwright test --project=smoke tests/e2e/hosted-agent-setup.spec.ts --grep 'Create submit outcome' --max-failures=1`:
+  **7 passed (31.2s)**. Existing bridge injects native results; real host picker,
+  model selection, definition submit and dialog state execute. Cases: failed with
+  null error, conflict, needs-login, unverified, pending with error retain recovery;
+  pending/applied without error close. Every case asserts exactly one native
+  prepare call carrying the selected model. No copied production predicate.
+- From `desktop`, `node --import ./test-loader.mjs --experimental-strip-types --test-isolation=none --test src/shared/api/hostDestination.test.mjs`:
+  **2 passed**. Includes one registration consistency check over all six exported
+  hosted commands: every command appears once with its own Windows gate. This is
+  a source check, not platform compilation evidence.
+- `cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --all --check`, pinned
+  Biome stdin formatting of the three changed frontend/test files, `git diff --check`,
+  and `CHECK_FILE_SIZES_BASE=93ea3f2 node desktop/scripts/check-file-sizes.mjs`: passed.
+
+Not run: native Windows or Linux builds, remaining old Prepare-oriented browser
+cases, full CI, obsolete relay test fixture and actual owner→relay→host mailbox
+integration. Prior reported native/relay/lint limits remain unchanged. Browser
+fixture served only loopback with cached Chromium and the mock bridge; its server
+and test processes terminated. No live/provider/existing-agent operation occurred.
+Next gate is the independent reviewer's H1/M1 and delta re-gate. Any eventual usable
+canary must coordinate matching desktop **and relay and hostd**, then prove the
+end-to-end Create/launch/conversation journey; installer-only readiness is not claimed.

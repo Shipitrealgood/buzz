@@ -424,8 +424,12 @@ function AgentCreateDialogRouter({
               return;
             if (typeof submitted === "object") {
               onDirtyChange?.(false);
-              if (submitted.hosted.error) setSetup(submitted.hosted);
-              else onOpenChange(false);
+              if (
+                !submitted.hosted.error &&
+                ["pending", "applied"].includes(submitted.hosted.state)
+              )
+                onOpenChange(false);
+              else setSetup(submitted.hosted);
             } else if (submitted) {
               onDirtyChange?.(false);
               onOpenChange(false);

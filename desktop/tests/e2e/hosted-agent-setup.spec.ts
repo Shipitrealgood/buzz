@@ -22,6 +22,8 @@ type Fixture = {
   catalogMode?: "missing" | "wrong-scope" | "stale";
   tokenPending?: boolean;
   runtimeUnavailable?: boolean;
+  createState?: string;
+  createError?: string;
 };
 declare global {
   interface Window {
@@ -220,6 +222,28 @@ async function open(
         });
         return catalog;
       }
+      if (command === "hosted_models")
+        return {
+          availability: "available",
+          readiness: "logged-in",
+          models: {
+            state: "available",
+            catalog: {
+              agentName: "Synthetic Grok",
+              agentVersion: "fixture",
+              models: [
+                {
+                  id: "opaque/model:fixture",
+                  name: "Synthetic model",
+                  description: null,
+                },
+              ],
+              agentDefaultModel: null,
+              selectedModel: null,
+              supportsSwitching: true,
+            },
+          },
+        };
       if (command === "list_managed_agents") {
         const records = (await previous(command, args)) as Record<
           string,
@@ -253,11 +277,11 @@ async function open(
             name: input.name,
             phase: 3,
             model: null,
-            state: "needs-login",
+            state: fixture.createState ?? "needs-login",
             unit: "77".repeat(32),
             revision: 1,
             observation: null,
-            error: null,
+            error: fixture.createError ?? null,
           };
           fixture.setup.observation = observed();
         }
@@ -816,3 +840,65 @@ test("confirmed Cleanup stays recoverable without models through Close, denial a
   ).toEqual([]);
   expect(calls.filter((c) => c.command === "create_persona")).toHaveLength(1);
 });
+
+for (const outcome of [
+  { state: "failed", label: "Deployment failed" },
+  { state: "conflict", label: "Placement conflict" },
+  { state: "needs-login", label: "Host readiness and model setup" },
+  { state: "unverified", label: "Check status to continue" },
+  {
+    state: "pending",
+    label: "Preparing",
+    error: "Fixture response unavailable",
+  },
+  { state: "pending", label: null },
+  { state: "applied", label: null },
+]) {
+  test(`Create submit outcome ${outcome.state}/${outcome.error ?? "no-error"} ${outcome.label ? "retains recovery" : "closes"}`, async ({
+    page,
+  }) => {
+    await open(page, false, {
+      createState: outcome.state,
+      createError: outcome.error,
+    });
+    const model = page.getByRole("combobox", { name: /^Model/ });
+    await model.click();
+    await page
+      .getByRole("button", { name: "Synthetic model", exact: true })
+      .click();
+    const create = page.getByRole("dialog").getByRole("button", {
+      name: "Add agent",
+      exact: true,
+    });
+    await expect(create).toBeEnabled();
+    await create.click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+              (c) => c.command === "hosted_prepare",
+            ).length,
+        ),
+      )
+      .toBe(1);
+    if (outcome.label) {
+      const recovery = page.getByTestId("hosted-agent-setup");
+      await expect(recovery).toBeVisible();
+      await expect(recovery.getByRole("status")).toHaveText(outcome.label);
+      if (outcome.error) await expect(recovery).toContainText(outcome.error);
+    } else {
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByTestId("hosted-agent-setup")).toHaveCount(0);
+    }
+    const prepared = await page.evaluate(() =>
+      window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+        (c) => c.command === "hosted_prepare",
+      ),
+    );
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].args?.input).toMatchObject({
+      model: "opaque/model:fixture",
+    });
+  });
+}

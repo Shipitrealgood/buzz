@@ -65,8 +65,9 @@ Production: 17 existing files, +649/-189, +460 net, no move discount. Tests grew
    here. Inspect that path carefully; Linux checks cannot validate Windows cfg code.
 7. **Are retained setups still recoverable?**
    Only new creation loses Prepare wording. Shared `HostedAgentSetup`, Retry,
-   PendingLogin wire compatibility, continuation and cleanup remain. New success
-   closes the form; a retained error still exposes setup recovery. Do not infer
+   PendingLogin wire compatibility, continuation and cleanup remain. Only accepted
+   pending/applied with no error closes the form. Failed/conflict/needs-login/
+   unverified and error-bearing results retain setup recovery. Do not infer
    that the unrelated live test.27 recovery failure is repaired.
 
 ## 5. Deviations and judgment calls
@@ -100,3 +101,31 @@ end-to-end relay/native journey. Full `just ci` / `just test` are not green:
 relay unit-test compilation and native platform prerequisites are still missing.
 Fresh Windows verification and a coordinated three-system rollout are required
 before a human host-first journey can be accepted.
+
+
+## H1/M1 re-gate handoff
+
+Same worktree, repair based on clean reviewer commit
+`8496d726dda6c0402500bedb39e14cc3d8f9c57b`; final signed repair SHA is returned
+separately. Review only the two accepted findings and introduced delta:
+
+- `desktop/src-tauri/src/lib.rs`: one matching Windows handler gate for
+  `hosted_models`; source consistency test enumerates the six hosted exports.
+- `desktop/src/features/agents/ui/AgentDialog.tsx`: actual submit outcome allowlist
+  is pending/applied without error. Other states retain existing recovery.
+- `desktop/tests/e2e/hosted-agent-setup.spec.ts`: seven real-form submit cases run
+  through mock native results, including failed/error-null, conflict, needs-login,
+  unverified, pending/error and accepted pending/applied. **7 passed**; chosen
+  model and exactly one native prepare call asserted in each. Remaining legacy
+  Prepare-oriented tests were not run or rewritten in this bounded repair.
+- `desktop/src/shared/api/hostDestination.test.mjs`: **2 passed**, including the
+  Windows export/registration consistency guard. Typecheck, e2e build, Tauri fmt,
+  changed frontend formatting and differential size gate passed.
+
+Production delta **+7/-2**, full original-baseline **17 files +654/-189**.
+No policy/state engine or obsolete relay fixture change. Preserve the report's
+native and real-mailbox integration gaps; this source-only repair does not resolve
+them. The next eventual canary needs matching relay + hostd + desktop and a real
+Create/launch/conversation test. No installer-only readiness claim or live action.
+All executor test/server commands are terminal at handoff. Requested Astra/high;
+actual runtime identity remains unverified. No subagents or board mutation.

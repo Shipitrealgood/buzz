@@ -394,8 +394,10 @@ synchronous latch before avatar/definition effects and retain that definition
 for retries. A submitted retry keeps its exact installed ID and host scope;
 canonical harness equality cannot substitute a different visible choice.
 Create uses the main native identity, attestation, record and profile phases with
-the protected existing intent journal and `Selected` model. Successful new
-creation closes the form; no Prepare/Refresh/Launch discovery step intervenes.
+the protected existing intent journal and `Selected` model. Only accepted `pending`
+or `applied` without an error closes the form; pending does not claim running.
+Failed, conflicting, needs-login, unverified or error-bearing responses retain
+setup recovery. No Prepare/Refresh/Launch discovery step precedes new creation.
 Legacy unfinished setups retain PendingLogin and Check/Retry/Refresh/Launch/Cleanup
 without identity migration. Hosted IPC responses
 contain no key, auth tag, ciphertext or arbitrary recovery snapshot. Closing a

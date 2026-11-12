@@ -719,6 +719,7 @@ pub fn run() {
             paired_host_list,
             #[cfg(windows)]
             hosted_catalog,
+            #[cfg(windows)]
             hosted_models,
             #[cfg(windows)]
             hosted_prepare,

@@ -51,3 +51,22 @@ No live/provider traffic, credentials, service changes or Windows evidence arose
 from these tests. Only fake provider/service processes ran. The standard full
 CI/native/relay integration gates remain unrun or blocked as documented in the
 execution record, not silently replaced by the scoped checks.
+
+
+H1/M1 repair at review pin `8496d726dda6c0402500bedb39e14cc3d8f9c57b`:
+
+- First Playwright launch failed before testing: sandbox Python socket creation
+  returned EPERM. Narrow escalation used an explicitly loopback-bound server,
+  cached Chromium and existing mock bridge. Server cleanup is trapped on exit.
+- Initial browser cases selected exact `Model` instead of accessible `ModelOptional`.
+  One repeat still loaded the old selector after a wrong-working-directory edit
+  failed; the edit was corrected before the next run. The following attempt
+  selected the `Create agent` mode tab instead of the `Add agent` form submit,
+  yielding zero prepare calls. Read the accessibility snapshot, scoped the real
+  submit button to the dialog, then all seven outcome cases passed. Production
+  behavior was not changed to accommodate these fixture-selector corrections.
+- Differential size gate again hit sandbox `spawnSync git EPERM`; the same
+  read-only gate passed with narrow escalation. No dependency/config installation.
+- Final focused results: browser 7/7, hostDestination 2/2, typecheck and e2e build,
+  Tauri fmt, changed-file pinned Biome formatting and diff whitespace checks pass.
+  Native platform builds and real mailbox integration remain not run.
