@@ -1,10 +1,24 @@
 # 2722 — Host discovery replacement: independent post-audit
 
-## Verdict and scope
+## Current disposition — re-gate round 1
 
-**Merge-block: C0/H1/M1/L0.** Two concrete regressions require fixes in lane.
-The bounded host-first design is otherwise consistent with accepted D1; this is
-not acceptance of a usable released journey. Source, native integration, and
+**Scoped source delta accepted; no unresolved findings: C0/H0/M0/L0.** H-1 and
+M-1 are resolved at `797c5169683af2512b80ebcdc0a8513f9ff4b649`. Independent
+focused checks passed (browser 7, command consistency/API 2). No defect introduced
+by the repair was found. Native, actual-relay and human journey requirements
+remain unproven, so this is **conditional source acceptance, not merge-safe or
+release readiness**. The quality footer uses `rework` for those outstanding
+acceptance obligations; it does not request another implementation rewrite.
+
+Reviewed repair range:
+`8496d726dda6c0402500bedb39e14cc3d8f9c57b..797c5169683af2512b80ebcdc0a8513f9ff4b649`.
+The original source review and evidence below are retained; its initial blockers
+are historical. See the re-gate evidence at the end for current routing.
+
+## Initial review scope and findings
+
+Initial verdict was merge-block: C0/H1/M1/L0. The bounded host-first design was
+otherwise consistent with accepted D1. Source, native integration, and
 coordinated rollout remain distinct obligations.
 
 Reviewed base `93ea3f2a29f663e9c53cd560df33e73a785dc37a` through implementation
@@ -29,7 +43,7 @@ cleanup are settled scope, not reopened findings.
 
 ## Findings
 
-### H-1 — High, high confidence — missing platform guard breaks non-Windows desktop — fix in lane
+### H-1 — High, high confidence — missing platform guard breaks non-Windows desktop — resolved in re-gate
 
 **Read/inferred compile failure:** [lib.rs:722](../../../desktop/src-tauri/src/lib.rs#L722)
 adds `hosted_models` to `tauri::generate_handler!` without `#[cfg(windows)]`.
@@ -49,7 +63,7 @@ native build was **not run**, so no compiler diagnostic is claimed measured.
 handler. Verify command registration and export together on the relevant targets
 when native gates are available. This needs no cross-platform hosted feature.
 
-### M-1 — Medium, high confidence — Create dismisses a verified failed deployment — fix in lane
+### M-1 — Medium, high confidence — Create dismisses a verified failed deployment — resolved in re-gate
 
 **Read/traced user-visible failure:**
 [AgentDialog.tsx:423](../../../desktop/src/features/agents/ui/AgentDialog.tsx#L423)
@@ -81,8 +95,8 @@ Native failed-state projection and the UI predicate must agree.
 
 | Finding | Disposition / owner / next action |
 |---|---|
-| H-1 | **fix in lane** — conductor acknowledged; executor adds platform guard, reviewer re-gates delta. |
-| M-1 | **fix in lane** — conductor acknowledged; executor preserves explicit recovery states and adds submit-boundary regression, reviewer re-gates delta. |
+| H-1 | **landed / resolved** at `797c516`: matching Windows guard read; exported-command consistency test independently passed. |
+| M-1 | **landed / resolved** at `797c516`: close only pending/applied without error; seven real-form outcome tests independently passed. |
 
 ## Acceptance analysis
 
@@ -123,7 +137,7 @@ Native failed-state projection and the UI predicate must agree.
   mapping tests pass. Shared latch, protected retry intent, legacy continuation,
   PendingLogin and deletion surfaces remain; M-1 concerns only new dismissal.
 
-**Minimalism 9/10; elegance 9/10; correctness 7/10.** The implementation reuses
+**Initial scores: minimalism 9/10; elegance 9/10; correctness 7/10.** The implementation reuses
 existing mailbox, picker, main creation and finite runner; no new production
 service/table/kind/framework or whole-file cleanup. The reported production
 budget (17 existing files, +649/-189, net +460) is consistent with the reviewed
@@ -165,7 +179,7 @@ missing `Catalog.local`, `:412` removed `Helper::at`); no root helper, ignored t
 or rewritten fixture was introduced to conceal that gap. No native dependencies
 were installed to get around the missing Linux prerequisites.
 
-**Next gates and routing:** executor fixes H-1/M-1 in this same worktree, then
+**Initial routing (superseded by re-gate below):** executor fixes H-1/M-1 in this same worktree, then
 this reviewer checks those findings and any introduced delta. Source acceptance
 can only be conditional until the outstanding native and relay requirements are
 explicitly resolved. The future integration gate must exercise a real isolated
@@ -178,9 +192,72 @@ Any repair of the obsolete relay fixture belongs to a separately authorized
 bounded follow-up; do not restore the root architecture. Human verification and
 live rollout remain for the conductor/user, with existing agents untouched.
 
-At report handoff all reviewer-started commands are terminal. No background
+At initial report handoff all reviewer-started commands were terminal. No background
 process, isolated DB, or container remains. Only this review artifact is modified;
 product source stayed pinned. Commit this report with DCO signoff and return its
 exact SHA separately, because a commit cannot contain its own SHA.
 
-quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=93ea3f2a29f663e9c53cd560df33e73a785dc37a..13aaa9907891e5562e83805ec96043da08dceb89 findings=C=0/H=1/M=1/L=0 rework_rounds=0
+
+## Re-gate evidence and final routing
+
+**Read:** the repair is two production edits only: a Windows guard immediately
+before `hosted_models` ([lib.rs:722](../../../desktop/src-tauri/src/lib.rs#L722))
+and the existing submit branch's allowlist
+([AgentDialog.tsx:426](../../../desktop/src/features/agents/ui/AgentDialog.tsx#L426)).
+Only error-free `pending`/`applied` close; all other states retain the same setup
+view. Pending makes no running claim. There is no new polling or state framework.
+The feature guidance now matches that behavior. The native export remains gated;
+Tauri attaches the added attribute to the correct handler arm. H-1 and M-1 are
+therefore resolved, with no newly supported defect in this delta.
+
+**Measured:** independently reran from `desktop` with Hermit:
+
+- `node --import ./test-loader.mjs --experimental-strip-types --test-isolation=none --test src/shared/api/hostDestination.test.mjs`:
+  **2 passed**. The added consistency check derives all six hosted exports and
+  requires exactly one individually Windows-gated handler for each. This checks
+  source consistency, not native compilation.
+- `pnpm exec playwright test --project=smoke tests/e2e/hosted-agent-setup.spec.ts --grep 'Create submit outcome' --max-failures=1`:
+  **7 passed, 27.8 seconds**. Used the retained executor-built e2e bundle, cached
+  Chromium, synthetic Tauri bridge and a temporary server explicitly bound to
+  `127.0.0.1:4173`. Server startup refused an occupied port and cleanup was trapped.
+  The command exited successfully and the owned server was reaped.
+- `git diff --check`: passed. No product source changed during re-gate.
+
+**Read / test validity:** the browser cases at
+[hosted-agent-setup.spec.ts:843](../../../desktop/tests/e2e/hosted-agent-setup.spec.ts#L843)
+drive the actual host picker, model selection and Add agent submit, then assert
+recovery or dismissal. They do not copy the production predicate. Each asserts
+exactly one native prepare call carrying `opaque/model:fixture`. Boundary-only
+mocking returns failed, conflict, needs-login, unverified, pending-with-error,
+pending-without-error and applied-without-error. The failed/no-error case would
+hit the original M-1 branch and dismiss, contradicting its recovery assertion.
+No mutant run was added. Native result projection remains source-reviewed only.
+
+Accepted continuity: the original independent core/owner/hostd/DB/runtime/hook
+checks above remain applicable because this repair changes none of their source.
+Executor typecheck, e2e bundle build, formatting and size receipts were read, not
+repeated as a new campaign. The source delta is +7/-2 production lines; current
+original-baseline budget remains 17 production files, +654/-189 (net +465).
+Current source assessment: **minimalism 9/10, elegance 9/10, correctness 9/10**,
+subject to the explicit integration limits; no optional findings.
+
+**Still not run:** native Windows and non-Windows compilation, native main-phase
+fixture, actual owner → real relay → hostd mailbox integration, remaining legacy
+Prepare-oriented browser cases, full CI and human app journey. The prior obsolete
+relay fixture and environment/lint gaps are unchanged. Focused browser success
+cannot prove native registration, authenticated transport, launch or conversation.
+
+**Routing:** return source ownership to the conductor with H-1/M-1 closed. No
+further product fixes are requested by this re-gate. Resolve the named native and
+real-relay prerequisites before claiming full acceptance, and coordinate matching
+relay + hostd + desktop for the eventual real select-host → harness → models →
+Create → launch → chat journey. A standalone installer/canary is not that gate.
+No live rollout, installation, existing-agent access, board action or publication
+was performed or authorized by this review.
+
+All reviewer commands are terminal; the temporary HTTP server was reaped. No
+containers were started in re-gate. Worktree was clean at the repair handoff and
+only this report changed. Report commit SHA is returned separately. Requested
+configuration remains **gpt-6-astra/high**; runtime identity remains unknown.
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=93ea3f2a29f663e9c53cd560df33e73a785dc37a..797c5169683af2512b80ebcdc0a8513f9ff4b649 findings=C=0/H=0/M=0/L=0 rework_rounds=1
