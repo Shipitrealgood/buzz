@@ -92,18 +92,27 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
             "spawnAfterCreate":false, "startOnAppLaunch":false, "model":"initial-host-model"
         })).unwrap()
         };
-        assert!(hosted_setup_token().is_err());
-        assert!(create(
-            input(),
-            app.handle().clone(),
-            &state,
-            scope.clone(),
-            "bc".repeat(32),
-            "native/grok".into()
-        )
-        .await
-        .unwrap_err()
-        .contains("disabled"));
+        let token = hosted_setup_token().unwrap();
+        assert!(buzz_core_pkg::host_registry::identifier(&token));
+        let mut invalid_scope = scope.clone();
+        invalid_scope.host = invalid_scope.owner;
+        assert_eq!(
+            create(
+                input(),
+                app.handle().clone(),
+                &state,
+                invalid_scope,
+                token,
+                "native/grok".into()
+            )
+            .await
+            .unwrap_err(),
+            "invalid or unsupported host deployment contract"
+        );
+        assert_eq!(
+            publication_probe.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
         assert!(load_managed_agents(app.handle()).unwrap().is_empty());
         let status = d::Status {
             inventory: Some(

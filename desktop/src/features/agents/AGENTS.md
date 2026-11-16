@@ -174,7 +174,7 @@ with a TypeScript lookup table or an id comparison in a component.
    with "computer or server". Remote selections name either an installed
    external backend provider or a registered host selected in `WhereToRunSection`.
    Windows exposes host registration even with no external providers; registered
-   host creation is default-off behind native `BUZZ_NATIVE_HOST_DEPLOYMENT_V1` and uses the hosted setup path below. Never synthesize a run location a surface doesn't have. Don't
+   host creation is available on Windows without a pilot environment flag and uses the hosted setup path below. Native session, signer, relay capability, catalog, ownership, build policy and protected-journal gates still apply; unsupported platforms stay closed. Never synthesize a run location a surface doesn't have. Don't
    expose `respond-to`, `allowlist`, Nostr, or harness jargon in primary UI
    copy. **The owner-only-access build capability is backend-independent.** When
    `getAgentAccessOwnerOnly()` is true, every managed agent's access control is
@@ -409,7 +409,15 @@ instance editor). Linked-definition Edit keeps its existing meaning. No polling 
 
 Login outcome, model availability, deployment application and conversational
 presence are separate facts. Fresh current-revision model observations permit
-only exact returned IDs; expiry invalidates launch without a network request.
+only exact returned IDs; expiry invalidates launch without a network request or
+clearing the saved model. Saved-agent “Host status” separates deployment evidence
+from exact-key Online/Away/Offline/unknown relay availability. Unverified means
+not checked; applied does not mean online. Missing/expired evidence never implies
+installation, login or model failure; install/sign-in guidance requires current
+corresponding evidence. Positive Online/Away blocks Start without granting any
+lifecycle authority. Unfinished setup and failure/cleanup recovery remain visible.
+This status/normal-launch change does not repair linked-definition hosted Edit
+or change Save/application behavior; that integration remains a separate prerequisite.
 Native login remains in the trusted host account's normal HOME. Channel attachment uses
 captured relay/signer scope and `ensureRunning:false`. The placement summary's
 cloud + Runs on host key describes execution location; the existing “Not managed

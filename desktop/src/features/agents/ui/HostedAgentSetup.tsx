@@ -1,5 +1,9 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  agentPresenceStartBlockReason,
+  useAgentAvailability,
+} from "../lib/useAgentAvailability";
 import { useRegisteredHostLabel } from "../lib/hostDirectory";
 import {
   actOnHostedSetup,
@@ -33,6 +37,11 @@ export function HostedAgentSetup({
   const cleanup = setup.action === "cleanup";
   const deleted = setup.state === "deleted";
   const hostLabel = useRegisteredHostLabel(initial.scope);
+  const { status: availability } = useAgentAvailability(initial.pubkey);
+  const startBlockReason = agentPresenceStartBlockReason(false, availability);
+  const recoverable = ["needs-login", "failed", "unadmitted"].includes(
+    setup.state,
+  );
   const [model, setModel] = React.useState(initial.model ?? "");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
@@ -87,7 +96,7 @@ export function HostedAgentSetup({
     }
   }
   const labels: Record<string, string> = {
-    unverified: "Check status to continue",
+    unverified: "Deployment status not checked",
     unadmitted: "Admission pending",
     pending: "Preparing",
     "needs-login": "Host readiness and model setup",
@@ -100,7 +109,10 @@ export function HostedAgentSetup({
     conflict: "Placement conflict",
     unavailable: "Status unavailable",
   };
-  const observation = setup.observation;
+  const observation =
+    setup.observation && setup.observation.expires_at * 1000 > now
+      ? setup.observation
+      : null;
   return (
     <div className="space-y-4" data-testid="hosted-agent-setup">
       <p className="font-medium">
@@ -109,9 +121,24 @@ export function HostedAgentSetup({
       <p className="text-sm">
         Runs on {hostLabel ?? truncateNpub(setup.scope.host)}
       </p>
+      <p className="text-sm">
+        Availability:{" "}
+        {availability
+          ? availability[0].toUpperCase() + availability.slice(1)
+          : "Unknown"}
+      </p>
       <p role="status">{labels[setup.state] ?? setup.state}</p>
       {!cleanup ? (
         <>
+          <p className="text-sm">Saved runtime: {setup.runtime}</p>
+          {model ? (
+            <p className="text-sm">
+              Selected model: {model}
+              {catalog && !catalog.models.some((entry) => entry.id === model)
+                ? " (unavailable)"
+                : ""}
+            </p>
+          ) : null}
           {observation ? (
             <div className="space-y-1 text-sm">
               <p>
@@ -132,42 +159,54 @@ export function HostedAgentSetup({
             </div>
           ) : (
             <p className="text-sm">
-              Readiness and models are pending or unavailable. Check status for
+              Readiness and model list have not been checked. Check status for
               current evidence.
             </p>
           )}
-          <p className="text-sm">
-            Install and configure the native harness on{" "}
-            {hostLabel ?? "this host"} using its normal account and native
-            sign-in command, then Refresh. A login check and model list do not
-            establish subscription access or remaining usage.
-          </p>
-          <PersonaModelField
-            disabled={pending || !catalog}
-            isExplicitModelRequired
-            model={model}
-            modelSelectValue={model}
-            modelDropdownOptions={(catalog?.models ?? []).map((m) => ({
-              label: m.name ?? m.id,
-              value: m.id,
-            }))}
-            modelDiscoveryStatus={
-              !catalog
-                ? {
-                    tone: "warning",
-                    message:
-                      "Current host readiness and a fresh model list are required to start.",
-                  }
-                : null
-            }
-            onModelValueChange={setModel}
-            onCustomModelChange={() => {}}
-            showCustomModelInput={false}
-            showSharedComputeAutoHint={false}
-            transition={{ duration: 0 }}
-          />
-          {model && !catalog?.models.some((entry) => entry.id === model) ? (
-            <p className="text-sm">Selected model: {model} (unavailable)</p>
+          {recoverable &&
+          observation?.availability &&
+          [
+            "adapter_missing",
+            "adapter_outdated",
+            "cli_missing",
+            "not_installed",
+          ].includes(observation.availability) ? (
+            <p className="text-sm">
+              Install and configure the native harness on{" "}
+              {hostLabel ?? "this host"}, then Refresh.
+            </p>
+          ) : null}
+          {recoverable && observation?.readiness === "logged-out" ? (
+            <p className="text-sm">
+              Sign in on {hostLabel ?? "this host"} using its normal account and
+              native sign-in command, then Refresh.
+            </p>
+          ) : null}
+          {recoverable ? (
+            <PersonaModelField
+              disabled={pending || !catalog}
+              isExplicitModelRequired
+              model={model}
+              modelSelectValue={model}
+              modelDropdownOptions={(catalog?.models ?? []).map((m) => ({
+                label: m.name ?? m.id,
+                value: m.id,
+              }))}
+              modelDiscoveryStatus={
+                !catalog
+                  ? {
+                      tone: "warning",
+                      message:
+                        "Current host readiness and a fresh model list are required to start.",
+                    }
+                  : null
+              }
+              onModelValueChange={setModel}
+              onCustomModelChange={() => {}}
+              showCustomModelInput={false}
+              showSharedComputeAutoHint={false}
+              transition={{ duration: 0 }}
+            />
           ) : null}
         </>
       ) : null}
@@ -195,17 +234,19 @@ export function HostedAgentSetup({
           <>
             <Button
               type="button"
-              disabled={
-                pending ||
-                !["needs-login", "failed", "unadmitted"].includes(setup.state)
-              }
+              disabled={pending || !recoverable}
               onClick={() => void act({ type: "refresh" })}
             >
               Refresh
             </Button>
             <Button
               type="button"
-              disabled={pending || !catalog?.models.some((m) => m.id === model)}
+              disabled={
+                pending ||
+                !!startBlockReason ||
+                !catalog?.models.some((m) => m.id === model)
+              }
+              title={startBlockReason}
               onClick={() => void act({ type: "launch", model })}
             >
               Start
@@ -274,13 +315,13 @@ export function ContinueHostedSetup({
   return (
     <>
       <Button type="button" variant="outline" onClick={() => setOpen(true)}>
-        Continue setup
+        Host status
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogTitle>Agent setup</DialogTitle>
+          <DialogTitle>Hosted agent</DialogTitle>
           <DialogDescription>
-            Continue this agent on its registered host.
+            View status and recovery on this agent’s registered host.
           </DialogDescription>
           {setup ? (
             <HostedAgentSetup

@@ -119,7 +119,10 @@ pub(super) async fn setup(
                                 .is_ok()
                         {
                             response.observation = Some(observation);
-                        } else {
+                        } else if matches!(
+                            response.state.as_str(),
+                            "needs-login" | "failed" | "unadmitted"
+                        ) {
                             response.error.get_or_insert(
                                 "Observation expired; refresh models explicitly".into(),
                             );

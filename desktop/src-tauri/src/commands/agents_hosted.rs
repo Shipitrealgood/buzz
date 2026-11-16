@@ -1,4 +1,4 @@
-//! Default-off native hosted setup; identity and recovery stay outside the WebView.
+//! Windows native hosted setup; identity and recovery stay outside the WebView.
 //! Main owns key generation, resolution, attestation, record and publications.
 use super::*;
 use crate::commands::paired_hosts::Session;
@@ -159,8 +159,8 @@ use commands::setup;
 pub use commands::*;
 
 fn enabled() -> Result<(), String> {
-    if std::env::var("BUZZ_NATIVE_HOST_DEPLOYMENT_V1").as_deref() != Ok("1") {
-        return Err("Native host deployment disabled".into());
+    if !cfg!(target_os = "windows") {
+        return Err("Native host deployment is supported only on Windows".into());
     }
     Ok(())
 }

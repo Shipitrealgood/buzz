@@ -13,6 +13,7 @@ type Fixture = {
   registered: boolean;
   models: boolean;
   missingModel: boolean;
+  presence?: "online" | "away" | "offline";
   delayNext: boolean;
   cleaned?: boolean;
   localFailure?: boolean;
@@ -30,6 +31,13 @@ declare global {
     __HOSTED_SETUP_FIXTURE__: Fixture;
   }
 }
+async function selectHostedModel(page: Page) {
+  await page.getByRole("combobox", { name: /^Model/ }).click();
+  await page
+    .getByRole("button", { name: "Synthetic model", exact: true })
+    .click();
+}
+
 async function open(
   page: Page,
   channel = false,
@@ -111,7 +119,13 @@ async function open(
                   agentName: "Synthetic Grok",
                   agentVersion: "fixture",
                   models: fixture.missingModel
-                    ? []
+                    ? [
+                        {
+                          id: "opaque/model:other",
+                          name: "Other model",
+                          description: null,
+                        },
+                      ]
                     : [
                         {
                           id: "opaque/model:fixture",
@@ -128,6 +142,15 @@ async function open(
       };
     api.invoke = async (command, args) => {
       fixture.calls.push({ command, args: structuredClone(args) });
+      if (command === "get_presence")
+        return Object.fromEntries(
+          ((args?.pubkeys as string[]) ?? []).map((key) => [
+            key,
+            key === "72".repeat(32)
+              ? (fixture.presence ?? "offline")
+              : "online",
+          ]),
+        );
       if (command === "paired_host_list")
         return {
           supported: true,
@@ -252,7 +275,11 @@ async function open(
         return record ? [...records, record] : records;
       }
       if (command === "hosted_prepare") {
-        const input = args?.input as { name: string; personaId: string };
+        const input = args?.input as {
+          name: string;
+          personaId: string;
+          model: string;
+        };
         if (!fixture.setup) {
           const template = (
             (await previous("list_managed_agents")) as Record<string, unknown>[]
@@ -264,7 +291,7 @@ async function open(
             persona_id: input.personaId,
             backend: { type: "registered_host", scope },
             status: "host_pending",
-            model: null,
+            model: input.model,
             agent_command: "grok",
             start_on_app_launch: false,
           };
@@ -276,7 +303,7 @@ async function open(
             personaId: input.personaId,
             name: input.name,
             phase: 3,
-            model: null,
+            model: input.model,
             state: fixture.createState ?? "needs-login",
             unit: "77".repeat(32),
             revision: 1,
@@ -384,17 +411,17 @@ async function open(
   await page
     .getByRole("menuitemradio", { name: /Grok Build · native\/grok/ })
     .click();
+  if (!overrides.runtimeUnavailable && !overrides.catalogMode) {
+    await selectHostedModel(page);
+  }
 }
 
-test("Prepare uses verified hosted evidence with an unfresh registration and expires without interaction", async ({
+test("Create uses verified hosted evidence with an unfresh registration and expires without interaction", async ({
   page,
 }) => {
   await page.clock.install();
   await open(page);
-  const prepare = page.getByRole("button", {
-    name: "Prepare agent",
-    exact: true,
-  });
+  const prepare = page.getByTestId("persona-dialog-submit");
   await page.locator("#persona-display-name").fill("Fizz");
   await expect(prepare).toBeEnabled();
   await expect(page.locator("#agent-run-on")).toContainText("Registered");
@@ -435,14 +462,12 @@ for (const [reason, overrides] of [
   ["stale catalog", { catalogMode: "stale" }],
   ["unavailable runtime", { runtimeUnavailable: true }],
 ] as const) {
-  test(`Prepare rejects ${reason} despite a current paired registration`, async ({
+  test(`Create rejects ${reason} despite a current paired registration`, async ({
     page,
   }) => {
     await open(page, false, overrides);
     await page.locator("#persona-display-name").fill("Fizz");
-    await expect(
-      page.getByRole("button", { name: "Prepare agent", exact: true }),
-    ).toBeDisabled();
+    await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled();
     expect(
       await page.evaluate(() =>
         window.__HOSTED_SETUP_FIXTURE__.calls.some(
@@ -453,13 +478,12 @@ for (const [reason, overrides] of [
   });
 }
 
-test("ordinary hosted form retains one setup through close, native login, explicit model refresh and offline failure", async ({
+test("ordinary hosted form separates availability and deployment evidence while retaining setup recovery", async ({
   page,
 }) => {
+  await page.clock.install();
   await open(page);
-  await expect(
-    page.getByRole("button", { name: "Prepare agent", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByTestId("persona-dialog-submit")).toBeEnabled();
   // Two same-tick form submits exercise the real shared latch before definition effects.
   await page.locator("#persona-dialog-form").evaluate((form) => {
     form.dispatchEvent(
@@ -482,7 +506,26 @@ test("ordinary hosted form retains one setup through close, native login, explic
   expect(
     firstHostedCalls.filter((c) => c.command === "discover_agent_models"),
   ).toEqual([]);
+  await expect(setup).toContainText("Sign in on Synthetic workshop");
   await setup.getByRole("button", { name: "Close", exact: true }).click();
+  // The same retained identity may have applied while the dialog was closed.
+  // Reopening still has only saved intent; presence cannot attest deployment.
+  await page.evaluate(async () => {
+    const f = window.__HOSTED_SETUP_FIXTURE__;
+    if (!f.setup) throw new Error("Missing fixture setup");
+    f.setup.state = "applied";
+    f.setup.model = "opaque/model:fixture";
+    f.setup.observation = null;
+    f.presence = "online";
+    const client = (
+      window as Window & {
+        __BUZZ_E2E_QUERY_CLIENT__: {
+          invalidateQueries: (filter: { queryKey: string[] }) => Promise<void>;
+        };
+      }
+    ).__BUZZ_E2E_QUERY_CLIENT__;
+    await client.invalidateQueries({ queryKey: ["presence"] });
+  });
   await page.getByTestId("new-agent-card").click();
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
   await page
@@ -491,13 +534,49 @@ test("ordinary hosted form retains one setup through close, native login, explic
       exact: true,
     })
     .click();
+  await expect(setup).toContainText("Availability: Online");
+  await expect(setup.getByRole("status")).toHaveText(
+    "Deployment status not checked",
+  );
+  await expect(setup).toContainText("Saved runtime: native/grok");
+  await expect(setup).toContainText("Selected model: opaque/model:fixture");
+  await expect(setup).not.toContainText("(unavailable)");
+  await expect(setup).not.toContainText("Install and configure");
+  await expect(setup).not.toContainText("Sign in on");
+  await expect(setup.locator("#persona-model")).toHaveCount(0);
+  // A disconnected relay invalidates cached online without changing the receipt.
+  await page.evaluate(() => {
+    (
+      window as Window & {
+        __BUZZ_E2E_SET_RELAY_CONNECTION_STATE__: (state: string) => void;
+      }
+    ).__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__("disconnected");
+  });
+  await expect(setup).toContainText("Availability: Unknown");
+  await setup
+    .getByRole("button", { name: "Check status", exact: true })
+    .click();
+  await expect(setup.getByRole("status")).toHaveText("Deployment applied");
+  await expect(setup).toContainText("Availability: Unknown");
+  await expect(setup).not.toContainText("(unavailable)");
+  await expect(setup).not.toContainText("Install and configure");
+  await expect(setup).not.toContainText("Sign in on");
+  // Exercise the same real unfinished setup path with current login evidence.
   await page.evaluate(() => {
     const f = window.__HOSTED_SETUP_FIXTURE__;
+    if (!f.setup) throw new Error("Missing fixture setup");
+    f.setup.state = "needs-login";
     f.hostedStart = f.calls.length;
+    (
+      window as Window & {
+        __BUZZ_E2E_SET_RELAY_CONNECTION_STATE__: (state: string) => void;
+      }
+    ).__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__("connected");
   });
   await setup
     .getByRole("button", { name: "Check status", exact: true })
     .click();
+  await expect(setup).toContainText("Sign in on Synthetic workshop");
   await page.evaluate(() => {
     window.__HOSTED_SETUP_FIXTURE__.login = true;
   });
@@ -510,9 +589,37 @@ test("ordinary hosted form retains one setup through close, native login, explic
   await page
     .getByRole("button", { name: "Synthetic model", exact: true })
     .click();
-  await expect(
-    setup.getByRole("button", { name: "Start", exact: true }),
-  ).toBeEnabled();
+  const start = setup.getByRole("button", { name: "Start", exact: true });
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveAttribute("title", /present on the relay/);
+  for (const presence of ["away", "offline"] as const) {
+    await page.evaluate(async (presence) => {
+      window.__HOSTED_SETUP_FIXTURE__.presence = presence;
+      const client = (
+        window as Window & {
+          __BUZZ_E2E_QUERY_CLIENT__: {
+            invalidateQueries: (filter: {
+              queryKey: string[];
+            }) => Promise<void>;
+          };
+        }
+      ).__BUZZ_E2E_QUERY_CLIENT__;
+      await client.invalidateQueries({ queryKey: ["presence"] });
+    }, presence);
+    await expect(setup).toContainText(
+      `Availability: ${presence === "away" ? "Away" : "Offline"}`,
+    );
+    if (presence === "away") await expect(start).toBeDisabled();
+  }
+  await expect(start).toBeEnabled();
+  await page.clock.fastForward(120_001);
+  await expect(start).toBeDisabled();
+  await expect(setup).toContainText("Selected model: opaque/model:fixture");
+  await expect(setup).not.toContainText("(unavailable)");
+  await expect(setup).not.toContainText("Sign in on");
+  await expect(setup).toContainText("a fresh model list are required to start");
+  await setup.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(start).toBeEnabled();
   await expect(setup).toContainText("Runs on Synthetic workshop");
   await expect(setup).not.toContainText("buzz-host-activate");
   await expect(setup).not.toContainText("Complete native login");
@@ -553,9 +660,7 @@ test("retained setup denies launch after expired or denied current evidence", as
   page,
 }) => {
   await open(page);
-  await page
-    .getByRole("button", { name: "Prepare agent", exact: true })
-    .click();
+  await page.getByTestId("persona-dialog-submit").click();
   const setup = page.getByTestId("hosted-agent-setup");
   await expect(setup).toBeVisible();
   await page.evaluate(() => {
@@ -626,12 +731,8 @@ test("contextual hosted preparation keeps its identity through lost response and
   await page.evaluate(() => {
     window.__HOSTED_SETUP_FIXTURE__.lose = true;
   });
-  await page
-    .getByRole("button", { name: "Prepare agent", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Prepare agent", exact: true }),
-  ).toBeEnabled();
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(page.getByTestId("persona-dialog-submit")).toBeEnabled();
   // A lost response freezes the exact installed choice, not only its
   // canonical preset. The alternate Grok ID must not silently replay native/grok.
   await page
@@ -640,12 +741,11 @@ test("contextual hosted preparation keeps its identity through lost response and
   await page
     .getByRole("menuitemradio", { name: /Grok Build · second\/grok/ })
     .click();
+  await selectHostedModel(page);
   await expect(
     page.getByRole("button", { name: "Agent harness", exact: true }),
   ).toContainText("second/grok");
-  await page
-    .getByRole("button", { name: "Prepare agent", exact: true })
-    .click();
+  await page.getByTestId("persona-dialog-submit").click();
   await expect(
     page.getByText("This setup is fixed to native/grok on its original host.", {
       exact: false,
@@ -666,9 +766,8 @@ test("contextual hosted preparation keeps its identity through lost response and
   await page
     .getByRole("menuitemradio", { name: /Grok Build · native\/grok/ })
     .click();
-  await page
-    .getByRole("button", { name: "Prepare agent", exact: true })
-    .click();
+  await selectHostedModel(page);
+  await page.getByTestId("persona-dialog-submit").click();
   const setup = page.getByTestId("hosted-agent-setup");
   await expect(setup).toBeVisible();
   const toast = page
@@ -712,9 +811,7 @@ test("contextual hosted preparation keeps its identity through lost response and
   await expect(
     page.getByTestId("edit-agent-run-on").locator("svg.lucide-cloud"),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Continue setup", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Host status", exact: true }).click();
   await expect(setup).toBeVisible();
   // A late result from a closed setup cannot replace the next mounted setup.
   await page.evaluate(() => {
@@ -758,9 +855,7 @@ test("confirmed Cleanup stays recoverable without models through Close, denial a
   page,
 }) => {
   await open(page);
-  await page
-    .getByRole("button", { name: "Prepare agent", exact: true })
-    .click();
+  await page.getByTestId("persona-dialog-submit").click();
   const setup = page.getByTestId("hosted-agent-setup");
   await expect(setup).toBeVisible();
   await page.evaluate(() => {
@@ -845,7 +940,7 @@ for (const outcome of [
   { state: "failed", label: "Deployment failed" },
   { state: "conflict", label: "Placement conflict" },
   { state: "needs-login", label: "Host readiness and model setup" },
-  { state: "unverified", label: "Check status to continue" },
+  { state: "unverified", label: "Deployment status not checked" },
   {
     state: "pending",
     label: "Preparing",
@@ -866,10 +961,9 @@ for (const outcome of [
     await page
       .getByRole("button", { name: "Synthetic model", exact: true })
       .click();
-    const create = page.getByRole("dialog").getByRole("button", {
-      name: "Add agent",
-      exact: true,
-    });
+    const create = page
+      .getByRole("dialog")
+      .getByTestId("persona-dialog-submit");
     await expect(create).toBeEnabled();
     await create.click();
     await expect
