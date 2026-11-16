@@ -39,6 +39,10 @@ impl Device {
         Ok(intents)
     }
 }
+enum Admission {
+    Setup(ModelSelection),
+    Start(Command),
+}
 impl Management {
     /// Reconcile exact journal bytes with the admitted operation and placement.
     pub async fn operation(
@@ -90,6 +94,46 @@ impl Management {
         model: ModelSelection,
         snapshot: Value,
     ) -> Result<Intent> {
+        self.continue_intent(
+            device,
+            signer,
+            previous,
+            status,
+            Admission::Setup(model),
+            snapshot,
+        )
+        .await
+    }
+    /// Retain an explicit same-identity Start using main's validated current settings.
+    pub async fn start_existing_deployment(
+        &mut self,
+        device: &mut Device,
+        signer: &impl Fn() -> Result<Keys>,
+        previous: &str,
+        status: &Status,
+        command: Command,
+        mut snapshot: Value,
+    ) -> Result<Intent> {
+        snapshot["existing_start"] = Value::Bool(true);
+        self.continue_intent(
+            device,
+            signer,
+            previous,
+            status,
+            Admission::Start(command),
+            snapshot,
+        )
+        .await
+    }
+    async fn continue_intent(
+        &mut self,
+        device: &mut Device,
+        signer: &impl Fn() -> Result<Keys>,
+        previous: &str,
+        status: &Status,
+        admission: Admission,
+        snapshot: Value,
+    ) -> Result<Intent> {
         let evidence = self.operation(device, signer, previous).await?;
         let keys = signer()?;
         let old = device
@@ -102,13 +146,30 @@ impl Management {
         else {
             bail!("not a setup intent");
         };
+        let (model, candidate) = match admission {
+            Admission::Setup(model) => (model, None),
+            Admission::Start(Command::Deploy {
+                config,
+                identity: candidate_identity,
+            }) => {
+                ensure!(
+                    candidate_identity == identity,
+                    "saved agent identity changed"
+                );
+                (config.model.clone(), Some(config))
+            }
+            Admission::Start(_) => bail!("Start requires Deploy"),
+        };
+        let permits_state = |state: &str| {
+            matches!(state, "needs-login" | "failed") || (candidate.is_some() && state == "applied")
+        };
         let revision = if evidence.admitted {
             ensure!(
                 evidence.current,
                 "placement conflict; another operation advanced it"
             );
             ensure!(
-                matches!(evidence.state.as_str(), "needs-login" | "failed"),
+                permits_state(&evidence.state),
                 "operation is unresolved or no longer a setup"
             );
             evidence.revision.context("missing placement revision")?
@@ -118,7 +179,7 @@ impl Management {
                 "operation admission unresolved; retry exact intent"
             );
             ensure!(
-                matches!(model, ModelSelection::PendingLogin {}),
+                candidate.is_some() || matches!(model, ModelSelection::PendingLogin {}),
                 "refresh preparation first"
             );
             if a.expected_revision == 0 {
@@ -145,7 +206,7 @@ impl Management {
                         "placement conflict; predecessor is no longer current"
                     );
                     ensure!(
-                        matches!(read.state.as_str(), "needs-login" | "failed"),
+                        permits_state(&read.state),
                         "predecessor is unresolved or no longer a setup"
                     );
                     let Command::Deploy {
@@ -157,7 +218,8 @@ impl Management {
                     };
                     prior_config.model = config.model.clone();
                     ensure!(
-                        prior_identity == identity && prior_config == config,
+                        prior_identity == identity
+                            && (candidate.is_some() || prior_config == config),
                         "setup predecessor identity or configuration changed"
                     );
                     proven_revision = read.revision;
@@ -165,13 +227,14 @@ impl Management {
                 proven_revision.context("current predecessor placement unavailable")?
             }
         };
+        let selected_config = candidate.as_deref().unwrap_or(&config);
         status.permits(
             &a.scope,
-            &config.catalog_revision,
-            &config.runtime_id,
+            &selected_config.catalog_revision,
+            &selected_config.runtime_id,
             now()?,
         )?;
-        if let ModelSelection::Selected { id } = &model {
+        if let (None, ModelSelection::Selected { id }) = (&candidate, &model) {
             let body = evidence
                 .body
                 .as_ref()
@@ -217,8 +280,11 @@ impl Management {
             ModelSelection::Selected { id } => Value::String(id.clone()),
             ModelSelection::PendingLogin {} => prior["record"]["model"].clone(),
         };
-        ensure!(snapshot == expected, "saved setup configuration changed");
-        let mut next_config = *config;
+        ensure!(
+            candidate.is_some() || snapshot == expected,
+            "saved setup configuration changed"
+        );
+        let mut next_config = *candidate.unwrap_or(config);
         next_config.model = model;
         let authority = Authority {
             v: 1,

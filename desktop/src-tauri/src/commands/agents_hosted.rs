@@ -51,7 +51,37 @@ impl Create<'_> {
         record: &ManagedAgentRecord,
         about: Option<String>,
     ) -> Result<(), String> {
+        let (command, snapshot) = self.candidate(app, state, record, about)?;
         let keys = self.session.keys().map_err(|e| e.to_string())?;
+        let authority = d::Authority {
+            v: 1,
+            scope: self.scope.clone(),
+            agent: nostr::PublicKey::from_hex(&record.pubkey).map_err(|e| e.to_string())?,
+            action: d::Action::Deploy,
+            operation_id: self.operation.clone(),
+            expected_revision: 0,
+            expires_at: nostr::Timestamp::now().as_secs() + 600,
+            content_sha256: String::new(),
+        };
+        self.device
+            .prepare_deployment(
+                &self.scope.community,
+                &keys,
+                authority,
+                &command,
+                &self.status,
+                snapshot,
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    fn candidate<R: tauri::Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        state: &AppState,
+        record: &ManagedAgentRecord,
+        about: Option<String>,
+    ) -> Result<(d::Command, serde_json::Value), String> {
         // This is the same effective launch projection used by main's remote
         // deployment path. Only explicitly supported structured fields cross over.
         let payload = build_deploy_payload(app, state, record)?;
@@ -100,11 +130,11 @@ impl Create<'_> {
             },
             // New creation carries the exact selected host model; final launch rechecks it.
             model: d::ModelSelection::Selected {
-                id: record
-                    .model
-                    .clone()
+                id: payload["model"]
+                    .as_str()
+                    .map(str::to_owned)
                     .filter(|m| !m.trim().is_empty())
-                    .ok_or("Select a host model before creating the agent")?,
+                    .ok_or("Select a host model before starting the agent")?,
             },
             provider: None,
             system_prompt: serde_json::from_value(payload["system_prompt"].clone())
@@ -113,16 +143,6 @@ impl Create<'_> {
             parallelism: payload["parallelism"]
                 .as_u64()
                 .ok_or("Missing concurrency")? as u32,
-        };
-        let authority = d::Authority {
-            v: 1,
-            scope: self.scope.clone(),
-            agent: nostr::PublicKey::from_hex(&record.pubkey).map_err(|e| e.to_string())?,
-            action: d::Action::Deploy,
-            operation_id: self.operation.clone(),
-            expected_revision: 0,
-            expires_at: nostr::Timestamp::now().as_secs() + 600,
-            content_sha256: String::new(),
         };
         let command = d::Command::Deploy {
             config: Box::new(config),
@@ -136,17 +156,10 @@ impl Create<'_> {
             .as_object_mut()
             .ok_or("Invalid main record")?
             .remove("private_key_nsec");
-        self.device
-            .prepare_deployment(
-                &self.scope.community,
-                &keys,
-                authority,
-                &command,
-                &self.status,
-                json!({"record":snapshot,"about":about,"draft":self.draft}),
-            )
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        Ok((
+            command,
+            json!({"record":snapshot,"about":about,"draft":self.draft}),
+        ))
     }
 }
 
@@ -389,6 +402,21 @@ impl Create<'_> {
                 return Err("A newer retained setup must be recovered first".into());
             }
             let mut records = load_managed_agents(app)?;
+            if self.snapshot()?["existing_start"] == true {
+                let existing = records
+                    .iter()
+                    .find(|r| r.pubkey == record.pubkey)
+                    .ok_or("Saved agent missing; Start cannot recreate it")?;
+                if !matches!(&existing.backend, BackendKind::RegisteredHost { scope, .. } if scope == &self.scope)
+                    || existing.private_key_nsec != record.private_key_nsec
+                    || existing.auth_tag != record.auth_tag
+                    || existing.relay_url != record.relay_url
+                {
+                    return Err("Saved agent identity or destination changed".into());
+                }
+                self.advance(2)?;
+                return Ok(None);
+            }
             if let Some(existing) = records.iter_mut().find(|r| r.pubkey == record.pubkey) {
                 let mut before = serde_json::to_value(&*existing).map_err(|e| e.to_string())?;
                 let after = serde_json::to_value(&record).map_err(|e| e.to_string())?;
@@ -433,6 +461,155 @@ impl Create<'_> {
     }
 }
 
+pub(super) async fn start(
+    app: &AppHandle,
+    state: State<'_, AppState>,
+    pubkey: &str,
+    scope: buzz_core_pkg::paired_message::Scope,
+) -> Result<ManagedAgentSummary, String> {
+    let lock = {
+        let mut locks = state
+            .provider_deploy_locks
+            .lock()
+            .map_err(|e| e.to_string())?;
+        locks
+            .entry(pubkey.into())
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock().await;
+    let (mut create, mut management) =
+        open(app, &state, scope.clone(), String::new(), String::new()).await?;
+    let keys = create.session.keys().map_err(|e| e.to_string())?;
+    let root = create
+        .device
+        .deployment_intents(&scope.community, &keys)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .rev()
+        .find(|i| {
+            i.protected.authority.scope == scope && i.protected.authority.agent.to_hex() == pubkey
+        })
+        .ok_or("No exact retained hosted context; Start cannot create another identity")?;
+    create.operation = root.protected.authority.operation_id;
+    create.latest(&mut management).await?;
+    create.check()?;
+    let intent = create.intent()?;
+    let d::Command::Deploy { config, .. } = wire::restore_command(
+        &keys,
+        &intent.protected.authority,
+        &intent.protected.ciphertext,
+    )
+    .map_err(|e| e.to_string())?
+    else {
+        return Err("Cleanup retained; Start blocked".into());
+    };
+    create.runtime = config.runtime_id;
+    let evidence = management
+        .operation(
+            &mut create.device,
+            &|| create.session.keys(),
+            &create.operation,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    // Pending admission always retries immutable bytes, even after a later Save.
+    if (evidence.admitted && evidence.state != "pending")
+        || (!evidence.admitted
+            && intent.protected.authority.expires_at <= nostr::Timestamp::now().as_secs())
+    {
+        let (command, snapshot) = {
+            let _store = state
+                .managed_agents_store_lock
+                .lock()
+                .map_err(|e| e.to_string())?;
+            let records = load_managed_agents(app)?;
+            let record = records
+                .iter()
+                .find(|r| r.pubkey == pubkey)
+                .ok_or("Saved agent missing")?;
+            let BackendKind::RegisteredHost {
+                scope: saved,
+                installed_runtime,
+            } = &record.backend
+            else {
+                return Err("Agent is no longer hosted".into());
+            };
+            if saved != &scope {
+                return Err("Hosted destination changed".into());
+            }
+            if let Some(runtime) = installed_runtime {
+                create.runtime = runtime.clone();
+            }
+            create.check_inventory()?;
+            create.candidate(app, &state, record, None)?
+        };
+        let d::Command::Deploy { config, .. } = &command else {
+            return Err("Invalid Start".into());
+        };
+        let models = hosted_models(
+            app.clone(),
+            state.clone(),
+            scope.clone(),
+            create.runtime.clone(),
+            config.catalog_revision.clone(),
+        )
+        .await?;
+        let d::ModelSelection::Selected { id } = &config.model else {
+            return Err("Select a host model".into());
+        };
+        if models.availability != buzz_core_pkg::harness::AcpAvailabilityStatus::Available
+            || !matches!(
+                models.readiness,
+                buzz_core_pkg::harness::Readiness::LoggedIn
+                    | buzz_core_pkg::harness::Readiness::NotApplicable
+            )
+            || !matches!(&models.models, d::observation::Models::Available { catalog } if catalog.models.iter().any(|m| &m.id == id))
+        {
+            return Err(
+                "Saved host model is unavailable; edit the selection and Start again".into(),
+            );
+        }
+        let next = management
+            .start_existing_deployment(
+                &mut create.device,
+                &|| create.session.keys(),
+                &create.operation,
+                &create.status,
+                command,
+                snapshot,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        create.operation = next.protected.authority.operation_id;
+    }
+    if let Some(error) = create.recover(app, &state).await? {
+        return Err(error);
+    }
+    management
+        .dispatch(
+            &mut create.device,
+            &|| create.session.keys(),
+            &create.operation,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let _store = state
+        .managed_agents_store_lock
+        .lock()
+        .map_err(|e| e.to_string())?;
+    let records = load_managed_agents(app)?;
+    let record = records
+        .iter()
+        .find(|r| r.pubkey == pubkey)
+        .ok_or("Saved agent missing")?;
+    let runtimes = state
+        .managed_agent_processes
+        .lock()
+        .map_err(|e| e.to_string())?;
+    summarize_from_disk(app, record, &runtimes)
+}
+
 async fn create<R: tauri::Runtime>(
     mut input: CreateManagedAgentRequest,
     app: AppHandle<R>,
@@ -459,6 +636,7 @@ async fn create<R: tauri::Runtime>(
         input.destination = None;
         input.backend = BackendKind::RegisteredHost {
             scope: create.scope.clone(),
+            installed_runtime: Some(create.runtime.clone()),
         };
         input.relay_url = Some(create.scope.community.replacen("https://", "wss://", 1));
         input.spawn_after_create = false;
@@ -533,10 +711,7 @@ fn restored_record(
         .clone();
     value["private_key_nsec"] = identity.private_key_nsec.into();
     let record: ManagedAgentRecord = serde_json::from_value(value).map_err(|e| e.to_string())?;
-    if record.backend
-        != (BackendKind::RegisteredHost {
-            scope: scope.clone(),
-        })
+    if !matches!(&record.backend, BackendKind::RegisteredHost { scope: saved, .. } if saved == scope)
         || record.pubkey != intent.protected.authority.agent.to_hex()
         || record.auth_tag != identity.auth_tag
         || record.relay_url != scope.community.replacen("https://", "wss://", 1)

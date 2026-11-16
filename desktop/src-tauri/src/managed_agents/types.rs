@@ -8,6 +8,8 @@ pub enum BackendKind {
     Local,
     RegisteredHost {
         scope: buzz_core_pkg::paired_message::Scope,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        installed_runtime: Option<String>,
     },
     Provider {
         id: String,

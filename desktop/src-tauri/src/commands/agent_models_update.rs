@@ -25,7 +25,11 @@ fn ensure_access_policy_change_supported(
 ) -> Result<(), String> {
     if access_policy_changed
         && record.backend != crate::managed_agents::BackendKind::Local
-        && record.backend_agent_id.is_some()
+        && (record.backend_agent_id.is_some()
+            || matches!(
+                record.backend,
+                crate::managed_agents::BackendKind::RegisteredHost { .. }
+            ))
     {
         return Err(
             "Access cannot be changed while this provider-backed agent is deployed because the provider protocol has no explicit stop or revocation acknowledgement. Stop or recreate the provider agent first."
@@ -321,6 +325,31 @@ pub async fn update_managed_agent(
             input.effort_level,
         )?;
 
+        if let crate::managed_agents::BackendKind::RegisteredHost {
+            scope,
+            installed_runtime,
+        } = &mut record.backend
+        {
+            crate::relay::assert_expected_relay_scope(
+                Some(&scope.community),
+                &crate::relay::relay_api_base_url_with_override(&state),
+            )?;
+            crate::relay::assert_expected_signer(
+                Some(&scope.owner.to_hex()),
+                &state.signing_keys()?.public_key().to_hex(),
+            )?;
+            if record.relay_url != previous_record.relay_url {
+                return Err("Hosted destination cannot change".into());
+            }
+            if let Some(runtime) = input.installed_runtime {
+                if !buzz_core_pkg::paired_message::runtime_id(&runtime) {
+                    return Err("Invalid installed host runtime".into());
+                }
+                *installed_runtime = Some(runtime);
+            }
+        } else if input.installed_runtime.is_some() {
+            return Err("Installed host runtime requires an existing hosted agent".into());
+        }
         stamp_record_updated_at(record, applied);
 
         save_managed_agents(&app, &records)?;

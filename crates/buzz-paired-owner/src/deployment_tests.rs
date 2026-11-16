@@ -857,6 +857,138 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             }
         }
     }
+    // Explicit Start shares setup's current-placement/peer checks, but can
+    // carry the saved full configuration after an applied predecessor.
+    for scenario in ["applied", "pending", "advanced", "identity", "competing"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut journal = Device::at(&dir.path().join("start.sqlite")).unwrap();
+        let prior = seed_intent(
+            &mut journal,
+            &owner,
+            authority.clone(),
+            &command,
+            snapshot.clone(),
+        );
+        let outcome = if scenario == "pending" {
+            d::Outcome::Pending
+        } else {
+            d::Outcome::Applied
+        };
+        let receipt = wire::result(
+            &host,
+            &d::DeploymentResult {
+                request: prior.protected.authority.clone(),
+                outcome,
+                applied_revision: if scenario == "pending" { None } else { Some(1) },
+            },
+            now().unwrap(),
+        )
+        .unwrap();
+        *responses.lock().unwrap() = serde_json::json!({
+            "event": prior.event, "result": serde_json::to_string(&receipt).unwrap(),
+            "state": if scenario == "pending" { "pending" } else { "applied" },
+            "unit_id": "ef".repeat(32), "revision": if scenario == "advanced" { 2 } else { 1 }
+        });
+        let mut candidate = command.clone();
+        let d::Command::Deploy { config, identity } = &mut candidate else {
+            panic!("fixture deploy")
+        };
+        config.model = d::ModelSelection::Selected {
+            id: "saved/model:2".into(),
+        };
+        config.system_prompt = Some("Saved instructions".into());
+        if scenario == "identity" {
+            identity.auth_tag = None;
+        }
+        let mut saved = snapshot.clone();
+        saved["record"]["model"] = "saved/model:2".into();
+        saved["record"]["system_prompt"] = "Saved instructions".into();
+        assert!(management
+            .continue_deployment(
+                &mut journal,
+                &signer,
+                &prior.protected.authority.operation_id,
+                &status,
+                d::ModelSelection::PendingLogin {},
+                saved.clone()
+            )
+            .await
+            .is_err());
+        if scenario == "competing" {
+            let mut peer_authority = authority.clone();
+            peer_authority.operation_id = "ca".repeat(32);
+            peer_authority.expected_revision = 1;
+            seed_intent(
+                &mut journal,
+                &owner,
+                peer_authority,
+                &command,
+                snapshot.clone(),
+            );
+        }
+        let started = management
+            .start_existing_deployment(
+                &mut journal,
+                &signer,
+                &prior.protected.authority.operation_id,
+                &status,
+                candidate.clone(),
+                saved.clone(),
+            )
+            .await;
+        if scenario != "applied" {
+            assert!(started.is_err(), "{scenario}");
+            continue;
+        }
+        let started = started.unwrap();
+        assert_eq!(started.protected.authority.expected_revision, 1);
+        assert_eq!(started.protected.authority.agent, agent.public_key());
+        assert_eq!(started.protected.authority.scope, scope);
+        saved["existing_start"] = true.into();
+        assert_eq!(
+            journal
+                .restore_materialization(&scope.community, &owner, &started)
+                .unwrap(),
+            saved
+        );
+        assert!(
+            wire::restore_command(
+                &owner,
+                &started.protected.authority,
+                &started.protected.ciphertext
+            )
+            .unwrap()
+                == candidate
+        );
+        for phase in 1..=2 {
+            journal
+                .deployment_advance(
+                    &scope.community,
+                    &owner,
+                    &started.protected.authority.operation_id,
+                    phase,
+                )
+                .unwrap();
+        }
+        drop(journal);
+        let mut journal = Device::at(&dir.path().join("start.sqlite")).unwrap();
+        *responses.lock().unwrap() = missing.clone();
+        let before = sent.lock().unwrap().len();
+        for _ in 0..2 {
+            management
+                .dispatch(
+                    &mut journal,
+                    &signer,
+                    &started.protected.authority.operation_id,
+                )
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            &sent.lock().unwrap()[before..],
+            &[started.event.clone(), started.event]
+        );
+    }
     // Expired commands remain recoverable. Admission, not wall-clock expiry,
     // determines whether a new initial operation is allowed.
     let expired_dir = tempfile::tempdir().unwrap();

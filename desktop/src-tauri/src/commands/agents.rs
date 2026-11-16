@@ -991,6 +991,7 @@ pub async fn start_managed_agent(
     )?;
     enum StartTarget {
         Local,
+        Hosted(buzz_core_pkg::paired_message::Scope),
         Provider {
             backend: BackendKind,
             cached_binary_path: Option<String>,
@@ -1035,10 +1036,12 @@ pub async fn start_managed_agent(
             reconcile_relay.as_str(),
         ));
 
-        if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
-            return Err("Registered-host lifecycle actions are not available yet.".into());
-        }
-        let target = if record.backend == BackendKind::Local {
+        let target = if let BackendKind::RegisteredHost { scope, .. } = &record.backend {
+            if replay_floor_unix.is_some() {
+                return Err("Hosted Start does not support replaying a triggering mention".into());
+            }
+            StartTarget::Hosted(scope.clone())
+        } else if record.backend == BackendKind::Local {
             StartTarget::Local
         } else {
             StartTarget::Provider {
@@ -1052,6 +1055,7 @@ pub async fn start_managed_agent(
     };
 
     let result = match target {
+        StartTarget::Hosted(scope) => hosted::start(&app, state.clone(), &pubkey, scope).await,
         StartTarget::Local => {
             start_local_agent_with_preflight(
                 &app,

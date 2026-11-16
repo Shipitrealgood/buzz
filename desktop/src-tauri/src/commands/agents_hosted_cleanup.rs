@@ -213,10 +213,7 @@ pub(super) fn finish<R: tauri::Runtime>(
             return Err("Saved agent changed during Cleanup; retry local removal".into());
         }
         if current.is_some_and(|r| {
-            r.backend
-                != (BackendKind::RegisteredHost {
-                    scope: a.scope.clone(),
-                })
+            !matches!(&r.backend, BackendKind::RegisteredHost { scope, .. } if scope == &a.scope)
         }) {
             return Err("Hosted destination changed".into());
         }
@@ -286,10 +283,7 @@ pub(in super::super) async fn delete_if_hosted<R: tauri::Runtime>(
     let root = intents.iter().rev().find(|i| {
         i.protected.authority.agent.to_hex() == pubkey
             && record.as_ref().is_none_or(|r| {
-                r.backend
-                    == (BackendKind::RegisteredHost {
-                        scope: i.protected.authority.scope.clone(),
-                    })
+                matches!(&r.backend, BackendKind::RegisteredHost { scope, .. } if scope == &i.protected.authority.scope)
             })
     });
     let Some(root) = root else {

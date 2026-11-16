@@ -222,6 +222,9 @@ pub struct CreateManagedAgentRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateManagedAgentRequest {
     pub pubkey: String,
+    /// Exact installed host runtime; absent retains the saved selection.
+    #[serde(default)]
+    pub installed_runtime: Option<String>,
     /// Absent = don't touch. Present = rename the agent.
     #[serde(default)]
     pub name: Option<String>,
