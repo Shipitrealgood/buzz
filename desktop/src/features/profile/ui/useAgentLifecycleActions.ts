@@ -59,9 +59,11 @@ export function useAgentLifecycleActions({
         startManagedAgent,
       });
       toast.success(
-        managedAgent.backend.type === "provider"
-          ? `Deploying ${managedAgent.name}.`
-          : `Started ${managedAgent.name}.`,
+        managedAgent.backend.type === "registered_host"
+          ? `Start requested for ${managedAgent.name}.`
+          : managedAgent.backend.type === "provider"
+            ? `Deploying ${managedAgent.name}.`
+            : `Started ${managedAgent.name}.`,
       );
     } catch (error) {
       toast.error(

@@ -405,7 +405,7 @@ prepared form keeps its identity; reopening lists the latest exact scoped intent
 locally, and explicit Check status / Retry / Refresh models / Launch obtain current
 native authority. A shared `HostedAgentSetup` renders continuation from both the
 create flow and saved-agent placement summary (owned-agent Runtime tab, also the
-instance editor). Linked-definition Edit keeps its existing meaning. No polling or local Start fallback.
+instance editor). Linked-definition Edit keeps its shared-definition meaning. No polling or local Start fallback.
 
 Login outcome, model availability, deployment application and conversational
 presence are separate facts. Fresh current-revision model observations permit
@@ -416,8 +416,30 @@ not checked; applied does not mean online. Missing/expired evidence never implie
 installation, login or model failure; install/sign-in guidance requires current
 corresponding evidence. Positive Online/Away blocks Start without granting any
 lifecycle authority. Unfinished setup and failure/cleanup recovery remain visible.
-This status/normal-launch change does not repair linked-definition hosted Edit
-or change Save/application behavior; that integration remains a separate prerequisite.
+Hosted profile Edit resolves the exact clicked instance and its owner/community/host
+scope. It uses the existing definition editor with a hosted configuration source,
+never Windows harness/model facts. The definition keeps the canonical harness ID;
+the registered-host backend keeps the optional exact `installed_runtime`. An absent
+update retains that ID. Legacy records may use only one exact retained setup for
+the same pubkey and scope; missing context is surfaced, never guessed from aliases.
+
+Save uses main's ordinary definition and selected-record calls without a fresh host
+execution query or Deploy. An unchanged saved host/model selection remains savable
+when discovery is unavailable. A different installed runtime comes from the editor's
+host catalog. Success says settings take effect on next start; a failed second write
+reports the saved definition prefix and preserves the draft. These two calls are
+not a whole-form transaction. Hosted access changes that cannot acknowledge
+revocation remain rejected. Saving never interrupts or automatically starts a body.
+
+Ordinary hosted Start re-reads main's effective settings and native identity under
+the existing per-agent deployment lock, checks current exact runtime mapping and
+returned model, and uses revisioned Deploy. Typed existing-agent admission shares
+setup's predecessor/peer and cleanup guards while leaving setup's model-only
+continuation restricted. Retried bytes stay immutable. The existing keyless snapshot's
+`existing_start` marker makes recovery verify identity/placement without reinstalling
+old settings over a later Save. The UI says Start requested, not running; host
+inactivity remains authoritative. There is no new Stop, automatic restart, desired/
+applied UI or Save journal.
 Native login remains in the trusted host account's normal HOME. Channel attachment uses
 captured relay/signer scope and `ensureRunning:false`. The placement summary's
 cloud + Runs on host key describes execution location; the existing “Not managed

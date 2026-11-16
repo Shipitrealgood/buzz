@@ -214,6 +214,7 @@ export function AgentDefinitionDialog({
   React.useEffect(() => {
     onDirtyChange?.(hasUserChanges);
   }, [hasUserChanges, onDirtyChange]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Switching host source must not reset the authored identity draft.
   React.useEffect(() => {
     if (!open || !initialValues) {
       return;
@@ -544,11 +545,17 @@ export function AgentDefinitionDialog({
     selectedRuntime,
   });
   const hostedModel =
-    !modelDiscoveryLoading && availableModelIds.includes(model)
+    hosted &&
+    !isCreateMode &&
+    runtime === initialValues?.runtime &&
+    model === initialValues?.model &&
+    model.trim() !== ""
       ? model
-      : !modelDiscoveryLoading && model === ""
-        ? explicitDefaultModel
-        : null;
+      : !modelDiscoveryLoading && availableModelIds.includes(model)
+        ? model
+        : !modelDiscoveryLoading && model === ""
+          ? explicitDefaultModel
+          : null;
   const canSubmit =
     canSubmitPersonaDialog({ displayName, isPending }) &&
     (!isCreateMode || runtime.trim().length > 0) &&
@@ -808,6 +815,7 @@ export function AgentDefinitionDialog({
       />
 
       <div className="space-y-5">
+        {hosted && !isCreateMode && <p>{description}</p>}
         <AgentIdentityFields
           description={descriptionDraft}
           disabled={isPending}

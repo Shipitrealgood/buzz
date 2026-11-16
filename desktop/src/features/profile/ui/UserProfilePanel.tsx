@@ -65,7 +65,10 @@ import { AgentConfigurationFocusedView } from "@/features/profile/ui/UserProfile
 import { UserProfileAgentSettingsMenuSlot } from "@/features/profile/ui/UserProfileAgentActions";
 import { useProfileAgentDeletion } from "@/features/profile/ui/UserProfilePanelDeletion";
 import { useProfileFieldBuckets } from "@/features/profile/ui/UserProfilePanelFields";
-import { submitProfilePersonaDialog } from "@/features/profile/ui/UserProfilePanelPersonaSubmit";
+import {
+  submitProfilePersonaDialog,
+  type HostedEditSelection,
+} from "@/features/profile/ui/UserProfilePanelPersonaSubmit";
 import {
   useCardMint,
   UserProfilePersonaDialogs,
@@ -521,10 +524,14 @@ export function UserProfilePanel({
   }, [deleteManagedAgentRecord, managedAgent, onClose]);
 
   const handleSubmitPersona = React.useCallback(
-    async (input: CreatePersonaInput | UpdatePersonaInput) => {
+    async (
+      input: CreatePersonaInput | UpdatePersonaInput,
+      hosted?: HostedEditSelection,
+    ) => {
       await submitProfilePersonaDialog({
         createManagedAgentForPersona,
         createPersona: createPersonaMutation.mutateAsync,
+        hosted,
         input,
         managedAgent,
         onDone: () => {
@@ -951,6 +958,7 @@ export function UserProfilePanel({
           createAgentMutation.isPending
         }
         linkedAgentPubkey={managedAgent?.pubkey ?? null}
+        managedAgent={managedAgent}
         personaDialogState={personaDialogState}
         personaToDelete={personaToDelete}
         personaToExportSnapshot={personaToExportSnapshot}

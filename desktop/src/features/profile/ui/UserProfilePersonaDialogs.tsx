@@ -1,4 +1,13 @@
 import * as React from "react";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import {
+  hostedCatalog,
+  listHostedSetups,
+  sameHostScope,
+} from "@/shared/api/hostedAgents";
+import { AgentRunLocationProvider } from "@/features/agents/ui/AgentRunLocationContext";
+import { runLocationForBackend } from "@/features/agents/lib/agentAccessWarning";
+import type { HostedEditSelection } from "./UserProfilePanelPersonaSubmit";
 
 import type {
   AcpRuntimeCatalogEntry,
@@ -9,7 +18,7 @@ import type {
 } from "@/shared/api/types";
 import { AgentCardMintDialog } from "@/features/agents/ui/AgentCardMintDialog";
 import { PersonaDeleteDialog } from "@/features/agents/ui/PersonaDeleteDialog";
-import { AgentDialog } from "@/features/agents/ui/AgentDialog";
+import { AgentDefinitionDialog } from "@/features/agents/ui/AgentDefinitionDialog";
 import type { PersonaDialogState } from "@/features/agents/ui/personaDialogState";
 import { UserProfileSnapshotExportDialog } from "@/features/profile/ui/UserProfileSnapshotExportDialog";
 
@@ -50,6 +59,7 @@ export function UserProfilePersonaDialogs({
   instanceCount,
   isPending,
   linkedAgentPubkey,
+  managedAgent,
   personaDialogState,
   personaToDelete,
   personaToExportSnapshot,
@@ -72,6 +82,7 @@ export function UserProfilePersonaDialogs({
   instanceCount: number;
   isPending: boolean;
   linkedAgentPubkey: string | null;
+  managedAgent?: ManagedAgent;
   personaDialogState: PersonaDialogState | null;
   personaToDelete: AgentPersona | null;
   personaToExportSnapshot: AgentPersona | null;
@@ -86,33 +97,130 @@ export function UserProfilePersonaDialogs({
   onCloseExportSnapshot: () => void;
   onConfirmDelete: (persona: AgentPersona) => void;
   onExportSnapshot: (persona: AgentPersona) => void;
-  onSubmit: (input: CreatePersonaInput | UpdatePersonaInput) => Promise<void>;
+  onSubmit: (
+    input: CreatePersonaInput | UpdatePersonaInput,
+    hosted?: HostedEditSelection,
+  ) => Promise<void>;
 }) {
-  const runtimeCatalogStatus = runtimesLoading
-    ? "loading"
-    : runtimesError
-      ? "error"
-      : ("ready" as const);
+  const backend = managedAgent?.backend;
+  const scope = backend?.type === "registered_host" ? backend.scope : undefined;
+  const hosted = !!scope;
+  const active = hosted && !!personaDialogState;
+  const catalog = useQuery({
+    queryKey: ["hosted-edit-catalog", scope],
+    queryFn: scope ? () => hostedCatalog(scope) : skipToken,
+    enabled: active,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const retained = useQuery({
+    queryKey: ["hosted-edit-context", scope, linkedAgentPubkey],
+    queryFn: scope
+      ? () => listHostedSetups(scope.community, scope.owner)
+      : skipToken,
+    enabled:
+      active &&
+      backend?.type === "registered_host" &&
+      !backend.installed_runtime,
+    retry: false,
+  });
+  const contexts = retained.data?.filter(
+    (item) =>
+      scope &&
+      item.pubkey === linkedAgentPubkey &&
+      sameHostScope(item.scope, scope),
+  );
+  const installed =
+    backend?.type === "registered_host"
+      ? (backend.installed_runtime ??
+        (contexts?.length === 1 ? contexts[0].runtime : undefined))
+      : undefined;
+  const initialValues = React.useMemo(() => {
+    const values = personaDialogState?.initialValues;
+    return values && hosted
+      ? { ...values, runtime: installed ?? "" }
+      : (values ?? null);
+  }, [personaDialogState, installed, hosted]);
+  const hostRuntimes =
+    catalog.data?.runtimes.flatMap(({ installedId, metadata }) =>
+      metadata
+        ? [
+            {
+              ...metadata,
+              id: installedId,
+              label: `${metadata.label} · ${installedId}`,
+            },
+          ]
+        : [],
+    ) ?? [];
+  const runtimeCatalogStatus = scope
+    ? catalog.isPending
+      ? "loading"
+      : catalog.isError
+        ? "error"
+        : "ready"
+    : runtimesLoading
+      ? "loading"
+      : runtimesError
+        ? "error"
+        : "ready";
   return (
     <>
-      <AgentDialog
-        description={personaDialogState?.description ?? ""}
-        error={updateError ?? createError}
-        initialValues={personaDialogState?.initialValues ?? null}
-        isPending={isPending}
-        mode="definition-edit"
-        runtimes={runtimes}
-        runtimeCatalogStatus={runtimeCatalogStatus}
-        onOpenChange={(open) => {
-          if (!open) {
-            onCloseDialog();
+      <AgentRunLocationProvider
+        runLocation={
+          managedAgent ? runLocationForBackend(managedAgent.backend) : null
+        }
+      >
+        <AgentDefinitionDialog
+          configurationSource={
+            scope
+              ? {
+                  type: "hosted",
+                  key: JSON.stringify(scope),
+                  scope,
+                  catalogRevision:
+                    catalog.data?.status.capability.catalog_revision,
+                }
+              : undefined
           }
-        }}
-        onSubmit={onSubmit}
-        open={personaDialogState !== null}
-        submitLabel={personaDialogState?.submitLabel ?? "Save"}
-        title={personaDialogState?.title ?? "Agent"}
-      />
+          description={`${personaDialogState?.description ?? ""}${scope ? " Settings are saved for this host and take effect on next start." : ""}`}
+          error={
+            scope && !installed
+              ? new Error(
+                  "Exact installed host runtime is missing; retained context is required.",
+                )
+              : (updateError ?? createError)
+          }
+          initialValues={initialValues}
+          isPending={isPending}
+          runtimes={scope ? hostRuntimes : runtimes}
+          runtimeCatalogStatus={runtimeCatalogStatus}
+          onOpenChange={(open) => {
+            if (!open) {
+              onCloseDialog();
+            }
+          }}
+          onSubmit={async (input) => {
+            if (!scope) return onSubmit(input);
+            if (!installed || !input.runtime) return;
+            const chosen = catalog.data?.runtimes.find(
+              (item) => item.installedId === input.runtime,
+            )?.metadata;
+            const canonical =
+              input.runtime === installed
+                ? personaDialogState?.initialValues.runtime
+                : chosen?.id;
+            if (!canonical) return;
+            return onSubmit(
+              { ...input, runtime: canonical },
+              { installedRuntime: input.runtime, runtime: chosen },
+            );
+          }}
+          open={personaDialogState !== null}
+          submitLabel={personaDialogState?.submitLabel ?? "Save"}
+          title={personaDialogState?.title ?? "Agent"}
+        />
+      </AgentRunLocationProvider>
       <PersonaDeleteDialog
         instanceCount={instanceCount}
         onConfirm={onConfirmDelete}

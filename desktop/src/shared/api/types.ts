@@ -296,6 +296,7 @@ export type ManagedAgentBackend =
   | { type: "local" }
   | {
       type: "registered_host";
+      installed_runtime?: string;
       scope: {
         community: string;
         owner: string;
@@ -699,6 +700,7 @@ export type RuntimeConfigSurface = {
 
 export type UpdateManagedAgentInput = {
   pubkey: string;
+  installedRuntime?: string;
   name?: string;
   model?: string | null;
   provider?: string | null;

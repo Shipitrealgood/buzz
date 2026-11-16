@@ -25,6 +25,7 @@ type Fixture = {
   runtimeUnavailable?: boolean;
   createState?: string;
   createError?: string;
+  failSave?: boolean;
 };
 declare global {
   interface Window {
@@ -245,7 +246,8 @@ async function open(
         });
         return catalog;
       }
-      if (command === "hosted_models")
+      if (command === "hosted_models") {
+        if (fixture.denied) throw new Error("Host discovery unavailable");
         return {
           availability: "available",
           readiness: "logged-in",
@@ -267,6 +269,25 @@ async function open(
             },
           },
         };
+      }
+      if (command === "update_managed_agent" && args?.input && record) {
+        if (fixture.failSave) throw new Error("Fixture record write failed");
+        const input = args.input as Record<string, unknown>;
+        if (input.pubkey !== record.pubkey)
+          throw new Error("Wrong selected identity");
+        record = {
+          ...record,
+          model: input.model ?? record.model,
+          system_prompt: input.systemPrompt ?? record.system_prompt,
+          backend: {
+            ...(record.backend as object),
+            installed_runtime: input.installedRuntime,
+          },
+        };
+        return { agent: structuredClone(record), profile_sync_error: null };
+      }
+      if (command === "start_managed_agent" && record)
+        return structuredClone(record);
       if (command === "list_managed_agents") {
         const records = (await previous(command, args)) as Record<
           string,
@@ -996,3 +1017,118 @@ for (const outcome of [
     });
   });
 }
+
+test("profile hosted Edit saves offline, preserves exact runtime and exposes partial Save", async ({
+  page,
+}) => {
+  await open(page, false, { createState: "applied" });
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(page.getByTestId("persona-dialog-submit")).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: "Hosted synthetic agent agent profile",
+      exact: true,
+    })
+    .click();
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  const dialog = page.getByRole("dialog", {
+    name: "Edit agent",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("take effect on next start");
+  await expect(
+    dialog.getByRole("button", { name: "Agent harness", exact: true }),
+  ).toContainText("native/grok");
+  await dialog
+    .getByRole("button", { name: "Agent harness", exact: true })
+    .click();
+  await page
+    .getByRole("menuitemradio", { name: /Grok Build · second\/grok/ })
+    .click();
+  await selectHostedModel(page);
+  await dialog
+    .locator("#persona-system-prompt")
+    .fill("Saved hosted instructions");
+  await page.evaluate(() => {
+    const f = window.__HOSTED_SETUP_FIXTURE__;
+    f.denied = true;
+    f.calls = [];
+    f.failSave = true;
+  });
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(
+    page.getByText(
+      "Definition saved; instance settings were not saved. Fixture record write failed",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(dialog.locator("#persona-system-prompt")).toHaveValue(
+    "Saved hosted instructions",
+  );
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.failSave = false;
+  });
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByText("Saved. Takes effect on next start.", { exact: true }),
+  ).toBeVisible();
+  const calls = await page.evaluate(
+    () => window.__HOSTED_SETUP_FIXTURE__.calls,
+  );
+  const definitions = calls.filter((call) => call.command === "update_persona");
+  expect(definitions.length).toBeGreaterThan(0);
+  expect(definitions[0].args?.input).toMatchObject({
+    runtime: "grok",
+    systemPrompt: "Saved hosted instructions",
+  });
+  const saves = calls.filter((call) => call.command === "update_managed_agent");
+  expect(saves).toHaveLength(2);
+  expect(saves[1].args?.input).toMatchObject({
+    pubkey: "72".repeat(32),
+    installedRuntime: "second/grok",
+  });
+  expect(
+    calls.filter((call) =>
+      /^(hosted_catalog|hosted_models|hosted_prepare|hosted_setup_action|start_managed_agent|discover_agent_models)$/.test(
+        call.command,
+      ),
+    ),
+  ).toEqual([]);
+  // Remount the profile so discovery's component-local cache cannot satisfy offline Save.
+  await page.getByTestId("auxiliary-panel-close").click();
+  await page
+    .getByRole("button", {
+      name: "Hosted synthetic agent agent profile",
+      exact: true,
+    })
+    .click();
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Agent harness", exact: true }),
+  ).toContainText("second/grok");
+  await expect(dialog.locator("#persona-system-prompt")).toHaveValue(
+    "Saved hosted instructions",
+  );
+  await dialog
+    .locator("#persona-system-prompt")
+    .fill("Offline next-start instructions");
+  await expect(page.getByTestId("persona-dialog-submit")).toBeEnabled();
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByTestId("user-profile-agent-primary-action").click();
+  await expect(
+    page.getByText("Start requested for Hosted synthetic agent.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      window.__HOSTED_SETUP_FIXTURE__.calls
+        .filter((call) => call.command === "start_managed_agent")
+        .map((call) => call.args?.pubkey),
+    ),
+  ).toEqual(["72".repeat(32)]);
+});

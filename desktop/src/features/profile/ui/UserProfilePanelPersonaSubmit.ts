@@ -11,7 +11,14 @@ import type {
   UpdatePersonaInput,
 } from "@/shared/api/types";
 
+/** Exact host selection accompanying the ordinary definition Save. */
+export type HostedEditSelection = {
+  installedRuntime: string;
+  runtime?: AcpRuntimeCatalogEntry | null;
+};
+
 type SubmitProfilePersonaDialogOptions = {
+  hosted?: HostedEditSelection;
   createManagedAgentForPersona: (
     persona: AgentPersona,
   ) => Promise<CreateManagedAgentResponse>;
@@ -66,6 +73,7 @@ export function validateLinkedAgentRuntimeEdit({
 export async function submitProfilePersonaDialog({
   createManagedAgentForPersona,
   createPersona,
+  hosted,
   input,
   managedAgent,
   onDone,
@@ -74,6 +82,7 @@ export async function submitProfilePersonaDialog({
   updateManagedAgent,
   updatePersona,
 }: SubmitProfilePersonaDialogOptions) {
+  let definitionSaved = false;
   try {
     if ("id" in input) {
       const runtimeEditError = validateLinkedAgentRuntimeEdit({
@@ -82,25 +91,42 @@ export async function submitProfilePersonaDialog({
         previousPersona,
         runtimes,
       });
-      if (runtimeEditError) {
+      if (runtimeEditError && !hosted) {
         toast.error(runtimeEditError);
         return;
       }
 
       const persona = await updatePersona(input);
+      definitionSaved = true;
       const agentUpdate = managedAgent
         ? personaManagedAgentUpdate(managedAgent, persona, {
             previousPersona,
-            runtimes,
+            runtimes: hosted
+              ? hosted.runtime
+                ? [hosted.runtime]
+                : []
+              : runtimes,
           })
         : null;
-      const result = agentUpdate ? await updateManagedAgent(agentUpdate) : null;
+      const update =
+        hosted && managedAgent
+          ? {
+              ...agentUpdate,
+              pubkey: managedAgent.pubkey,
+              installedRuntime: hosted.installedRuntime,
+            }
+          : agentUpdate;
+      const result = update ? await updateManagedAgent(update) : null;
       if (result?.profileSyncError) {
         toast.warning(
           `${result.agent.name} was updated, but profile sync failed: ${result.profileSyncError}`,
         );
       }
-      toast.success(`Updated ${input.displayName}.`);
+      toast.success(
+        hosted
+          ? "Saved. Takes effect on next start."
+          : `Updated ${input.displayName}.`,
+      );
     } else {
       const persona = await createPersona(input);
       try {
@@ -129,7 +155,7 @@ export async function submitProfilePersonaDialog({
     onDone();
   } catch (error) {
     toast.error(
-      error instanceof Error ? error.message : "Failed to save agent.",
+      `${definitionSaved ? "Definition saved; instance settings were not saved. " : ""}${error instanceof Error ? error.message : "Failed to save agent."}`,
     );
   }
 }
