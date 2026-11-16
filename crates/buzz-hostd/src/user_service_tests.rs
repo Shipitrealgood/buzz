@@ -260,6 +260,52 @@ async fn prepare_replay_restart_and_identity_fences_precede_effects() {
     assert!(!calls(dir.path()).contains(" start "));
     assert!(reopened.action("login", &id).await.is_err());
     assert!(reopened.action("prepare", "../escape").await.is_err());
+    // A new explicit Start keeps the unit/key but cannot replace an active body.
+    prepared.instance.unit_id = id.clone();
+    let identity = (
+        prepared.instance.agent.clone(),
+        prepared.instance.secret.clone(),
+    );
+    let deployment = prepared.instance.deployment.as_mut().unwrap();
+    deployment.revision += 1;
+    deployment.config.model = buzz_core::host_deployment::ModelSelection::Selected {
+        id: "saved-model".into(),
+    };
+    reopened.stage(&prepared.instance).unwrap();
+    reopened.action("prepare", &id).await.unwrap();
+    reopened.action("start", &id).await.unwrap();
+    let active = private_file(&service.dir(&id).join("instance"), 131072).unwrap();
+    let deployment = prepared.instance.deployment.as_mut().unwrap();
+    deployment.revision += 1;
+    deployment.config.system_prompt = Some("Saved instructions for next Start".into());
+    reopened.stage(&prepared.instance).unwrap();
+    assert!(reopened.action("prepare", &id).await.is_err());
+    assert_eq!(
+        private_file(&service.dir(&id).join("instance"), 131072).unwrap(),
+        active
+    );
+    fs::remove_file(dir.path().join("active")).unwrap(); // fixture's explicit shutdown boundary
+    reopened.action("prepare", &id).await.unwrap();
+    reopened.action("start", &id).await.unwrap();
+    let restarted: Prepared =
+        serde_json::from_slice(&private_file(&service.dir(&id).join("instance"), 131072).unwrap())
+            .unwrap();
+    assert_eq!(
+        (restarted.instance.agent, restarted.instance.secret),
+        identity
+    );
+    assert_eq!(restarted.instance.unit_id, id);
+    assert_eq!(
+        restarted
+            .instance
+            .deployment
+            .unwrap()
+            .config
+            .system_prompt
+            .as_deref(),
+        Some("Saved instructions for next Start")
+    );
+    fs::remove_file(dir.path().join("active")).unwrap();
     let owner = nostr::Keys::generate();
     let agent = nostr::Keys::generate();
     let first_key = prepared.instance.secret.clone();

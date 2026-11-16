@@ -148,7 +148,11 @@ fn owned_output_never_follows_agent_links_and_mode_shape_is_exact() {
     assert_eq!(shape(&layout, id, &advertised).unwrap(), "DropInPaths=\n");
     fs::write(dropin(&layout, id).unwrap(), b"[Service]\nRestart=always\n").unwrap();
     assert!(shape(&layout, id, &advertised).is_err());
-    assert!(!inactive(&idle().replace("MainPID=0", "MainPID=42")));
+    for field in ["MainPID", "ControlPID", "TasksCurrent"] {
+        assert!(!inactive(
+            &idle().replace(&format!("{field}=0"), &format!("{field}=42"))
+        ));
+    }
     assert!(!inactive(&idle().replace("inactive", "active")));
 }
 

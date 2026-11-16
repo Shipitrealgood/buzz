@@ -137,7 +137,7 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
         };
         let definition: crate::managed_agents::AgentDefinition = serde_json::from_value(json!({
             "id":"one-definition", "display_name":"Isolated hosted agent", "system_prompt":"A safe fixture prompt",
-            "runtime":"grok", "created_at":"fixture", "updated_at":"fixture"
+            "runtime":"grok", "model":"initial-host-model", "created_at":"fixture", "updated_at":"fixture"
         })).unwrap();
         crate::managed_agents::save_personas(app.handle(), &[definition]).unwrap();
         let path = home.join("isolated-owner.sqlite");
@@ -422,6 +422,131 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
             .await;
             return;
         }
+        // Desired settings persist in main independently of the retained Start.
+        // Reuse the real candidate/recovery seams with the existing isolated journal.
+        let mut desired = recovered[0].clone();
+        if let BackendKind::RegisteredHost {
+            installed_runtime, ..
+        } = &mut desired.backend
+        {
+            assert!(installed_runtime.is_none()); // legacy fixture keeps absent data readable
+            *installed_runtime = Some("second/grok".into());
+        } else {
+            panic!("fixture hosted backend");
+        }
+        desired.model = Some("stale/instance-model".into());
+        desired.system_prompt = Some("Stale instance instructions".into());
+        let mut definitions = load_personas(app.handle()).unwrap();
+        definitions[0].model = Some("saved/model:2".into());
+        definitions[0].system_prompt = "Saved host instructions".into();
+        crate::managed_agents::save_personas(app.handle(), &definitions).unwrap();
+        save_managed_agents(app.handle(), &[desired.clone()]).unwrap();
+        assert_eq!(load_managed_agents(app.handle()).unwrap()[0], desired);
+        let facts = context.status.inventory.as_ref().unwrap()["native/grok"].clone();
+        context
+            .status
+            .inventory
+            .as_mut()
+            .unwrap()
+            .insert("second/grok".into(), facts);
+        let d::Capability::Supported {
+            runtimes,
+            harnesses,
+            ..
+        } = &mut context.status.capability
+        else {
+            panic!("fixture catalog")
+        };
+        runtimes.push("second/grok".into());
+        harnesses.insert("second/grok".into(), "grok".into());
+        context.runtime = "second/grok".into();
+        context.check_inventory().unwrap();
+        let (command, mut snapshot) = context
+            .candidate(app.handle(), &state, &desired, None)
+            .unwrap();
+        let d::Command::Deploy { config, identity } = &command else {
+            panic!("fixture deploy")
+        };
+        assert_eq!(config.runtime_id, "second/grok");
+        assert_eq!(
+            config.model,
+            d::ModelSelection::Selected {
+                id: "saved/model:2".into()
+            }
+        );
+        assert_eq!(
+            config.system_prompt.as_deref(),
+            Some("Saved host instructions")
+        );
+        assert_eq!(identity.private_key_nsec, saved.private_key_nsec);
+        let mut wrong = desired.clone();
+        wrong.runtime = Some("claude".into());
+        assert!(context
+            .candidate(app.handle(), &state, &wrong, None)
+            .is_err());
+        context.runtime = "missing/grok".into();
+        assert!(context.check_inventory().is_err());
+        context.runtime = "second/grok".into();
+        snapshot["existing_start"] = true.into();
+        let mut authority = context.intent().unwrap().protected.authority;
+        authority.operation_id = "fa".repeat(32);
+        authority.expected_revision = 2;
+        authority.content_sha256.clear();
+        let (authority, event) = wire::seal_command(
+            &owner,
+            authority,
+            &command,
+            nostr::Timestamp::now().as_secs(),
+        )
+        .unwrap();
+        let plain = serde_json::to_vec(&json!({"authority":authority,"data":snapshot})).unwrap();
+        let materialization = nostr::nips::nip44::encrypt(
+            owner.secret_key(),
+            &owner.public_key(),
+            plain,
+            nostr::nips::nip44::Version::V2,
+        )
+        .unwrap();
+        let retained = json!({"protected":{"authority":authority,"ciphertext":event.content.as_bytes()},"event":serde_json::to_string(&event).unwrap(),"materialization":materialization,"phase":0,"result":null});
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute(
+                "INSERT INTO deployment_intents VALUES(?,?,?,?)",
+                rusqlite::params![
+                    scope.community,
+                    scope.owner.to_hex(),
+                    authority.operation_id,
+                    retained.to_string()
+                ],
+            )
+            .unwrap();
+        context.operation = authority.operation_id;
+        desired.model = Some("later/model:3".into());
+        desired.system_prompt = Some("Later saved instructions must survive Retry".into());
+        save_managed_agents(app.handle(), &[desired.clone()]).unwrap();
+        context.device = Device::at(&path).unwrap();
+        context.check_runtime().unwrap();
+        assert!(context
+            .recover(app.handle(), &state)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            load_managed_agents(app.handle()).unwrap(),
+            vec![desired.clone()]
+        );
+        assert_eq!(context.intent().unwrap().phase, 2);
+        assert_eq!(
+            context.intent().unwrap().event,
+            serde_json::to_string(&event).unwrap()
+        );
+        let mut changed_identity = desired.clone();
+        changed_identity.auth_tag = None;
+        save_managed_agents(app.handle(), &[changed_identity]).unwrap();
+        assert!(context.recover(app.handle(), &state).await.is_err());
+        save_managed_agents(app.handle(), &[]).unwrap();
+        assert!(context.recover(app.handle(), &state).await.is_err());
+        save_managed_agents(app.handle(), &[desired]).unwrap();
         state
             .workspace_apply_generation
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);

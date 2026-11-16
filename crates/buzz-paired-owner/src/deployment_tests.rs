@@ -889,7 +889,12 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
             "state": if scenario == "pending" { "pending" } else { "applied" },
             "unit_id": "ef".repeat(32), "revision": if scenario == "advanced" { 2 } else { 1 }
         });
-        let mut candidate = command.clone();
+        let mut candidate = wire::restore_command(
+            &owner,
+            &prior.protected.authority,
+            &prior.protected.ciphertext,
+        )
+        .unwrap();
         let d::Command::Deploy { config, identity } = &mut candidate else {
             panic!("fixture deploy")
         };
@@ -932,7 +937,7 @@ async fn deployment_current_revision_refresh_launch_and_exact_retry() {
                 &signer,
                 &prior.protected.authority.operation_id,
                 &status,
-                candidate.clone(),
+                serde_json::from_value(serde_json::to_value(&candidate).unwrap()).unwrap(),
                 saved.clone(),
             )
             .await;

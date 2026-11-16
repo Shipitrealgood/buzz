@@ -92,11 +92,28 @@ impl Create<'_> {
             .get(&self.runtime)
             .and_then(|id| crate::managed_agents::hosted_runtime_metadata(id))
             .ok_or("Unsupported host runtime mapping")?;
+        let personas = load_personas(app)?;
+        let canonical = record.runtime.as_deref().or_else(|| {
+            personas
+                .iter()
+                .find(|p| Some(&p.id) == record.persona_id.as_ref())
+                .and_then(|p| p.runtime.as_deref())
+        });
+        if canonical.is_some_and(|id| id != metadata.id) {
+            return Err("Saved harness does not match the installed host runtime".into());
+        }
         let command = metadata.command.ok_or("Unsupported host harness")?;
         if payload["launch"]["command"] != command
             || record.acp_command != DEFAULT_ACP_COMMAND
             || record.agent_args != metadata.default_args
-            || record.session_policy != crate::managed_agents::AcpSessionPolicy::default()
+            || crate::managed_agents::effective_acp_session_policy(record, &personas)
+                != crate::managed_agents::AcpSessionPolicy::default()
+            || personas.iter().any(|p| {
+                Some(&p.id) == record.persona_id.as_ref()
+                    && p.acp_command
+                        .as_deref()
+                        .is_some_and(|command| command != DEFAULT_ACP_COMMAND)
+            })
             || !record.env_vars.is_empty()
             || !payload["env_vars"]
                 .as_object()
@@ -541,8 +558,10 @@ pub(super) async fn start(
             if let Some(runtime) = installed_runtime {
                 create.runtime = runtime.clone();
             }
-            create.check_inventory()?;
-            create.candidate(app, &state, record, None)?
+            let metadata = create.check_inventory()?;
+            let (command, mut snapshot) = create.candidate(app, &state, record, None)?;
+            snapshot["record"]["agent_command"] = metadata.command.into();
+            (command, snapshot)
         };
         let d::Command::Deploy { config, .. } = &command else {
             return Err("Invalid Start".into());
