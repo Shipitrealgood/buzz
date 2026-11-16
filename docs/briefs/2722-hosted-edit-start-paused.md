@@ -1,3 +1,7 @@
+> Historical pause receipt, superseded by the approved continuation and
+> [completed implementation review brief](2722-hosted-edit-start-review.md).
+> Statements below describe the earlier +370 boundary, not current authorization.
+
 # #2722 paused hosted Edit/Start handoff
 
 ## Status
