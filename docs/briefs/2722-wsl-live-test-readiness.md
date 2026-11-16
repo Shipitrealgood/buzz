@@ -42,19 +42,32 @@ ordered Compose files, service IDs/start times and normal endpoint/capability
 health. No full environment/configuration dumps or application-record reads.
 Use a read-only database transaction for schema/ledger checks if needed.
 
-The image is ALREADY BUILT on netcup. Retrieve the following files into a private
-local WSL directory using an existing verified netcup SSH route if you have one.
-Only source/artifact reads on netcup are allowed. Preserve strict host-key checks;
-if the route is unknown/unavailable, report that specific transfer gap instead of
-inventing an address or rebuilding. This path is on netcup, not automatically WSL:
+The image is ALREADY BUILT. WSL-to-netcup SSH/Tailscale access is intentionally
+absent; do not attempt it or create access. Bryce authorized GitHub distribution.
+Download from the authenticated draft release in Shipitrealgood/buzz, tag
+host-discovery-d7714be8-transfer. It is unpublished, so use gh authenticated as an
+account with access to the draft, not an anonymous download URL. Do not print
+tokens. Stop on unavailable GitHub access; never publish the draft to bypass it.
 
-/home/bryce/services/buzz-agents/releases/2722-coordinated-delivery/d7714be862f4514822c303b124a347f5e07dc8c5/
+```bash
+umask 077
+buzz_stage=$(mktemp -d "$HOME/buzz-discovery-d7714be8.XXXXXX")
+gh release download host-discovery-d7714be8-transfer \
+  --repo Shipitrealgood/buzz --dir "$buzz_stage" \
+  --pattern buzz-relay-d7714be8-linux-amd64.tar.gz \
+  --pattern SHA256SUMS --pattern relay-artifact.json --pattern WSL-HANDOFF.md
+cd "$buzz_stage"
+sha256sum -c SHA256SUMS
+printf '%s  %s\n' \
+  3705c0a5d79288ce72bb3d70419e00d2180d3eb7fdf72f7879358ef6491901c4 \
+  buzz-relay-d7714be8-linux-amd64.tar.gz | sha256sum -c -
+```
 
-- relay/buzz-relay-d7714be8-linux-amd64.tar.gz — 98,378,289 bytes;
-  SHA256 3705c0a5d79288ce72bb3d70419e00d2180d3eb7fdf72f7879358ef6491901c4.
-- relay/verification.json, relay/image-inspect.json and relay/metadata.json.
-- relay/source.tar — SHA256 b5ef1abf2cfee7443eb0f4e83244350b5c6c519a82bea9c8423e590a3f196152,
-  if needed for the narrow source check below; do not build it.
+Archive size98,378,289 bytes; relay-artifact.json contains source/platform and
+archive/image pins. If narrow source inspection is needed, use an existing or
+temporary local checkout of public Shipitrealgood/buzz at exact commitd771 below
+and old929c. No build, source edit, merge or push. The conductor has separately
+retained the exact source archive and full build provenance on netcup.
 
 Cohort source d7714be862f4514822c303b124a347f5e07dc8c5; standard root Dockerfile
 runtime target, linux/amd64. BuildKit recorded image/OCI-index identity:
