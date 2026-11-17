@@ -1,4 +1,111 @@
-# #2722 hosted Edit/Start — Windows CI failure receipt
+# #2722 hosted Edit/Start — corrected Windows run
+
+**Windows gate failed: native saved-model assertion.** The corrected Desktop
+compiles and packages successfully, but its hosted native create/recovery case fails.
+The installer below is a diagnostic artifact, not an accepted canary. This section
+supersedes the platform status of the historical run preserved below.
+
+Recorded 2026-11-17 by `codecodex`, assignment `/root/hosted_edit_windows_ci`.
+Requested Astra/high; actual served model/reasoning remains unknown. Intake clean at
+`b47be43097cf1f47c2be7918cb8c5cbc9cce192e` in the same worktree and branch. Read the
+[round-3 independent acceptance](../audits/post-audit/2722-hosted-management-followthrough.md).
+The conductor published and dispatched the corrected source under the existing user
+authorization. This worker made no source/test/workflow edits, publication or rerun.
+This receipt commit is documentation only and differs from the tested source SHA.
+
+## Corrected run and concrete failure
+
+[Run 43988951035](https://github.com/Shipitrealgood/buzz/actions/runs/43988951035),
+number 30, `build/paired-hosts-canary`, independently verified exact head
+`b47be43097cf1f47c2be7918cb8c5cbc9cce192e`: **completed / failure**.
+
+- [Build job 133724287848](https://github.com/Shipitrealgood/buzz/actions/runs/43988951035/job/133724287848):
+  **success**, including sidecars, Desktop compilation, NSIS packaging and upload.
+- [Native job 133724288097](https://github.com/Shipitrealgood/buzz/actions/runs/43988951035/job/133724288097):
+  **failure**, exact hosted create/recovery test; ACL and receipt upload then passed.
+  Both jobs finished naturally; no cancellation was requested for this run.
+
+Measured failure at
+[agents_hosted_tests.rs](../../desktop/src-tauri/src/commands/agents_hosted_tests.rs):471:
+
+```text
+commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence
+assertion `left == right` failed
+  left: Selected { id: "initial-host-model" }
+ right: Selected { id: "saved/model:2" }
+```
+
+The candidate configuration's model differs from the fixture's expected saved model.
+The wrapper at line 40 reports its child failure; it is the same failing Rust case,
+not a second failure. The owner of the correction must investigate production and
+fixture precedence before deciding which is wrong. No cause beyond the measured
+assertion is claimed here. Full diagnostic: `native-job.log`, lines 2956–2988.
+
+## Actual native verification
+
+Downloaded receipts contain **122 distinct passing Rust cases and one distinct
+failing case**: owner 17, signed deployment 13, shared harness facts 9, Nostr
+conversion 73, relay directory 7, paired-host commands 3. Counted exact fully
+qualified names from receipt files, deduplicating parent/child and echoed rows;
+all six passing suites report zero failed/ignored.
+
+The exact create/recovery case ran with `BUZZ_NATIVE_HOST_DEPLOYMENT_V1` explicitly
+removed by its fixture subprocess, but **failed** as above: no env-absent native
+pass is claimed. Exact cleanup/session-fence and hosted Grok metadata cases were
+**not run**, because the workflow loop exited after the first failure.
+
+**Measured ACL pass:** the owner used SQLite; another standard user read the control
+and was denied the DB, WAL and SHM. Verified from `journal-acl.log` and job outcome.
+This isolated runner check does not prove installed Start-menu launch or live
+provider behavior. Human installed normal launch and real Edit/Stop/Start remain
+pending. Native Linux/macOS checks, clippy and `just ci` were not run.
+
+## Verified diagnostic artifacts
+
+Artifact metadata, native `source.txt`, installer `build-receipt.txt` and run head
+agree on source `b47be43097cf1f47c2be7918cb8c5cbc9cce192e` and run 43988951035.
+Both archives were inspected for filenames before extraction. ZIP sizes/digests
+match the GitHub API; the extracted installer hash matches its build receipt.
+Installer version: **0.5.29-test.30**, unsigned; never executed or installed.
+
+- [Installer artifact 14287476767](https://github.com/Shipitrealgood/buzz/actions/runs/43988951035/artifacts/14287476767)
+- [Native receipts artifact 14288131427](https://github.com/Shipitrealgood/buzz/actions/runs/43988951035/artifacts/14288131427)
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `Buzz_0.5.29-test.30_x64-setup.exe` | 56506597 | `828fd4efec911798a09241b8d09b44fa4c3fc5b9650320fd3729c58ef88fa0f1` |
+| `installer.zip` | 56504963 | `472f067ae4b6d4963a5cedefe6f2a685684083d051acd4c686d0832f958ee76d` |
+| `native-receipts.zip` | 5607 | `665a62c534b2dcb97a5d169846f830d2ffa59cf3e49fddf5fbddf52279ecd2ce` |
+
+Local installer and evidence directory:
+`/home/bryce/services/buzz-agents/releases/2722-hosted-edit-windows/b47be43097cf1f47c2be7918cb8c5cbc9cce192e/`.
+Alongside the installer are both ZIPs, extracted native receipts, archive listings,
+initial/terminal run and artifact JSON, installer verification JSON, deduplicated
+passed/failed case lists, attached monitor output and sanitized job logs. Raw logs
+remain outside git. `native-job.log` SHA-256:
+`c5a717a79450bb967f9217d5cc22e057d41cf4aa00433439515fb85592b562a6`.
+
+## Handoff
+
+Verification used `gh run view`, attached `gh run watch --exit-status` (terminal
+exit 1), artifact/job-log API reads, Python ZIP inspection/SHA-256/source assertions
+and exact test-name counting. Receipt local links and `git diff --check` passed.
+All monitor/download processes are terminal; no mutation is held. Only this receipt
+is changed in the source checkout; prior run artifacts and receipt history remain.
+
+Return to the conductor and original executor for the saved-model mismatch, then
+the same independent reviewer. Preserve model precedence, saved configuration and
+pending exact-byte recovery invariants; do not weaken the assertion without proving
+the intended contract. Do not widen into unrelated workflow warnings or tooling.
+No live access, installation, service/agent action, taskctl mutation or extra
+publication was performed. A green corrected Windows run and human acceptance are
+still required.
+
+Signed: `codecodex` — #2722 Windows CI evidence worker, 2026-11-17.
+
+---
+
+## Historical run 43986614016 — compile failure
 
 **Windows gate failed; no installer produced.** Recorded 2026-11-17 by
 `codecodex`, assignment `/root/hosted_edit_windows_ci`. Requested configuration:
