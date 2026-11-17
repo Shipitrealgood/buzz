@@ -23,6 +23,8 @@ import {
   useUpdateManagedAgentMutation,
   useUpdatePersonaMutation,
 } from "@/features/agents/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { hostBelongsToSession } from "@/features/agents/lib/hostDestination";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import { AddAgentToChannelDialog } from "@/features/agents/ui/AddAgentToChannelDialog";
 import {
@@ -171,8 +173,9 @@ export function UserProfilePanel({
     [],
   );
   const [addToChannelOpen, setAddToChannelOpen] = React.useState(false);
-  const [personaDialogState, setPersonaDialogState] =
-    React.useState<PersonaDialogState | null>(null);
+  const [personaDialogState, setPersonaDialogState] = React.useState<
+    (PersonaDialogState & { hostedAgentPubkey?: string }) | null
+  >(null);
   const [personaToDelete, setPersonaToDelete] =
     React.useState<AgentPersona | null>(null);
   const [personaToExportSnapshot, setPersonaToExportSnapshot] =
@@ -417,9 +420,13 @@ export function UserProfilePanel({
       return true;
     }
     if (!resolvedPersona) return false;
-    setPersonaDialogState(
-      editPersonaDialogState(resolvedPersona, managedAgent),
-    );
+    setPersonaDialogState({
+      ...editPersonaDialogState(resolvedPersona, managedAgent),
+      hostedAgentPubkey:
+        managedAgent?.backend.type === "registered_host"
+          ? managedAgent.pubkey
+          : undefined,
+    });
     return true;
   }, [chooseInstanceForEdit, managedAgent, resolvedPersona, setTab]);
   const openHostedEditor = React.useCallback(() => {
@@ -559,11 +566,19 @@ export function UserProfilePanel({
       input: CreatePersonaInput | UpdatePersonaInput,
       hosted?: HostedEditSelection,
     ) => {
+      const hostedAgentPubkey = personaDialogState?.hostedAgentPubkey;
+      if (hostedAgentPubkey !== (hosted ? managedAgent?.pubkey : undefined)) {
+        toast.error("The selected host instance changed. Reopen Edit to save.");
+        return;
+      }
       await submitProfilePersonaDialog({
         createManagedAgentForPersona,
         createPersona: createPersonaMutation.mutateAsync,
         hosted,
-        input,
+        input:
+          hostedAgentPubkey && "id" in input
+            ? { ...input, hostedAgentPubkey }
+            : input,
         managedAgent,
         onDone: () => {
           setPersonaDialogState(null);
@@ -579,6 +594,7 @@ export function UserProfilePanel({
       createPersonaMutation.mutateAsync,
       createManagedAgentForPersona,
       managedAgent,
+      personaDialogState?.hostedAgentPubkey,
       personasQuery.refetch,
       resolvedPersona,
       acpRuntimesQuery.data,
@@ -773,6 +789,15 @@ export function UserProfilePanel({
       viewerIsOwner={viewerIsOwner}
     />
   );
+  const activeRelay = useCommunities().activeCommunity?.relayUrl;
+  const runtimePresenceInScope =
+    managedAgent?.backend.type !== "registered_host" ||
+    (activeRelay &&
+      currentPubkey &&
+      hostBelongsToSession(managedAgent.backend, {
+        expectedRelay: activeRelay,
+        expectedOwner: currentPubkey,
+      }));
   const { agentInfoFields, agentSettingsFields, diagnosticsFields } =
     useProfileFieldBuckets({
       isBot,
@@ -785,7 +810,7 @@ export function UserProfilePanel({
       ownerPubkey,
       persona: resolvedPersona,
       presenceLoaded: presenceQuery.isSuccess,
-      presenceStatus,
+      presenceStatus: runtimePresenceInScope ? presenceStatus : undefined,
       profile,
       pubkey: effectivePubkey,
       relayAgent,

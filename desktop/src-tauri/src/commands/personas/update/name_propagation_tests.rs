@@ -209,3 +209,47 @@ fn test_rename_renames_all_matching_instances_in_one_pass() {
     assert_eq!(records[1].name, "Duncan Idaho");
     assert_eq!(records[2].name, "Birch", "pool-named instance untouched");
 }
+
+#[test]
+fn hosted_definition_edit_checks_the_exact_saved_instance_offline_before_writing() {
+    let owner = nostr::Keys::generate().public_key();
+    let other = nostr::Keys::generate().public_key();
+    let definition = "definition";
+    let community = "https://a.example";
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("managed-agents.json");
+    let local = agent(definition, "local", None);
+    let mut hosted = agent(definition, "hosted", None);
+    hosted.backend = crate::managed_agents::BackendKind::RegisteredHost {
+        scope: buzz_core_pkg::paired_message::Scope {
+            community: community.into(),
+            owner,
+            host: other,
+            generation: "1".repeat(64),
+        },
+        installed_runtime: None,
+    };
+    let saved = serde_json::to_vec(&[local, hosted]).unwrap();
+    std::fs::write(&path, &saved).unwrap();
+
+    let submit = |target: &str, id: &str, relay: &str, signer: &str| -> Result<(), String> {
+        validate_hosted_definition_edit(&path, target, id, relay, signer)?;
+        std::fs::write(&path, b"saved").map_err(|e| e.to_string())
+    };
+    let signer = owner.to_hex();
+    let other_signer = other.to_hex();
+    let target_key = "pubkey-hosted";
+    for (target, id, relay, signer) in [
+        (target_key, definition, "https://b.example", &signer),
+        (target_key, definition, community, &other_signer),
+        (target_key, definition, "", &signer),
+        ("missing", definition, community, &signer),
+        ("pubkey-local", definition, community, &signer),
+        (target_key, "another", community, &signer),
+    ] {
+        assert!(submit(target, id, relay, signer).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+    }
+    submit(target_key, definition, community, &signer).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"saved");
+}

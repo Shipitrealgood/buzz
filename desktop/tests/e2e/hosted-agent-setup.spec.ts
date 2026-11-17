@@ -28,6 +28,7 @@ type Fixture = {
   failSave?: boolean;
   sibling?: boolean;
   runtimeSurface?: boolean;
+  storedScope?: Partial<Pick<HostedSetup["scope"], "community" | "owner">>;
   localGrok?: boolean;
   delayContext?: boolean;
   contextError?: boolean;
@@ -385,7 +386,16 @@ async function open(
               },
             ]
           : [];
-        return [...records, ...sibling, record];
+        const stored = fixture.storedScope
+          ? {
+              ...record,
+              backend: {
+                ...(record.backend as object),
+                scope: { ...scope, ...fixture.storedScope },
+              },
+            }
+          : record;
+        return [...records, ...sibling, stored];
       }
       if (command === "hosted_prepare") {
         const input = args?.input as {
@@ -1168,6 +1178,7 @@ test("card and profile hosted Edit save offline, preserves exact runtime and exp
   const definitions = calls.filter((call) => call.command === "update_persona");
   expect(definitions.length).toBeGreaterThan(0);
   expect(definitions[0].args?.input).toMatchObject({
+    hostedAgentPubkey: "72".repeat(32),
     runtime: "claude",
     systemPrompt: "Saved hosted instructions",
   });
@@ -1324,6 +1335,28 @@ test("registered-host Runtime shows reported and saved settings with placement a
     ),
   ).toEqual([]);
 });
+
+for (const [mismatch, storedScope] of [
+  ["community", { community: "https://another.example" }],
+  ["owner", { owner: "83".repeat(32) }],
+] as const) {
+  test(`registered-host Runtime ignores online presence for a different ${mismatch}`, async ({
+    page,
+  }) => {
+    await openCreatedProfile(page, {
+      runtimeSurface: true,
+      presence: "online",
+      storedScope,
+    });
+    await page.getByRole("tab", { name: "Runtime", exact: true }).click();
+    await expect(page.getByTestId("user-profile-agent-status")).toContainText(
+      "Availability unknown",
+    );
+    await expect(
+      page.getByTestId("user-profile-model-settings-section"),
+    ).toContainText("observed-model");
+  });
+}
 
 test("Duplicate from a hosted profile keeps the existing local create path", async ({
   page,

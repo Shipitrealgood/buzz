@@ -89,6 +89,7 @@ export type CreatePersonaInput = {
 
 export type UpdatePersonaInput = {
   id: string;
+  hostedAgentPubkey?: string;
   displayName: string;
   avatarUrl?: string;
   /** Optional short, PUBLIC description (max 280 chars). Empty string clears. */

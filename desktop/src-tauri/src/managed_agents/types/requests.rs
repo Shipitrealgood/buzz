@@ -111,6 +111,8 @@ pub struct CreatePersonaRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePersonaRequest {
     pub id: String,
+    /// Exact instance selected when editing a definition through a registered host.
+    pub hosted_agent_pubkey: Option<String>,
     pub display_name: String,
     pub avatar_url: Option<String>,
     /// Optional short, PUBLIC description (max 280 chars). The dialog always

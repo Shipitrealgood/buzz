@@ -42,12 +42,25 @@ fn agent_secret_store() -> Option<&'static SecretStore> {
     }
 }
 
-pub fn managed_agents_base_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let dir = app
+const AGENT_STORE_FILENAME: &str = "managed-agents.json";
+
+fn agents_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    Ok(app
         .path()
         .app_data_dir()
         .map_err(|error| format!("failed to resolve app data dir: {error}"))?
-        .join("agents");
+        .join("agents"))
+}
+
+/// Resolve the inventory path without creating directories or migrating secrets.
+pub(crate) fn existing_agent_store_path<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<PathBuf, String> {
+    Ok(agents_dir(app)?.join(AGENT_STORE_FILENAME))
+}
+
+pub fn managed_agents_base_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let dir = agents_dir(app)?;
     fs::create_dir_all(&dir).map_err(|error| format!("failed to create agents dir: {error}"))?;
     Ok(dir)
 }
@@ -55,7 +68,7 @@ pub fn managed_agents_base_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<
 pub(crate) fn managed_agents_store_path<R: tauri::Runtime>(
     app: &AppHandle<R>,
 ) -> Result<PathBuf, String> {
-    Ok(managed_agents_base_dir(app)?.join("managed-agents.json"))
+    Ok(managed_agents_base_dir(app)?.join(AGENT_STORE_FILENAME))
 }
 
 fn managed_agents_logs_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -255,13 +268,10 @@ fn load_agent_store<R: tauri::Runtime>(
     app: &AppHandle<R>,
 ) -> Result<Vec<ManagedAgentRecord>, String> {
     let path = managed_agents_store_path(app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-
-    let content = fs::read_to_string(&path)
-        .map_err(|error| format!("failed to read agent store: {error}"))?;
-    serde_json::from_str(&content).map_err(|error| {
+    read_agent_store_at(&path).map_err(|error| {
+        if error.is_io() {
+            return format!("failed to read agent store: {error}");
+        }
         // Fail loudly and preserve the evidence: a later in-app save rewrites
         // this file wholesale, which would silently destroy a malformed hand
         // edit. Best-effort file-authoring contract (see managed_agents::
@@ -271,6 +281,15 @@ fn load_agent_store<R: tauri::Runtime>(
         backup_invalid_store(&path);
         format!("failed to parse agent store (preserved as .invalid): {error}")
     })
+}
+
+/// Read the unified inventory without keyring hydration, backups or migration.
+pub(crate) fn read_agent_store_at(path: &Path) -> serde_json::Result<Vec<ManagedAgentRecord>> {
+    match fs::read_to_string(path) {
+        Ok(content) => serde_json::from_str(&content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(serde_json::Error::io(e)),
+    }
 }
 
 /// Public keys already used by this desktop, including instances without a published profile.

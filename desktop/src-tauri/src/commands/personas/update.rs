@@ -2,6 +2,8 @@
 //! and the `update_persona_with` seam that `update_persona_and_publish` reuses
 //! to await relay acceptance for the same save.
 
+use std::{path::Path, sync::atomic::Ordering};
+
 use tauri::AppHandle;
 
 use crate::{
@@ -26,6 +28,33 @@ mod name_propagation_tests;
 pub struct UpdatePersonaResult {
     #[serde(flatten)]
     persona: AgentDefinition,
+}
+
+/// Check the stored coordinate without hydrating keys or migrating inline secrets.
+fn validate_hosted_definition_edit(
+    path: &Path,
+    pubkey: &str,
+    persona_id: &str,
+    relay: &str,
+    signer: &str,
+) -> Result<(), String> {
+    let targets = crate::managed_agents::read_agent_store_at(path)
+        .map_err(|e| format!("cannot read saved agent inventory: {e}"))?;
+    let target = targets
+        .iter()
+        .find(|t| !pubkey.is_empty() && t.pubkey == pubkey)
+        .ok_or("selected host instance is missing")?;
+    if target.persona_id.as_deref() != Some(persona_id) {
+        return Err("selected host instance belongs to another definition".into());
+    }
+    let crate::managed_agents::BackendKind::RegisteredHost { scope, .. } = &target.backend else {
+        return Err("selected instance is not on a registered host".into());
+    };
+    if scope.community.trim().is_empty() {
+        return Err("saved host community is missing".into());
+    }
+    crate::relay::assert_expected_relay_scope(Some(&scope.community), relay)?;
+    crate::relay::assert_expected_signer(Some(&scope.owner.to_hex()), signer)
 }
 
 /// Propagate a persona definition's display_name rename to linked agent instances.
@@ -167,10 +196,37 @@ pub(super) async fn update_persona_with<R: Send + 'static>(
             let model = trim_optional(input.model);
             let provider = trim_optional(input.provider);
 
+            // Pin the workspace and signer for the whole local commit, including
+            // retention and the collection of relay targets for linked profiles.
+            let _session_guards = if input.hosted_agent_pubkey.is_some() {
+                let workspace = state
+                    .workspace_apply_lock
+                    .try_lock()
+                    .map_err(|_| "community switch in progress")?;
+                let identity = state
+                    .identity_mutation
+                    .try_lock()
+                    .map_err(|_| "identity change in progress")?;
+                Some((workspace, identity))
+            } else {
+                None
+            };
             let _store_guard = state
                 .managed_agents_store_lock
                 .lock()
                 .map_err(|error| error.to_string())?;
+            if let Some(pubkey) = input.hosted_agent_pubkey.as_deref() {
+                if state.reset_failed.load(Ordering::Acquire) {
+                    return Err("identity reset incomplete".into());
+                }
+                validate_hosted_definition_edit(
+                    &crate::managed_agents::existing_agent_store_path(&app)?,
+                    pubkey,
+                    &input.id,
+                    &crate::relay::relay_api_base_url_with_override(&state),
+                    &state.signing_keys()?.public_key().to_hex(),
+                )?;
+            }
             let mut personas = load_personas(&app)?;
             pending::project_active_persona_sharing(&app, &state, &mut personas);
             let persona = personas

@@ -118,6 +118,7 @@ export async function createPersona(
 function updatePersonaPayload(input: UpdatePersonaInput) {
   return {
     id: input.id,
+    hostedAgentPubkey: input.hostedAgentPubkey,
     displayName: input.displayName,
     avatarUrl: input.avatarUrl,
     description: normalizeDescription(input.description),

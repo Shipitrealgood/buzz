@@ -7,7 +7,10 @@ export function hostDestinationValue(host: Host): string {
 }
 
 /** Defense against a late or incorrectly scoped directory projection. */
-export function hostBelongsToSession(host: Host, session: Session): boolean {
+export function hostBelongsToSession(
+  host: Pick<Host, "scope">,
+  session: Session,
+): boolean {
   try {
     const relay = new URL(session.expectedRelay);
     relay.protocol = relay.protocol === "wss:" ? "https:" : relay.protocol;

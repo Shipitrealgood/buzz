@@ -573,7 +573,9 @@ export function ProfileSummaryView({
                   onOpenInstance={onOpenInstance}
                   showDiagnosticsIngress={showDiagnosticsIngress}
                 />
-                {isOwner === true && managedAgent !== undefined ? (
+                {isOwner === true &&
+                managedAgent !== undefined &&
+                managedAgent.backend.type !== "registered_host" ? (
                   <AgentConfigPanel
                     advancedMode="flat"
                     pubkey={managedAgent.pubkey}
