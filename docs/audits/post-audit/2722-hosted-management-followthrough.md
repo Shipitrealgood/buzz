@@ -1,4 +1,106 @@
-# #2722 hosted management — independent post-audit
+# #2722 hosted management — re-gate, round 1
+
+**Current verdict: rework. Open findings C=0 / H=0 / M=1 / L=0.**
+The original H-1 name-resolution defect and M-1–M-3 are corrected. H-1 retains
+one narrow non-Windows lint residual introduced by its correction (below). No unrelated area
+was reopened. Windows compilation/tests and human acceptance remain unrun and are
+separate subsequent gates; this is not release acceptance.
+
+Reviewed 2026-11-17 in the same exclusive worktree at clean
+`102a5c6471da5126fd807e6cfabf238da49a764e`. Correction range:
+`0ce26a88cd81caf3e9fe85370a9896ddf22f306f..102a5c6471da5126fd807e6cfabf238da49a764e`;
+product correction commit `0e0839640f1af0b024343463926baeb767868271`.
+Combined source range remains rooted at `f95d075b365486a432732d603ba4511cf19fe7ff`.
+Conductor recorded all original findings as fix-in-lane; the human authorized up
+to +500 net lines in the same 13 production files for these four corrections.
+Independent recount: **13 files, +570/-92, net +478** for Edit/Start;
+combined F2/F3 and Edit/Start: **15 files, +661/-139, net +522**.
+Requested reviewer configuration remains Astra/high; actual served model/effort unknown.
+
+## Re-gate dispositions
+
+| Finding | Actual disposition and independent evidence at this pin |
+| --- | --- |
+| H-1 | **Fix-in-lane, residual remains.** Original unresolved-module defect corrected: `agents.rs:1060–1063` now compiles the hosted call only for Windows and returns an unsupported error otherwise. Source-derived correction; native compilation not run. See H-1 residual below. |
+| M-1 | **Closed.** `UserProfilePanelPersonaSubmit.ts:99–120` independently emits the selected metadata's command/default args for each hosted instance write, even when the definition already committed. Absent metadata leaves ordinary offline retention intact. The actual profile case at `hosted-agent-setup.spec.ts:1076` changes Grok to Claude, fails the record write, retries after refetch, and asserts Claude's empty args and exact installed ID. Independently passed. |
+| M-2 | **Closed.** `UserProfilePersonaDialogs.tsx:105–111` confines hosted context to id-bearing Edit; its run-location provider is likewise conditional. Duplicate keeps local source/create. The actual Duplicate case at `hosted-agent-setup.spec.ts:1209` passes with host denied, asserting local backend, no destination, and no host discovery/prepare. Independently passed. |
+| M-3 | **Closed.** `UserProfilePersonaDialogs.tsx:136–157` freezes the initial resolved runtime per dialog; `:204–212` supplies initialization status. `AgentDefinitionDialog.tsx:790,1083–1087` disables submission and removes the form until resolution while retaining Cancel. Source-key remount handles reopen. Existing cases at `hosted-agent-setup.spec.ts:1256,1310` exercise delayed context, later refetch preserving the draft/runtime, error, Cancel and reopen. Independently passed. |
+
+The modified files are
+[agents.rs](../../../desktop/src-tauri/src/commands/agents.rs),
+[submit boundary](../../../desktop/src/features/profile/ui/UserProfilePanelPersonaSubmit.ts),
+[dialog context](../../../desktop/src/features/profile/ui/UserProfilePersonaDialogs.tsx),
+[shared editor](../../../desktop/src/features/agents/ui/AgentDefinitionDialog.tsx), and
+[existing browser fixture](../../../desktop/tests/e2e/hosted-agent-setup.spec.ts).
+All correction diffs and the affected callers were read. No additional UI correctness
+regression was found in the bounded re-gate.
+
+### H-1 (Medium, high confidence) — unsupported-platform arm leaves a denied warning
+
+**Required lint correction; conductor disposition: fix-in-lane.** The original H-1
+name-resolution error is fixed, but on Linux/macOS the private local
+`StartTarget::Hosted(Scope)` payload at
+[agents.rs](../../../desktop/src-tauri/src/commands/agents.rs):994 is never read:
+its only consuming arm is compiled out and the replacement at line 1063 matches
+`Hosted(_)`. Rust emits `field 0 is never read` (`dead_code`). There is no enclosing
+suppression in this module, `commands/mod.rs`, or `lib.rs`. The repository's required
+`desktop-tauri-clippy` commands explicitly use `-- -D warnings`
+([Justfile](../../../Justfile):222–224), so this warning becomes a failing native
+lint gate on those platforms.
+
+**Measured:** the pinned compiler on this Linux host emitted that exact diagnostic
+for a minimal local-enum reproduction with the same Windows/non-Windows match
+arms (`rustc --edition 2021 --crate-type lib --emit metadata`, stdin source,
+output `/tmp/2722-start-cfg-probe.rmeta`). This is a compiler-semantics probe,
+**not a native application compile or clippy run**. Reproduction body:
+
+```rust
+pub fn start_windows_only(scope: String) -> Result<(), String> {
+    enum StartTarget { Local, Hosted(String) }
+    let target = if scope.is_empty() { StartTarget::Local }
+                 else { StartTarget::Hosted(scope) };
+    match target {
+        #[cfg(windows)]
+        StartTarget::Hosted(scope) => { drop(scope); Ok(()) },
+        #[cfg(not(windows))]
+        StartTarget::Hosted(_) => Err("Hosted Start is only supported on Windows".into()),
+        StartTarget::Local => Ok(()),
+    }
+}
+```
+
+Remedy: consume/bind the payload in the unsupported arm (for example `_scope`)
+without enabling the Windows module or weakening refusal. This can be corrected
+without adding production lines. Proposed owner: existing executor, as continuation
+of the H-1 fix. No broad lint campaign or additional product work is requested.
+
+## Round-1 verification and handoff
+
+- **Measured:** `pnpm exec playwright test --project=smoke hosted-agent-setup.spec.ts`
+  independently passed **21/21**, 1.7m, using the executor's final source bundle,
+  scoped Chromium/loopback permission, actual components and mocked IPC. Raw local
+  log `/tmp/2722-chuck-regate-browser.log`; this report is the durable result index.
+- **Measured:** correction-range whitespace check passed; production size independently
+  recounted above. Worktree was clean at intake and product/test source is untouched.
+- **Reused with source continuity:** prior independent owner 17/17, synthetic host
+  1/1 and service guards 7 passed/1 existing ignored. No owner/host implementation
+  or fixture changed in this correction range. No new mutation campaign ran.
+- **Executor evidence only:** rework build/typecheck/Biome/rustfmt passed per the
+  updated [execution receipt](../../executions/2722-hosted-edit-start.md). Those
+  checks were not independently rerun. No production change follows that bundle.
+- **Not run:** native Windows/Linux/macOS compile, native platform tests/clippy,
+  `just ci`, installed normal Windows launch, live same-agent delivery and human
+  acceptance. Known Linux GLib/WebKit limitations were not repaired or bypassed.
+
+All re-gate sessions are terminal; no mutation is held and port 4173 has no listener.
+Only this signed report update is committed. Route the H-1 residual for its tiny correction,
+then a source-only recheck of that arm is sufficient for this reviewer; preserve
+21/21 browser evidence if UI source stays unchanged. Conductor owns the subsequent
+Windows workflow and human gate. The historical initial report below is retained
+as the finding/evidence trail; its former counts and pending dispositions are
+superseded by this round-1 section.
+
+## Historical initial review — 2026-11-16
 
 **Verdict: merge-block. C=0 / H=1 / M=3 / L=0.** Initial review, rework round 0.
 Source acceptance requires H-1 and M-1–M-3 to be resolved or explicitly ruled on by
@@ -220,3 +322,6 @@ then this reviewer re-gates the updated pin; Windows/human gates remain subseque
 obligations, with no release approval implied.
 
 quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verify=partial commits=f95d075b365486a432732d603ba4511cf19fe7ff..1eb2ce93116cad9a242dd82137c1ec4b43d96de5 findings=C=0/H=1/M=3/L=0 rework_rounds=0
+
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=0ce26a88cd81caf3e9fe85370a9896ddf22f306f..102a5c6471da5126fd807e6cfabf238da49a764e findings=C=0/H=0/M=1/L=0 rework_rounds=1
