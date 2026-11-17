@@ -102,6 +102,8 @@ import {
 } from "./addCustomHarness";
 type AgentDefinitionDialogProps = {
   configurationSource?: AgentConfigurationSource;
+  /** Keep the form hidden until its initial context resolves; Cancel remains usable. */
+  initializationMessage?: string;
   open: boolean;
   embedded?: boolean;
   title: string;
@@ -132,6 +134,7 @@ export type AgentDefinitionSubmitOptions = {
 };
 export function AgentDefinitionDialog({
   configurationSource = LOCAL_CONFIGURATION,
+  initializationMessage,
   open,
   embedded = false,
   title,
@@ -784,7 +787,7 @@ export function AgentDefinitionDialog({
 
   const footer = (
     <AgentDefinitionDialogFooter
-      canSubmit={canSubmit}
+      canSubmit={canSubmit && !initializationMessage}
       isAvatarUploadPending={isAvatarUploadPending}
       isPending={isPending}
       onCancel={() => handleOpenChange(false)}
@@ -1077,7 +1080,11 @@ export function AgentDefinitionDialog({
       open={open}
       title={title}
     >
-      {form}
+      {initializationMessage ? (
+        <p role="status">{initializationMessage}</p>
+      ) : (
+        form
+      )}
     </AgentDefinitionDialogShell>
   );
 }

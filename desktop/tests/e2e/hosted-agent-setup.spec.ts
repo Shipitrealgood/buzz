@@ -26,6 +26,10 @@ type Fixture = {
   createState?: string;
   createError?: string;
   failSave?: boolean;
+  localGrok?: boolean;
+  delayContext?: boolean;
+  contextError?: boolean;
+  releaseContext?: () => void;
 };
 declare global {
   interface Window {
@@ -54,6 +58,29 @@ async function open(
     page,
     {
       addChannelMembersErrors: ["Fixture membership denied", null],
+      ...(overrides.localGrok && {
+        acpRuntimesCatalog: [
+          {
+            id: "grok",
+            label: "Local Grok",
+            avatar_url: "",
+            availability: "available",
+            command: "grok",
+            binary_path: null,
+            default_args: ["agent", "--always-approve", "stdio"],
+            mcp_command: null,
+            install_hint: "",
+            install_instructions_url: "",
+            can_auto_install: false,
+            requires_external_cli: false,
+            underlying_cli_path: null,
+            node_required: false,
+            auth_status: { status: "not_applicable" },
+            source: "builtin",
+            login_hint: null,
+          },
+        ],
+      }),
       managedAgents: [
         {
           pubkey: "70".repeat(32),
@@ -99,6 +126,7 @@ async function open(
     };
     window.__HOSTED_SETUP_FIXTURE__ = fixture;
     let record: Record<string, unknown> | null = null;
+    let contextWait: Promise<void> | undefined;
     const observed = (): HostedSetup["observation"] =>
       fixture.setup && {
         scope,
@@ -173,7 +201,19 @@ async function open(
         };
       if (command === "hosted_setup_token")
         return fixture.tokenPending ? new Promise(() => {}) : "76".repeat(32);
-      if (command === "hosted_setup_list")
+      if (command === "hosted_setup_list") {
+        if (fixture.delayContext) {
+          contextWait ??= new Promise<void>((resolve) => {
+            fixture.releaseContext = () => {
+              fixture.delayContext = false;
+              contextWait = undefined;
+              resolve();
+            };
+          });
+          await contextWait;
+        }
+        if (fixture.contextError)
+          throw new Error("Fixture retained context unavailable");
         return fixture.setup && fixture.setup.state !== "deleted"
           ? [
               {
@@ -186,6 +226,7 @@ async function open(
               },
             ]
           : [];
+      }
       if (command === "hosted_catalog") {
         if (
           !fixture.registered ||
@@ -244,6 +285,16 @@ async function open(
           ...catalog.runtimes[0],
           installedId: "second/grok",
         });
+        catalog.runtimes.push({
+          installedId: "native/claude",
+          metadata: {
+            ...catalog.runtimes[0].metadata,
+            id: "claude",
+            label: "Claude Code",
+            command: "claude-agent-acp",
+            default_args: [],
+          },
+        });
         return catalog;
       }
       if (command === "hosted_models") {
@@ -279,6 +330,9 @@ async function open(
           ...record,
           model: input.model ?? record.model,
           system_prompt: input.systemPrompt ?? record.system_prompt,
+          agent_command: input.agentCommand ?? record.agent_command,
+          agent_args: input.agentArgs ?? record.agent_args,
+          mcp_command: input.mcpCommand ?? record.mcp_command,
           backend: {
             ...(record.backend as object),
             installed_runtime: input.installedRuntime,
@@ -314,6 +368,7 @@ async function open(
             status: "host_pending",
             model: input.model,
             agent_command: "grok",
+            agent_args: ["agent", "--always-approve", "stdio"],
             start_on_app_launch: false,
           };
           fixture.setup = {
@@ -1044,7 +1099,7 @@ test("profile hosted Edit saves offline, preserves exact runtime and exposes par
     .getByRole("button", { name: "Agent harness", exact: true })
     .click();
   await page
-    .getByRole("menuitemradio", { name: /Grok Build · second\/grok/ })
+    .getByRole("menuitemradio", { name: /Claude Code · native\/claude/ })
     .click();
   await selectHostedModel(page);
   await dialog
@@ -1080,14 +1135,17 @@ test("profile hosted Edit saves offline, preserves exact runtime and exposes par
   const definitions = calls.filter((call) => call.command === "update_persona");
   expect(definitions.length).toBeGreaterThan(0);
   expect(definitions[0].args?.input).toMatchObject({
-    runtime: "grok",
+    runtime: "claude",
     systemPrompt: "Saved hosted instructions",
   });
   const saves = calls.filter((call) => call.command === "update_managed_agent");
   expect(saves).toHaveLength(2);
   expect(saves[1].args?.input).toMatchObject({
     pubkey: "72".repeat(32),
-    installedRuntime: "second/grok",
+    installedRuntime: "native/claude",
+    agentCommand: "claude-agent-acp",
+    agentArgs: [],
+    mcpCommand: "",
   });
   expect(
     calls.filter((call) =>
@@ -1108,7 +1166,7 @@ test("profile hosted Edit saves offline, preserves exact runtime and exposes par
   await expect(dialog).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Agent harness", exact: true }),
-  ).toContainText("second/grok");
+  ).toContainText("native/claude");
   await expect(dialog.locator("#persona-system-prompt")).toHaveValue(
     "Saved hosted instructions",
   );
@@ -1131,4 +1189,142 @@ test("profile hosted Edit saves offline, preserves exact runtime and exposes par
         .map((call) => call.args?.pubkey),
     ),
   ).toEqual(["72".repeat(32)]);
+});
+
+async function openCreatedProfile(
+  page: Page,
+  overrides: Partial<Fixture> = {},
+) {
+  await open(page, false, { createState: "applied", ...overrides });
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(page.getByTestId("persona-dialog-submit")).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: "Hosted synthetic agent agent profile",
+      exact: true,
+    })
+    .click();
+}
+
+test("Duplicate from a hosted profile keeps the existing local create path", async ({
+  page,
+}) => {
+  await openCreatedProfile(page, { localGrok: true });
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.denied = true;
+    window.__HOSTED_SETUP_FIXTURE__.calls = [];
+  });
+  await page.getByTestId("user-profile-duplicate-agent-row").focus();
+  await page.getByTestId("user-profile-duplicate-agent-row").press("Enter");
+  const dialog = page.getByTestId("persona-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText("take effect on next start");
+  await dialog
+    .getByRole("button", { name: "Agent harness", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitemradio", { name: /native\/grok/ }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("menuitemradio", { name: "Local Grok (default)", exact: true })
+    .click();
+  await expect(page.getByTestId("persona-dialog-submit")).toBeEnabled();
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(dialog).toHaveCount(0);
+  const calls = await page.evaluate(
+    () => window.__HOSTED_SETUP_FIXTURE__.calls,
+  );
+  const created = calls.filter(
+    (call) => call.command === "create_managed_agent",
+  );
+  expect(created).toHaveLength(1);
+  expect(created[0].args?.input).toMatchObject({
+    agentCommand: "grok",
+    // Main's local path resolves definition args at spawn instead of freezing them.
+    agentArgs: [],
+    backend: { type: "local" },
+    spawnAfterCreate: true,
+  });
+  expect(created[0].args?.input).not.toHaveProperty("destination");
+  expect(
+    calls.filter((call) =>
+      /^(hosted_catalog|hosted_models|hosted_prepare)$/.test(call.command),
+    ),
+  ).toEqual([]);
+});
+
+test("legacy hosted Edit waits for context and keeps an authored draft across refetch", async ({
+  page,
+}) => {
+  await openCreatedProfile(page);
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.delayContext = true;
+  });
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  const dialog = page.getByTestId("persona-dialog");
+  await expect(dialog.getByRole("status")).toHaveText(
+    "Loading exact installed host runtime…",
+  );
+  await expect(dialog.locator("#persona-system-prompt")).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled();
+  await page.evaluate(() => window.__HOSTED_SETUP_FIXTURE__.releaseContext?.());
+  await expect(dialog.locator("#persona-system-prompt")).toBeVisible();
+  await dialog
+    .locator("#persona-system-prompt")
+    .fill("Authored after exact context resolved");
+  await page.evaluate(async () => {
+    const f = window.__HOSTED_SETUP_FIXTURE__;
+    if (!f.setup) throw new Error("Missing fixture setup");
+    f.setup.runtime = "second/grok";
+    const client = (
+      window as Window & {
+        __BUZZ_E2E_QUERY_CLIENT__: {
+          invalidateQueries: (filter: { queryKey: string[] }) => Promise<void>;
+        };
+      }
+    ).__BUZZ_E2E_QUERY_CLIENT__;
+    await client.invalidateQueries({ queryKey: ["hosted-edit-context"] });
+  });
+  await expect(dialog.locator("#persona-system-prompt")).toHaveValue(
+    "Authored after exact context resolved",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Agent harness", exact: true }),
+  ).toContainText("native/grok");
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(dialog).toHaveCount(0);
+  const saves = await page.evaluate(() =>
+    window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+      (call) => call.command === "update_managed_agent",
+    ),
+  );
+  expect(saves.at(-1)?.args?.input).toMatchObject({
+    installedRuntime: "native/grok",
+    systemPrompt: "Authored after exact context resolved",
+  });
+});
+
+test("legacy context failure keeps the form unavailable and Cancel usable", async ({
+  page,
+}) => {
+  await openCreatedProfile(page);
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.contextError = true;
+  });
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  const dialog = page.getByTestId("persona-dialog");
+  await expect(dialog.getByRole("status")).toContainText("Close and retry");
+  await expect(dialog.locator("#persona-system-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.contextError = false;
+  });
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  await expect(dialog.locator("#persona-system-prompt")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 });

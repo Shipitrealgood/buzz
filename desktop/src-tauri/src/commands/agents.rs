@@ -1057,7 +1057,10 @@ pub async fn start_managed_agent(
     };
 
     let result = match target {
+        #[cfg(windows)]
         StartTarget::Hosted(scope) => hosted::start(&app, state.clone(), &pubkey, scope).await,
+        #[cfg(not(windows))]
+        StartTarget::Hosted(_) => Err("Hosted Start is only supported on Windows".into()),
         StartTarget::Local => {
             start_local_agent_with_preflight(
                 &app,

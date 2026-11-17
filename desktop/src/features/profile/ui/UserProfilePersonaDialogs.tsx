@@ -102,7 +102,10 @@ export function UserProfilePersonaDialogs({
     hosted?: HostedEditSelection,
   ) => Promise<void>;
 }) {
-  const backend = managedAgent?.backend;
+  const backend =
+    personaDialogState && "id" in personaDialogState.initialValues
+      ? managedAgent?.backend
+      : undefined;
   const scope = backend?.type === "registered_host" ? backend.scope : undefined;
   const hosted = !!scope;
   const active = hosted && !!personaDialogState;
@@ -130,11 +133,22 @@ export function UserProfilePersonaDialogs({
       item.pubkey === linkedAgentPubkey &&
       sameHostScope(item.scope, scope),
   );
-  const installed =
+  const resolvedRuntime =
     backend?.type === "registered_host"
       ? (backend.installed_runtime ??
         (contexts?.length === 1 ? contexts[0].runtime : undefined))
       : undefined;
+  const [context, setContext] = React.useState({
+    dialog: personaDialogState,
+    runtime: resolvedRuntime,
+  });
+  if (
+    context.dialog !== personaDialogState ||
+    (!context.runtime && resolvedRuntime)
+  ) {
+    setContext({ dialog: personaDialogState, runtime: resolvedRuntime });
+  }
+  const installed = context.runtime;
   const initialValues = React.useMemo(() => {
     const values = personaDialogState?.initialValues;
     return values && hosted
@@ -168,10 +182,13 @@ export function UserProfilePersonaDialogs({
     <>
       <AgentRunLocationProvider
         runLocation={
-          managedAgent ? runLocationForBackend(managedAgent.backend) : null
+          hosted && managedAgent
+            ? runLocationForBackend(managedAgent.backend)
+            : null
         }
       >
         <AgentDefinitionDialog
+          key={scope ? JSON.stringify(scope) : "local"}
           configurationSource={
             scope
               ? {
@@ -184,13 +201,14 @@ export function UserProfilePersonaDialogs({
               : undefined
           }
           description={`${personaDialogState?.description ?? ""}${scope ? " Settings are saved for this host and take effect on next start." : ""}`}
-          error={
-            scope && !installed
-              ? new Error(
-                  "Exact installed host runtime is missing; retained context is required.",
-                )
-              : (updateError ?? createError)
+          initializationMessage={
+            hosted && !installed
+              ? retained.isPending
+                ? "Loading exact installed host runtime…"
+                : "Exact installed host runtime is missing; retained context is required. Close and retry."
+              : undefined
           }
+          error={updateError ?? createError}
           initialValues={initialValues}
           isPending={isPending}
           runtimes={scope ? hostRuntimes : runtimes}

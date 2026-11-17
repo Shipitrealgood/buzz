@@ -101,11 +101,7 @@ export async function submitProfilePersonaDialog({
       const agentUpdate = managedAgent
         ? personaManagedAgentUpdate(managedAgent, persona, {
             previousPersona,
-            runtimes: hosted
-              ? hosted.runtime
-                ? [hosted.runtime]
-                : []
-              : runtimes,
+            runtimes: hosted ? [] : runtimes,
           })
         : null;
       const update =
@@ -114,6 +110,11 @@ export async function submitProfilePersonaDialog({
               ...agentUpdate,
               pubkey: managedAgent.pubkey,
               installedRuntime: hosted.installedRuntime,
+              ...(hosted.runtime?.command && {
+                agentCommand: hosted.runtime.command,
+                agentArgs: hosted.runtime.defaultArgs,
+                mcpCommand: hosted.runtime.mcpCommand ?? "",
+              }),
             }
           : agentUpdate;
       const result = update ? await updateManagedAgent(update) : null;
