@@ -1,4 +1,59 @@
-# #2722 hosted management — Windows compiler correction re-gate, round 3
+# #2722 hosted management — native fixture correction re-gate, round 4
+
+**Scoped test correction accepted; open findings C=0 / H=0 / M=0 / L=0.**
+Reviewed clean `dd3ad12a85e966abaad17f41faf8bab3d03ee4f7` against
+`dc6088571d16e970b7839cf2f380ef57a3251636` in the same exclusive worktree.
+The exact delta is one existing test fixture and two documentation files;
+production is unchanged (previous 13 files/net +481 remains applicable).
+Requested reviewer Astra/high; actual served model/effort unknown.
+
+**Source trace (read, high confidence):** the old fixture changed `definitions[0]`.
+[personas.rs](../../../desktop/src-tauri/src/managed_agents/personas.rs):342 loads
+and merges definitions; `sort_personas` at line 164 places built-ins first, with
+`builtin:fizz` first in the built-in order. The test's instance instead links
+`one-definition` (fixture lines 90 and 139). Production
+[candidate](../../../desktop/src-tauri/src/commands/agents_hosted.rs):87 calls
+[build_deploy_payload](../../../desktop/src-tauri/src/commands/agents_deploy.rs):208,
+which invokes
+[resolve_effective_config](../../../desktop/src-tauri/src/managed_agents/effective_config/mod.rs):247.
+That resolver finds the exact `persona_id` and resolves model/prompt from its
+definition. The old index edit left that definition at `initial-host-model`.
+This explains the observed result without a production precedence defect.
+
+The corrected [fixture](../../../desktop/src-tauri/src/commands/agents_hosted_tests.rs):442
+selects the linked ID, verifies its initial model, writes the nondefault model and
+prompt, then reloads and asserts both exact values before calling candidate.
+The stale instance values remain deliberate. Candidate assertions still demand
+`saved/model:2` and `Saved host instructions` (lines 489–499). Later-Save main-record
+equality and exact retained-event equality (lines 552–560), plus identity and
+missing-record recovery refusals, are unchanged. The correction strengthens setup
+verification without weakening model precedence or immutable recovery assertions.
+No remaining defect was found in this bounded delta; prior findings remain closed.
+
+**Platform evidence:** read the actual saved-model diagnostic in preserved
+`native-job.log`, lines 2956–2988, for Windows run 43988951035. The
+[committed CI receipt](../../executions/2722-hosted-edit-windows.md) records successful
+Desktop compilation/packaging and SQLite ACL verification, 122 distinct passing
+cases, and the failed hosted create/recovery case. Cleanup/session-fence and Grok
+metadata cases were skipped after failure. These are CI-worker evidence, not
+reviewer-run tests; the installer is diagnostic, not an accepted canary.
+
+**Measured here:** clean pin and exact diff inspected; `git diff --check` passed.
+No suites or mutants were rerun for this test-only correction. Previous independent
+21/21 browser and owner/host evidence is retained because production is unchanged.
+Executor focused rustfmt is receipt evidence only. Corrected native Windows case
+is **not run** locally; successful Windows native verification and human installed
+normal-launch/Edit/Stop/Start acceptance remain pending. No full merge-safe claim.
+
+Return to conductor for the authorized Windows rerun. No product edits, CI dispatch,
+publication, live actions, or taskctl operations. All reviewer commands terminal;
+no reviewer server was started. Only this signed report is committed. Historical
+sections below are superseded by this pin and platform status. `rework / partial`
+continues to denote outstanding native/human acceptance, not another source repair.
+
+Signed: codex-chuck — independent #2722 reviewer, 2026-11-17.
+
+## Historical Windows compiler correction re-gate — round 3
 
 **Scoped source correction accepted. Open source findings C=0 / H=0 / M=0 / L=0.**
 Windows acceptance remains pending a successful corrected build and native cases.
@@ -437,3 +492,5 @@ quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=par
 
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=21099d751150a219e4c3d342aafea9ff04495f0e..bd03a6c4845597f1975ac5cd2f8e6ee0aebc8f3c findings=C=0/H=0/M=0/L=0 rework_rounds=3
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=dc6088571d16e970b7839cf2f380ef57a3251636..dd3ad12a85e966abaad17f41faf8bab3d03ee4f7 findings=C=0/H=0/M=0/L=0 rework_rounds=4
