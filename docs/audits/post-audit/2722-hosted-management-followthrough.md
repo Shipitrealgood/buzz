@@ -1,4 +1,56 @@
-# #2722 hosted management — re-gate, round 1
+# #2722 hosted management — final source re-gate, round 2
+
+**Source accepted. All findings closed: C=0 / H=0 / M=0 / L=0.**
+No further implementation correction is recommended. Full merge/release acceptance
+remains pending native platform and human gates; no unconditional merge-safe verdict
+is claimed while those required checks are unrun. The quality footer retains
+`rework / partial` solely for that outstanding acceptance, not for a source defect.
+
+Reviewed 2026-11-17 at clean `571ecf9497a14095c6db9a15682aae53de3df3f0`, same
+worktree and branch. Narrow delta from report commit
+`84fb2d6b63e45593a586c5952eab75019c22be0d`: one product identifier changes
+`StartTarget::Hosted(_)` to `StartTarget::Hosted(_scope)` in the non-Windows arm
+of [agents.rs](../../../desktop/src-tauri/src/commands/agents.rs):1063, plus the
+executor receipt. Combined reviewed source is
+`f95d075b365486a432732d603ba4511cf19fe7ff..571ecf9497a14095c6db9a15682aae53de3df3f0`.
+Edit/Start remains **13 production files / net +478**, within the approved +500.
+Requested reviewer configuration Astra/high; served model/effort unknown.
+
+| Finding | Final disposition |
+| --- | --- |
+| H-1 | **Closed.** Windows-only dispatch remains cfg-gated; the non-Windows arm now binds its payload and still refuses Start. Both original name-resolution defect and its denied-warning residual are resolved. |
+| M-1 | **Closed**, retaining round-1 source trace and passing cross-harness partial-Save retry case. |
+| M-2 | **Closed**, retaining round-1 source trace and passing local Duplicate case. |
+| M-3 | **Closed**, retaining round-1 source trace and passing delayed/error/refetch legacy-context cases. |
+
+**Measured:** the identical round-1 compiler reproduction with only `_` changed to
+`_scope` passed under the pinned compiler with `-D warnings`, exit 0 and no
+warnings (`rustc --edition 2021 --crate-type lib --emit metadata -D warnings`,
+stdin source, output `/tmp/2722-start-cfg-probe-fixed.rmeta`). This is a narrow
+compiler-semantics check, not a native app build. Correction diff/whitespace check
+passed. The production match arm was independently read before the reproduction.
+
+**Preserved evidence:** independent round-1 browser **21/21**, unchanged UI and
+fixture; initial independent owner **17/17**, synthetic host **1/1**, service
+guards **7 passed / 1 existing ignored**, unchanged owner/host source and fixtures.
+No suite rerun or mutation campaign was needed or performed for this identifier.
+The executor's Rust formatting receipt remains executor evidence.
+
+**Still not run:** native Windows/Linux/macOS compilation and native tests/clippy,
+`just ci`, installed normal Windows launch, live same-agent delivery, and human
+acceptance. The known Linux GLib/WebKit gap remains unchanged. Browser checks and
+the compiler reproduction cannot prove native persistence or transport. The
+conductor's next stage is the existing Windows native workflow, then applicable
+human checks; this report grants no live activation authority.
+
+All tool processes are terminal; port 4173 has no listener, and no mutation is held.
+Only this signed report update is committed. Minimalism, elegance and source
+correctness: **9/10 each** for the bounded change after the four corrections;
+platform/runtime confidence remains subject to the explicit unrun gates above.
+The round-1 and initial records below are historical evidence, superseded by this
+final disposition. No additional source blocker remains.
+
+## Historical re-gate — round 1
 
 **Current verdict: rework. Open findings C=0 / H=0 / M=1 / L=0.**
 The original H-1 name-resolution defect and M-1–M-3 are corrected. H-1 retains
@@ -325,3 +377,6 @@ quality: model=unknown effort=unknown stage=post-audit verdict=merge-block verif
 
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=0ce26a88cd81caf3e9fe85370a9896ddf22f306f..102a5c6471da5126fd807e6cfabf238da49a764e findings=C=0/H=0/M=1/L=0 rework_rounds=1
+
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=f95d075b365486a432732d603ba4511cf19fe7ff..571ecf9497a14095c6db9a15682aae53de3df3f0 findings=C=0/H=0/M=0/L=0 rework_rounds=2
