@@ -221,6 +221,7 @@ test("hosted lifecycle uses only owner/community presence; remote send pins its 
   };
   const localStops = [];
   const ipc = [];
+  let rejectDm = false;
   const originalWindow = globalThis.window;
   t.after(() => {
     if (originalWindow === undefined) delete globalThis.window;
@@ -230,16 +231,21 @@ test("hosted lifecycle uses only owner/community presence; remote send pins its 
     __TAURI_INTERNALS__: {
       invoke: async (command, args) => {
         ipc.push([command, args]);
+        if (command === "open_dm") {
+          if (rejectDm) throw new Error("DM open denied");
+          return { id: "owner-agent-dm" };
+        }
         return { event_id: "event" };
       },
     },
   };
-  const stop = (record, session, relayAgents) =>
+  const stop = (record, session, relayAgents, preferredChannelId) =>
     stopManagedAgentWithRules({
       agent: record,
       session,
       channels: [],
       relayAgents,
+      preferredChannelId,
       stopManagedAgent: async (pubkey) => {
         localStops.push(pubkey);
       },
@@ -263,32 +269,49 @@ test("hosted lifecycle uses only owner/community presence; remote send pins its 
       label: present ? "Stop" : "Start agent",
     });
   }
-  await assert.rejects(
-    stop(target, session, [
-      { pubkey: "b".repeat(64), channelIds: ["wrong-channel"] },
-    ]),
-    /no channel could be resolved/,
-  );
   assert.deepEqual(ipc, []);
-  const request = await stop(target, session, directory);
+  const scope = {
+    expectedRelayUrl: session.expectedRelay,
+    expectedSignerPubkey: session.expectedOwner,
+  };
+  rejectDm = true;
+  await assert.rejects(
+    stop(target, session, directory, "preferred-public-channel"),
+    /DM open denied/,
+  );
+  assert.deepEqual(ipc, [["open_dm", { pubkeys: [target.pubkey], ...scope }]]);
+  ipc.length = 0;
+  rejectDm = false;
+  const request = await stop(
+    target,
+    session,
+    directory,
+    "preferred-public-channel",
+  );
   assert.match(request.noticeMessage, /^Shutdown requested/);
-  assert.equal(ipc.length, 1);
-  const [[command, args]] = ipc;
-  assert.equal(command, "send_channel_message");
-  assert.equal(args.channelId, "target-channel");
+  assert.deepEqual(
+    ipc.map(([command]) => command),
+    ["open_dm", "send_channel_message"],
+  );
+  assert.deepEqual(ipc[0][1], { pubkeys: [target.pubkey], ...scope });
+  const args = ipc[1][1];
+  assert.equal(args.channelId, "owner-agent-dm");
   assert.deepEqual(args.mentionPubkeys, [target.pubkey]);
   assert.equal(args.content, "!shutdown");
-  assert.equal(args.expectedRelayUrl, session.expectedRelay);
-  assert.equal(args.expectedSignerPubkey, session.expectedOwner);
+  assert.equal(args.expectedRelayUrl, scope.expectedRelayUrl);
+  assert.equal(args.expectedSignerPubkey, scope.expectedSignerPubkey);
+  ipc.length = 0;
   const provider = agent({ backend: { type: "provider" }, status: "deployed" });
   assert.match(
     (await stop(provider, undefined, directory)).noticeMessage,
     /^Shutdown requested/,
   );
-  assert.equal(ipc[1][1].expectedSignerPubkey, null);
-  assert.deepEqual(ipc[1][1].mentionPubkeys, [provider.pubkey]);
+  assert.equal(ipc[0][0], "send_channel_message");
+  assert.equal(ipc[0][1].channelId, "target-channel");
+  assert.equal(ipc[0][1].expectedSignerPubkey, null);
+  assert.deepEqual(ipc[0][1].mentionPubkeys, [provider.pubkey]);
   assert.deepEqual(localStops, []);
   await stop(agent({ status: "running" }), undefined, []);
   assert.deepEqual(localStops, [target.pubkey]);
-  assert.equal(ipc.length, 2);
+  assert.equal(ipc.length, 1);
 });

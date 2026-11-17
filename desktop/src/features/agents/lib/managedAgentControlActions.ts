@@ -1,5 +1,5 @@
 import { captureRelayRemovals } from "@/features/agents/managedAgentRelayCleanup";
-import { sendChannelMessage } from "@/shared/api/tauri";
+import { openDm, sendChannelMessage } from "@/shared/api/tauri";
 import { hostBelongsToSession } from "./hostDestination";
 import type { Session } from "./hostDirectory";
 import type {
@@ -153,17 +153,18 @@ export async function stopManagedAgentWithRules({
         "Cannot stop: select the registered host’s community and owner identity.",
       );
     }
-    const channelId = resolveManagedAgentChannelId(agent, {
-      channels,
-      preferredChannelId,
-      relayAgents,
-    });
+    const expectedRelayUrl = hosted ? session?.expectedRelay : undefined;
+    const expectedSignerPubkey = hosted?.scope.owner;
+    const pubkeys = [agent.pubkey];
+    const channelId = hosted
+      ? (await openDm({ pubkeys, expectedRelayUrl, expectedSignerPubkey })).id
+      : resolveManagedAgentChannelId(agent, {
+          channels,
+          preferredChannelId,
+          relayAgents,
+        });
     if (!channelId) {
-      throw new Error(
-        hosted
-          ? "Cannot stop: no channel could be resolved for this agent."
-          : "Cannot stop: agent is not in any channel",
-      );
+      throw new Error("Cannot stop: agent is not in any channel");
     }
 
     await sendChannelMessage(
@@ -171,14 +172,14 @@ export async function stopManagedAgentWithRules({
       "!shutdown",
       undefined,
       undefined,
-      [agent.pubkey],
+      pubkeys,
       undefined,
       undefined,
       undefined,
       undefined,
       undefined,
-      hosted ? session?.expectedRelay : undefined,
-      hosted?.scope.owner,
+      expectedRelayUrl,
+      expectedSignerPubkey,
     );
     return {
       noticeMessage:

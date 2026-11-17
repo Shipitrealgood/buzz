@@ -1309,50 +1309,49 @@ test("card Edit waits for an explicit sibling before querying its host", async (
 });
 
 for (const presence of ["online", "away"] as const) {
-  test(`registered-host profile offers Stop when ${presence} and reports the delivery result`, async ({
+  test(`registered-host card profile sends Stop to the owner-agent DM when ${presence}`, async ({
     page,
   }) => {
     const shutdownChannel = presence === "online" ? "agents" : undefined;
     await openCreatedProfile(page, { presence, shutdownChannel });
     const button = page.getByTestId("user-profile-agent-primary-action");
     await expect(button).toHaveAccessibleName("Stop");
-    await page.evaluate(() => {
+    // The owner already has a 1:1 DM. The away agent has no directory channel.
+    const dmId = await page.evaluate(async () => {
+      const dm = (await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("open_dm", {
+        pubkeys: ["72".repeat(32)],
+      })) as { id: string };
       window.__HOSTED_SETUP_FIXTURE__.calls = [];
+      return dm.id;
     });
     await button.click();
-    await expect(
-      page.getByText(
-        shutdownChannel
-          ? /^Shutdown requested/
-          : /Cannot stop: no channel could be resolved/,
-      ),
-    ).toBeVisible();
+    await expect(page.getByText(/^Shutdown requested/)).toBeVisible();
     const actions = await page.evaluate(() =>
       window.__HOSTED_SETUP_FIXTURE__.calls.filter(({ command }) =>
         [
+          "open_dm",
           "send_channel_message",
           "stop_managed_agent",
           "start_managed_agent",
         ].includes(command),
       ),
     );
-    if (shutdownChannel) {
-      expect(actions).toHaveLength(1);
-      expect(actions[0]).toMatchObject({
+    const scope = {
+      expectedRelayUrl: "wss://community.example",
+      expectedSignerPubkey: "deadbeef".repeat(8),
+    };
+    expect(actions).toMatchObject([
+      { command: "open_dm", args: { pubkeys: ["72".repeat(32)], ...scope } },
+      {
         command: "send_channel_message",
         args: {
-          expectedRelayUrl: "wss://community.example",
-          expectedSignerPubkey: "deadbeef".repeat(8),
-          channelId: await page
-            .getByTestId("channel-agents")
-            .getAttribute("data-channel-id"),
+          channelId: dmId,
           content: "!shutdown",
           mentionPubkeys: ["72".repeat(32)],
+          ...scope,
         },
-      });
-    } else {
-      expect(actions).toEqual([]);
-    }
+      },
+    ]);
   });
 }
 
