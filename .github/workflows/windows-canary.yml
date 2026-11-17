@@ -16,9 +16,12 @@ permissions:
 jobs:
   build:
     name: Build Windows canary
+    needs: discovery-tests
     if: >-
-      github.repository == 'block/buzz' ||
-      (github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/paired-hosts-canary')
+      !cancelled() && (
+        (github.repository == 'block/buzz' && needs.discovery-tests.result == 'skipped') ||
+        (github.repository == 'Shipitrealgood/buzz' && github.ref == 'refs/heads/build/paired-hosts-canary' &&
+         needs.discovery-tests.result == 'success'))
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -297,6 +300,8 @@ jobs:
         run: |
           set -euo pipefail
           for case in \
+            commands::agent_config::tests::registered_host_runtime_uses_saved_config_and_only_its_session \
+            commands::personas::update::name_propagation_tests::hosted_definition_edit_checks_the_exact_saved_instance_offline_before_writing \
             commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence \
             commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence \
             managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary; do
