@@ -1,4 +1,116 @@
-# #2722 hosted Edit/Start — recovery phase failure
+# #2722 hosted Edit/Start — Windows CI passed
+
+**Windows build and scoped native gates passed. Canary 0.5.29-test.32 is ready for
+human acceptance.** This supersedes the failed-run platform status preserved below;
+installed normal launch and real Edit/Stop/Start remain pending.
+
+Recorded 2026-11-17 by `codecodex`, assignment `/root/hosted_edit_windows_ci`.
+Requested Astra/high; actual served model/reasoning is unknown. Tested source and
+clean intake: **`bbf105b5b2a8c213e1aabab5273c40547298b18e`**, same worktree
+`/home/bryce/services/buzz-wt-3720-host-registration` and branch
+`proof/3720-host-registration-events`. Read the
+[round-5 independent source acceptance](../audits/post-audit/2722-hosted-management-followthrough.md).
+Conductor performed the authorized fast-forward and single dispatch. This worker
+only monitored, collected evidence and updated this document. No source/test/workflow
+edits, extra publication or rerun occurred. The receipt commit is documentation
+only and **is not the tested CI source SHA**.
+
+## Terminal run
+
+[Windows Canary run 43997403503](https://github.com/Shipitrealgood/buzz/actions/runs/43997403503),
+number 32, `build/paired-hosts-canary`: **completed / success**, exact head independently
+verified as `bbf105b5b2a8c213e1aabab5273c40547298b18e`.
+
+- [Build job 133752750531](https://github.com/Shipitrealgood/buzz/actions/runs/43997403503/job/133752750531):
+  **success**, 19m57s; sidecars, Desktop compilation, NSIS packaging and upload.
+- [Native job 133752751073](https://github.com/Shipitrealgood/buzz/actions/runs/43997403503/job/133752751073):
+  **success**, 16m3s; all selected Rust suites, exact hosted cases, ACL and receipt upload.
+
+## Measured native acceptance
+
+Downloaded receipts contain **125 distinct Rust passes, zero failures and zero
+ignored cases** across the selected suites. Counts come from exact fully qualified
+test names in receipt files, not echoed command output or summed duplicate runs.
+
+| Suite | Passed |
+| --- | ---: |
+| Paired-host owner | 17 |
+| Signed deployment | 13 |
+| Shared harness facts | 9 |
+| Nostr conversion | 73 |
+| Relay directory/loopback | 7 |
+| Paired-host commands | 3 |
+| Exact hosted cases below | 3 |
+
+The three exact cases all passed:
+
+- `commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence`
+  (10.27s): includes linked-definition model/prompt, consecutive recovery phases,
+  injected phase-2 failure/retry, unchanged later-saved main record and retained event.
+- `commands::agents::hosted::tests::hosted_native_cleanup_confirmation_retry_and_session_fence`
+  (10.50s).
+- `managed_agents::discovery::presets::hosted_metadata_tests::hosted_grok_metadata_uses_static_preset_without_local_binary`
+  (0.00s).
+
+Both native journey fixtures explicitly remove `BUZZ_NATIVE_HOST_DEPLOYMENT_V1`
+from their isolated subprocess environment (source read), and both passed on Windows
+(measured). This establishes the selected env-absent native fixture behavior, not an
+installed Start-menu launch or live provider session.
+
+**SQLite ACL passed:** owner used SQLite; another standard user read the control
+and was denied DB, WAL and SHM. ACL is an additional script check, not included in
+the 125 Rust-case count. Earlier compile, fixture-identity and recovery-phase failures
+are resolved by this run; their evidence remains below.
+
+## Verified installer and receipts
+
+Unsigned **0.5.29-test.32**, never executed or installed by this worker.
+Artifact metadata, native `source.txt`, installer `build-receipt.txt`, and run head
+agree on source/run identity. Archive filenames were inspected before extraction;
+ZIP bytes/digests match GitHub API metadata. Extracted installer name/version/hash
+match the build receipt.
+
+- [Installer artifact 14290649962](https://github.com/Shipitrealgood/buzz/actions/runs/43997403503/artifacts/14290649962)
+- [Native receipt artifact 14291477163](https://github.com/Shipitrealgood/buzz/actions/runs/43997403503/artifacts/14291477163)
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `Buzz_0.5.29-test.32_x64-setup.exe` | 56497079 | `720dd24e821b65d6eb11bcfe798f5cc0af8288df538893dea4c2c7fe1c7c0bdc` |
+| `installer.zip` | 56495447 | `1c9a9c4c88d81dddb8b528b525a553c8e1933bb9b24ce73e4901033e18b68f10` |
+| `native-receipts.zip` | 6102 | `0f60d1b112bc956b6b9967a606b9f5c84c90c7984cfb9ecd5fb7b71c2382286d` |
+
+Local installer:
+`/home/bryce/services/buzz-agents/releases/2722-hosted-edit-windows/bbf105b5b2a8c213e1aabab5273c40547298b18e/Buzz_0.5.29-test.32_x64-setup.exe`.
+The same directory contains both archives, extracted native receipts, archive
+listings, run/artifact metadata, installer verification JSON, deduplicated passed
+case list and sanitized build/native/monitor logs. Prior evidence is preserved.
+Native log SHA-256: `845f1f9af534bc285dbc5a61cc7afbbdc62fa2818ec382800d975b699fdcd222`.
+Raw logs and binaries remain outside git.
+
+## Verification limits and handoff
+
+Measured commands: `gh run view`, attached `gh run watch --exit-status` (terminal
+exit 0), artifact/job-log API reads, Python ZIP/source/digest assertions and exact
+case-name counting. Receipt local links and `git diff --check` passed. All CI,
+monitor and download processes are terminal; no mutation is held. This document is
+the sole checkout change; production remains at the accepted source above.
+
+Not run here: installed Windows normal/Start-menu launch, human real Edit/Stop/Start,
+live provider/chat behavior, native Linux/macOS checks, clippy or `just ci`. No
+installation, live host access, working-agent action, service restart, taskctl
+mutation, PR, tag, release or updater publication occurred. Source review is the
+independent reviewer's gate; this receipt supplies platform execution evidence.
+
+Next gate: conductor hands the verified canary to the human for installed normal
+launch and real same-agent Edit/Stop/Start acceptance. Native fixture success does
+not substitute for those human checks. No further source repair is indicated by
+this run. No open platform failure or spec deviation remains within this assignment.
+
+Signed: `codecodex` — #2722 Windows CI evidence worker, 2026-11-17.
+
+---
+
+## Historical run 43993874579 — recovery phase failure
 
 **Windows gate failed; installer is diagnostic only.** On the reviewed fixture
 correction, the saved-model/prompt assertions were traversed, then the native
