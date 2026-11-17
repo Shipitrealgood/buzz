@@ -3,6 +3,40 @@
 Source implementation complete for independent review; native Windows compilation,
 independent review, and human acceptance remain pending. This is not release acceptance.
 
+## Consecutive Start recovery phases (2026-11-17)
+
+Intake: clean `a86cfe66a695618dae3f7a2b039adc2a7eeff585`. Windows run 43993874579
+reached the saved-model/prompt assertions, then failed with `nonmonotonic intent
+phase`; see the [terminal Windows receipt](2722-hosted-edit-windows.md).
+
+Cause is production, not fixture setup: `start_existing_deployment` retains a
+normal Deploy intent at phase 0 (`deployment.rs:187`), then native `recover` tried
+0→2. `deployment_advance` correctly permits only the current or next phase. The
+one-line correction advances phase 1 after existing-record identity verification,
+then phase 2. Neither step rewrites main settings or signed command bytes. The
+consecutive journal rule remains unchanged. Production: **13 files/net +482**.
+
+The existing native fixture still begins at phase 0. One temporary SQLite trigger
+aborts its phase-2 update; assertions require the phase-1 commit, later saved record
+and exact retained event to survive. After dropping the trigger, the fixture reopens
+and recovers from phase 1, then reopens/repeats at phase 2. Existing saved-model,
+identity-change, missing-record and stale-session assertions remain intact.
+
+Full remaining sequence was source-traced: Start retries at phases 1/2/3 do not
+regress phase or rewrite settings; identity/session refusal precedes progression.
+The separate cleanup fixture branches before this Start scenario. Cleanup retains
+phase 2, dispatch/reconciliation advances to 3, and finalization advances to 4;
+its repeated-finalization, deletion, retention and session guards remain unchanged.
+No analogous phase jump was found there; this is source evidence, not a native pass.
+
+Measured locally: focused rustfmt and diff checks passed. Executing the exact fixture
+trigger SQL against an in-memory Python SQLite table confirmed phase 1 persists,
+phase 2 aborts, and dropping the trigger permits phase 2. That checks the failure
+control only. Corrected native recovery/cleanup tests are **not run locally**; Linux
+native prerequisites remain unavailable. No browser/owner reruns, new framework,
+installations, publication, CI dispatch or live actions. Same reviewer checks this
+bounded correction before conductor's Windows rerun; all executor processes terminal.
+
 ## Windows native fixture correction (2026-11-17)
 
 Intake: clean `dc6088571d16e970b7839cf2f380ef57a3251636`. The
@@ -140,7 +174,7 @@ AGENTS guidance and docs. Normal rustfmt/Biome formatting; no compression to fit
 | `crates/buzz-paired-owner/src/deployment/continuation.rs` | 75 | 9 | 66 |
 | `desktop/src-tauri/src/commands/agent_models_update.rs` | 30 | 1 | 29 |
 | `desktop/src-tauri/src/commands/agents.rs` | 16 | 4 | 12 |
-| `desktop/src-tauri/src/commands/agents_hosted.rs` | 224 | 30 | 194 |
+| `desktop/src-tauri/src/commands/agents_hosted.rs` | 225 | 30 | 195 |
 | `desktop/src-tauri/src/commands/agents_hosted_cleanup.rs` | 2 | 8 | -6 |
 | `desktop/src-tauri/src/managed_agents/types.rs` | 3 | 0 | 3 |
 | `desktop/src-tauri/src/managed_agents/types/requests.rs` | 3 | 0 | 3 |
@@ -150,7 +184,7 @@ AGENTS guidance and docs. Normal rustfmt/Biome formatting; no compression to fit
 | `desktop/src/features/profile/ui/UserProfilePersonaDialogs.tsx` | 150 | 24 | 126 |
 | `desktop/src/features/profile/ui/useAgentLifecycleActions.ts` | 5 | 3 | 2 |
 | `desktop/src/shared/api/types.ts` | 2 | 0 | 2 |
-| **13 files** | **573** | **92** | **481** |
+| **13 files** | **574** | **92** | **482** |
 
 Approved scope-neutral substitution: `AgentDefinitionDialog.tsx` replaces planned
 `AgentDialog.tsx`, since the shared definition editor required fresh models for Edit.

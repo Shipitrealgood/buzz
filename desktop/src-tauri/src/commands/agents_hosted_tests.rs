@@ -544,20 +544,40 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
         save_managed_agents(app.handle(), &[desired.clone()]).unwrap();
         context.device = Device::at(&path).unwrap();
         context.check_runtime().unwrap();
+        assert_eq!(context.intent().unwrap().phase, 0);
+        let retained_event = serde_json::to_string(&event).unwrap();
+        // Interrupt only the second journal transition, after phase 1 is durable.
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TRIGGER start_phase_failure BEFORE UPDATE ON deployment_intents WHEN json_extract(NEW.data, '$.phase') = 2 BEGIN SELECT RAISE(ABORT, 'fixture phase two failure'); END;").unwrap();
         assert!(context
             .recover(app.handle(), &state)
             .await
-            .unwrap()
-            .is_none());
+            .unwrap_err()
+            .contains("fixture phase two failure"));
+        assert_eq!(context.intent().unwrap().phase, 1);
+        assert_eq!(context.intent().unwrap().event, retained_event);
         assert_eq!(
             load_managed_agents(app.handle()).unwrap(),
             vec![desired.clone()]
         );
-        assert_eq!(context.intent().unwrap().phase, 2);
-        assert_eq!(
-            context.intent().unwrap().event,
-            serde_json::to_string(&event).unwrap()
-        );
+        conn.execute_batch("DROP TRIGGER start_phase_failure")
+            .unwrap();
+        drop(conn);
+        // Reopen at phase 1, then repeat at phase 2 without rewriting saved edits.
+        for _ in 0..2 {
+            context.device = Device::at(&path).unwrap();
+            assert!(context
+                .recover(app.handle(), &state)
+                .await
+                .unwrap()
+                .is_none());
+            assert_eq!(
+                load_managed_agents(app.handle()).unwrap(),
+                vec![desired.clone()]
+            );
+            assert_eq!(context.intent().unwrap().phase, 2);
+            assert_eq!(context.intent().unwrap().event, retained_event);
+        }
         let mut changed_identity = desired.clone();
         changed_identity.auth_tag = None;
         save_managed_agents(app.handle(), &[changed_identity]).unwrap();

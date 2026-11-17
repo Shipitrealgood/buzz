@@ -3,6 +3,20 @@
 Requested by conductor, 2026-11-16; next role: fresh Astra/high Chuck reviewer.
 Executor requested Astra/high; actual runtime model/effort is unknown.
 
+## Recovery phase re-gate (2026-11-17)
+
+Delta from `a86cfe66a695618dae3f7a2b039adc2a7eeff585`: one production line in
+`agents_hosted.rs:434` advances the validated existing record through phase 1 before
+phase 2. Real Start retention begins at 0; the former direct 0→2 caused the latest
+Windows failure. The owner journal guard is unchanged. Production net +482/13 files.
+Probe the existing fixture's phase-2 SQLite failure control, durable phase 1,
+reopened retry, repeated phase-2 recovery, preserved desired settings and exact
+event bytes. Remaining identity/missing-record/session checks are intact. Cleanup
+was fully source-traced as 2→3→4; its separate path and fixture are unchanged.
+Focused formatting/diff and SQL-control checks passed; native corrected cases are
+unrun locally. The latest Windows receipt remains failed, not accepted. Same reviewer
+owns this exact-delta gate; conductor owns the subsequent Windows rerun.
+
 ## Native fixture re-gate (2026-11-17)
 
 Delta from `dc6088571d16e970b7839cf2f380ef57a3251636` changes only the existing

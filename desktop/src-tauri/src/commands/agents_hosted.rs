@@ -431,6 +431,7 @@ impl Create<'_> {
                 {
                     return Err("Saved agent identity or destination changed".into());
                 }
+                self.advance(1)?;
                 self.advance(2)?;
                 return Ok(None);
             }
