@@ -1,4 +1,103 @@
-# #2722 hosted Edit/Start — corrected Windows run
+# #2722 hosted Edit/Start — recovery phase failure
+
+**Windows gate failed; installer is diagnostic only.** On the reviewed fixture
+correction, the saved-model/prompt assertions were traversed, then the native
+create/recovery case failed on a later recovery phase transition. This supersedes
+prior platform status; the earlier failed-run receipts remain below.
+
+Recorded 2026-11-17 by `codecodex`, assignment `/root/hosted_edit_windows_ci`.
+Requested Astra/high; actual served model/reasoning unknown. Clean intake and tested
+source: `8b415dd7d19e5213f7b7d77f305277fadcbb066e`, same worktree/branch. Read the
+[round-4 accepted fixture correction](../audits/post-audit/2722-hosted-management-followthrough.md).
+Conductor performed the authorized fast-forward and single dispatch; this worker
+only monitored, collected evidence and wrote this document. No source/test/workflow
+changes or rerun occurred. Receipt HEAD differs from the tested source SHA.
+
+## Terminal run and diagnostic
+
+[Run 43993874579](https://github.com/Shipitrealgood/buzz/actions/runs/43993874579),
+number 31, exact source above on `build/paired-hosts-canary`: **completed / failure**.
+
+- [Build job 133741004785](https://github.com/Shipitrealgood/buzz/actions/runs/43993874579/job/133741004785):
+  **success**, 21m2s, including Desktop compilation, NSIS packaging and upload.
+- [Native job 133741005711](https://github.com/Shipitrealgood/buzz/actions/runs/43993874579/job/133741005711):
+  **failure**, 17m17s; exact hosted case failed, then ACL and receipt upload passed.
+
+Measured panic at
+[agents_hosted_tests.rs](../../desktop/src-tauri/src/commands/agents_hosted_tests.rs):550:
+
+```text
+commands::agents::hosted::tests::hosted_native_create_recovery_and_session_fence
+called `Result::unwrap()` on an `Err` value: "nonmonotonic intent phase"
+```
+
+This is `context.recover(...).await.unwrap()` after the fixture inserts a retained
+phase-0 intent and saves later desired values. The wrapper at line 40 repeats the
+child failure; it is one distinct failed case. The preceding saved-model/prompt
+assertions completed (inferred from source order and the later panic), but the
+whole case did not pass. Full evidence: `native-job.log`, lines 2956–2986.
+Neither job was cancelled; no repair or rerun was attempted.
+
+## Measured tests and limits
+
+Native archive/source metadata verified exact tested SHA and run identity.
+**122 distinct Rust cases passed; one distinct case failed.** Passing suites:
+owner 17, signed deployment 13, shared harness 9, Nostr conversion 73,
+relay directory 7, paired-host commands 3. Counted exact names from receipt logs;
+parent/child duplicates are excluded. Passing suites report zero failed/ignored.
+
+The create/recovery fixture explicitly removes `BUZZ_NATIVE_HOST_DEPLOYMENT_V1`;
+it ran and failed, so **no env-absent native pass** is claimed. Exact cleanup and
+hosted Grok metadata cases were unrun after the loop stopped on its first failure.
+**SQLite ACL passed:** owner used SQLite; another standard user read the control
+and was denied DB, WAL and SHM. No installed launch, real Edit/Stop/Start, provider
+or live-agent acceptance is claimed. Native Linux/macOS checks, clippy and `just ci`
+remain unrun. No installation, live access, service/agent action or taskctl mutation.
+
+## Verified artifacts and local evidence
+
+Unsigned **0.5.29-test.31** installer was downloaded, never executed. Archive names
+were inspected before extraction; ZIP size/hash matched API metadata. Installer
+source/version/name/hash matched `build-receipt.txt` and run head.
+
+- [Installer artifact 14289872104](https://github.com/Shipitrealgood/buzz/actions/runs/43993874579/artifacts/14289872104)
+- [Native receipt artifact 14290261362](https://github.com/Shipitrealgood/buzz/actions/runs/43993874579/artifacts/14290261362)
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `Buzz_0.5.29-test.31_x64-setup.exe` | 56495647 | `dfb111ca5c0e628178403700f4f5644263b00930805d93b3679b5d94aadb0128` |
+| `installer.zip` | 56494006 | `98d83ffb03ea9033f9d7c1b86565fbef7134866501004807aff11f223073de6d` |
+| `native-receipts.zip` | 5583 | `86920230e8a819f85568a0d0ebbe0b0ea3c5ae77ac7b59b75b033b772b220e2e` |
+
+Local installer/evidence directory:
+`/home/bryce/services/buzz-agents/releases/2722-hosted-edit-windows/8b415dd7d19e5213f7b7d77f305277fadcbb066e/`.
+Contains both archives, extracted receipts, installer verification JSON, run/artifact
+metadata, archive listings, deduplicated case lists and sanitized build/native logs.
+Native log SHA-256: `ebbf51d3e462d75f0b499784e2ab9eb6baceb82c44d997fefab9457596ecc33e`.
+Raw logs remain outside git; historical artifacts are untouched.
+
+Verification: `gh run view`, attached `gh run watch --exit-status` (terminal exit 1),
+artifact/job-log API reads, Python ZIP/digest/source assertions and exact-name counts.
+Receipt local links and `git diff --check` passed. All monitor/download processes
+are terminal; only this receipt changed in the source worktree.
+
+## Handoff
+
+Third unsuccessful Windows attempt: conductor routed a full review of the remaining
+fixture/recovery sequence to the original executor rather than another unchecked
+single-assertion patch. Preserve durable phase monotonicity, exact retained bytes,
+saved main-record values and linked-definition identity. Determine whether the
+fixture or production transition violates the intended contract before correcting
+it; this receipt makes no causal conclusion beyond the measured error. The same
+independent reviewer and a green corrected Windows run remain next gates, followed
+by human installed normal-launch and Edit/Stop/Start acceptance. No ready canary is
+claimed from this failed run.
+
+Signed: `codecodex` — #2722 Windows CI evidence worker, 2026-11-17.
+
+---
+
+## Historical run 43988951035 — saved-model fixture failure
 
 **Windows gate failed: native saved-model assertion.** The corrected Desktop
 compiles and packages successfully, but its hosted native create/recovery case fails.
