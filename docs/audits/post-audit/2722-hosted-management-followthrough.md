@@ -1,4 +1,78 @@
-# #2722 hosted management — native fixture correction re-gate, round 4
+# #2722 hosted management — consecutive recovery phase re-gate, round 5
+
+**Scoped source correction accepted; open findings C=0 / H=0 / M=0 / L=0.**
+Reviewed clean `55545416c6cecc5f9c69dd34e5c57c07e3293ef7` against
+`a86cfe66a695618dae3f7a2b039adc2a7eeff585`, same exclusive worktree.
+One production line, the existing native fixture and receipts changed. The prior
+13 production files/net +481 therefore becomes **13/net +482**, within +500.
+Requested Astra/high; actual served reviewer model/effort unknown.
+
+**Confirmed production defect and correction (read, high confidence):** real
+[start_existing_deployment](../../../crates/buzz-paired-owner/src/deployment/continuation.rs):108
+marks the snapshot and goes through `continue_intent` → `retain_deployment`.
+[deployment.rs](../../../crates/buzz-paired-owner/src/deployment.rs):187 retains phase 0;
+its advancement guard at lines 237–239 correctly permits only the same or next phase.
+The former existing-Start recovery's direct 0→2 was invalid. This source review
+previously missed that transition; the native failure is real production evidence,
+not a fixture setup error.
+
+The added [agents_hosted.rs](../../../desktop/src-tauri/src/commands/agents_hosted.rs):434
+advances to 1 before 2, after session/competing-intent checks and exact saved
+pubkey/backend scope/private key/auth tag/relay validation. This branch neither
+rewrites main settings nor publishes a replacement profile. `advance` at line 33
+reloads the intent and skips an already reached phase: phase-1 retry advances only
+to 2, while phase-2/3 retries do not regress. Each real journal advancement retains
+the original event/materialization and commits separately; failure of step 2 leaves
+phase 1 retryable. The consecutive journal guard is unchanged. Disposition: this
+platform-discovered Start defect is **closed in source, pending native execution**.
+Prior H-1/M-1/M-2/M-3 remain closed; no introduced blocker found.
+
+**Fixture teeth (read):**
+[agents_hosted_tests.rs](../../../desktop/src-tauri/src/commands/agents_hosted_tests.rs):547
+asserts the true phase-0 start, then requires the specific `fixture phase two failure`
+error, phase 1, unchanged exact signed event and unchanged later-saved main record.
+The trigger is dropped and its connection closed before reopening at phase 1 and
+again at phase 2. Both recoveries require success, phase 2 and the same event/record.
+This cannot pass merely because an unrelated earlier guard refused recovery.
+The trigger predicate matches phase-2 updates generally, not an operation ID;
+isolation comes from the temporary fixture database, no concurrent writer during
+this interval, and production UPDATE's exact community/owner/operation predicates
+(`deployment.rs:246`). Only the current operation is updated in this recovery path.
+
+The remaining main fixture sequence was read through the end: linked-definition
+model/prompt expectations, runtime refusal, identity/missing-record/session refusals
+remain intact. The separate cleanup branch returns before this Start scenario;
+its retained phase 2, dispatch/reconciliation phase 3 and finalization phase 4
+remain consecutive. The unchanged cleanup fixture's durable failure/reopen,
+finalization locks, retained deletion events and stale-session/repeated completion
+checks were traced; no analogous phase jump was found. These are source conclusions,
+not claims that unexecuted native assertions passed.
+
+**Measured:** exact fixture trigger SQL independently executed against local Python
+SQLite: phase 1 commits; phase 2 raises the named error and rolls back; another
+operation is unchanged; dropping the trigger allows phase 2. This validates the
+failure control only, not Rust recovery. Exact diff/whitespace checks passed.
+No suites, mutants or product modifications were made. Prior independent browser
+21/21 and owner/host results are retained for unchanged areas; they do not verify
+this new native recovery line. Executor rustfmt is receipt evidence only.
+
+**Platform status:** read preserved `native-job.log` lines 2967–2987 for run
+43993874579 and its [committed receipt](../../executions/2722-hosted-edit-windows.md).
+Desktop build/packaging and SQLite ACL passed; 122 cases passed, but exact hosted
+create/recovery failed with `nonmonotonic intent phase`. Cleanup and Grok metadata
+cases were skipped. Corrected native recovery/cleanup, other platform checks and
+human installed normal-launch/Edit/Stop/Start acceptance remain **not run/pending**.
+The earlier installer remains diagnostic. Return to conductor for Windows rerun;
+no unconditional merge-safe verdict while required gates remain incomplete.
+
+All reviewer commands terminal; no server or mutation remains. Only this signed
+report is committed. No publication, CI dispatch, live action or taskctl operation.
+Historical sections below are superseded by this pin and platform status;
+`rework / partial` denotes remaining platform/human gates, not further source repair.
+
+Signed: codex-chuck — independent #2722 reviewer, 2026-11-17.
+
+## Historical native fixture correction re-gate — round 4
 
 **Scoped test correction accepted; open findings C=0 / H=0 / M=0 / L=0.**
 Reviewed clean `dd3ad12a85e966abaad17f41faf8bab3d03ee4f7` against
@@ -494,3 +568,5 @@ quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=par
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=21099d751150a219e4c3d342aafea9ff04495f0e..bd03a6c4845597f1975ac5cd2f8e6ee0aebc8f3c findings=C=0/H=0/M=0/L=0 rework_rounds=3
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=dc6088571d16e970b7839cf2f380ef57a3251636..dd3ad12a85e966abaad17f41faf8bab3d03ee4f7 findings=C=0/H=0/M=0/L=0 rework_rounds=4
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=a86cfe66a695618dae3f7a2b039adc2a7eeff585..55545416c6cecc5f9c69dd34e5c57c07e3293ef7 findings=C=0/H=0/M=0/L=0 rework_rounds=5
