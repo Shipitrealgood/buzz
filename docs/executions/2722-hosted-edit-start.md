@@ -3,6 +3,15 @@
 Source implementation complete for independent review; native Windows compilation,
 independent review, and human acceptance remain pending. This is not release acceptance.
 
+## Round-1 lint residual (2026-11-17)
+
+At clean `84fb2d6b63e45593a586c5952eab75019c22be0d`, changed only the non-Windows
+match binding in `agents.rs:1063` from `Hosted(_)` to `Hosted(_scope)` so its enum
+payload counts as read. Unsupported-platform behavior is unchanged. Focused
+rustfmt and diff checks passed; no native compilation or test rerun is claimed.
+UI/owner source is unchanged, preserving the reviewer's 21/21 browser and prior
+owner evidence. Production remains 13 files/net +478. Reviewer owns closure.
+
 ## Review corrections (2026-11-17)
 
 Conductor accepted H-1/M-1/M-2/M-3 from the unchanged
