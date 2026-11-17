@@ -437,11 +437,29 @@ fn native_phases(home: &std::path::Path, with_cleanup: bool) {
         desired.model = Some("stale/instance-model".into());
         desired.system_prompt = Some("Stale instance instructions".into());
         let mut definitions = load_personas(app.handle()).unwrap();
-        definitions[0].model = Some("saved/model:2".into());
-        definitions[0].system_prompt = "Saved host instructions".into();
+        // Loading merges and sorts built-ins before this custom definition.
+        // Edit the linked identity, not an assumed position in the catalog.
+        let definition_id = desired.persona_id.as_deref().unwrap();
+        let definition = definitions
+            .iter_mut()
+            .find(|definition| definition.id == definition_id)
+            .unwrap();
+        assert_eq!(definition.model.as_deref(), Some("initial-host-model"));
+        definition.model = Some("saved/model:2".into());
+        definition.system_prompt = "Saved host instructions".into();
         crate::managed_agents::save_personas(app.handle(), &definitions).unwrap();
         save_managed_agents(app.handle(), &[desired.clone()]).unwrap();
         assert_eq!(load_managed_agents(app.handle()).unwrap()[0], desired);
+        let persisted_definitions = load_personas(app.handle()).unwrap();
+        let persisted_definition = persisted_definitions
+            .iter()
+            .find(|definition| definition.id == definition_id)
+            .unwrap();
+        assert_eq!(persisted_definition.model.as_deref(), Some("saved/model:2"));
+        assert_eq!(
+            persisted_definition.system_prompt,
+            "Saved host instructions"
+        );
         let facts = context.status.inventory.as_ref().unwrap()["native/grok"].clone();
         context
             .status

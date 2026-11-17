@@ -3,6 +3,19 @@
 Requested by conductor, 2026-11-16; next role: fresh Astra/high Chuck reviewer.
 Executor requested Astra/high; actual runtime model/effort is unknown.
 
+## Native fixture re-gate (2026-11-17)
+
+Delta from `dc6088571d16e970b7839cf2f380ef57a3251636` changes only the existing
+`agents_hosted_tests.rs` fixture and its receipt. Its index-zero definition edit
+hit a merged built-in; production resolves the instance's exact `persona_id`.
+Probe the new exact-ID selection and persisted model/prompt assertions before the
+candidate call. The expected `saved/model:2`, later-Save preservation and retained
+event equality assertions remain intact. Production stays net +481/13 files.
+Focused rustfmt/diff checks passed; corrected Windows case not run locally.
+The latest failed-run receipt records successful compilation/packaging but failed
+native model assertion, not platform acceptance. Return to conductor for Windows
+rerun after the bounded review; no production precedence change is proposed.
+
 ## Correction re-gate (2026-11-17)
 
 Same review assignment; re-gate H-1/M-1/M-2/M-3 and defects introduced by their fixes.

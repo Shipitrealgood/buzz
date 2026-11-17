@@ -3,6 +3,33 @@
 Source implementation complete for independent review; native Windows compilation,
 independent review, and human acceptance remain pending. This is not release acceptance.
 
+## Windows native fixture correction (2026-11-17)
+
+Intake: clean `dc6088571d16e970b7839cf2f380ef57a3251636`. The
+[Windows receipt](2722-hosted-edit-windows.md) records run 43988951035 compiling
+and packaging Desktop, then failing the saved-model assertion in the exact hosted
+create/recovery case. This run is not a green platform gate.
+
+Cause (source trace, reported before editing): the fixture updated `definitions[0]`.
+`personas.rs:342` loads and merges built-ins; `sort_personas` at `:164` sorts them
+first. Index zero is a built-in, while the fixture instance links `one-definition`.
+`build_deploy_payload` uses `resolve_effective_config` (`effective_config/mod.rs:247`),
+which finds that exact linked ID, so `initial-host-model` was the correct result
+for the incorrectly saved fixture state. This was not an instance-precedence defect.
+
+Test-only correction selects `desired.persona_id`, checks the initial model, saves
+its new model/prompt, then reloads and asserts the exact linked values before
+candidate projection. Expected candidate `saved/model:2` and saved prompt are
+unchanged; later Save preservation and immutable retained-event assertions remain.
+No production change: **13 production files/net +481**. No new fixture framework.
+
+Measured local verification: focused rustfmt and `git diff --check` passed.
+Corrected Windows native case is **not run here** (Linux native prerequisites remain
+unavailable); no native pass is claimed. Browser/owner suites were not repeated for
+this fixture-only correction. Next gate: same reviewer checks exact target selection
+and preserved expectations, then conductor runs Windows. No live/provider/working-
+agent action, installation, publication, CI dispatch or taskctl action occurred.
+
 ## Windows compiler correction (2026-11-17)
 
 At clean `ec804bf9dd8563e18433eabc675391f79565599b`, corrected the E0308 recorded
