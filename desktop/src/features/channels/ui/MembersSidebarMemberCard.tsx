@@ -56,9 +56,9 @@ type MembersSidebarMemberCardProps = {
   isArchived: boolean;
   managedAgent?: ManagedAgent;
   managedAgentRuntime?: ManagedAgentRuntimeStatus;
+  primaryAction?: ManagedAgentPrimaryAction;
   /** When set, the lifecycle menu item controls this agent+community pair
    * (local agents in a community context) instead of the whole agent. */
-  primaryAction?: ManagedAgentPrimaryAction;
   pairAction?: ManagedAgentPairAction;
   member: ChannelMember;
   memberAvatarLabel: string;
