@@ -1,4 +1,58 @@
-# #2722 hosted management — final source re-gate, round 2
+# #2722 hosted management — Windows compiler correction re-gate, round 3
+
+**Scoped source correction accepted. Open source findings C=0 / H=0 / M=0 / L=0.**
+Windows acceptance remains pending a successful corrected build and native cases.
+No browser/owner suite reruns, new tests, product edits or live actions were made.
+
+Clean reviewed pin: `bd03a6c4845597f1975ac5cd2f8e6ee0aebc8f3c`, same exclusive
+worktree. Delta from previously reviewed `21099d751150a219e4c3d342aafea9ff04495f0e`:
+one native call correction plus execution/CI receipts; parent `ec804bf9` is docs only.
+Independent recount confirms **13 production files, net +481**, below the approved
++500. Requested reviewer Astra/high; actual served model/effort unknown.
+
+**New platform evidence:** Windows run **43986614016** failed building Desktop
+with E0308 at `agents.rs:1040`: expected `&str`, found `&ScopedWorkspaceRelay`.
+The prior source review missed this type mismatch; its source acceptance did not
+establish native compilation. This reviewer read the preserved compiler diagnostic
+in `releases/2722-hosted-edit-windows/21099d751150a219e4c3d342aafea9ff04495f0e/build-job.log`
+under `/home/bryce/services/buzz-agents` (lines 1550–1572). The
+[committed Windows receipt](../../executions/2722-hosted-edit-windows.md) records
+39 distinct passing root Rust tests before the failure, no completed exact hosted
+Desktop or SQLite ACL cases, and no installer. These are CI-worker evidence,
+not tests independently executed by this reviewer.
+
+**Correction trace, read:**
+[agents.rs](../../../desktop/src-tauri/src/commands/agents.rs):989 captures the
+workspace URL once through `bind_expected_relay_scope`. At line 1041, the correction
+passes `Some(reconcile_relay.as_str())` into `assert_expected_relay_scope`, whose
+signature requires `Option<&str>`
+([relay/scope.rs](../../../desktop/src-tauri/src/relay/scope.rs):13–16).
+The existing accessor at lines 40–43 borrows the wrapper's stored String; it does
+not consult workspace state. The assertion still normalizes that captured URL and
+compares it with the exact hosted record's community. Owner and replay-floor guards
+remain immediately afterward. This preserves the checked, captured scope and fixes
+the reported type error without adding a reread, conversion policy or fallback.
+The same accessor already feeds profile reconciliation immediately above.
+
+**Disposition:** compiler finding corrected in source and accepted for the Windows
+rerun; prior H-1/M-1/M-2/M-3 remain closed. No additional defect was found in this
+single-call delta. **Measured:** correction whitespace check passed; aggregate size
+recount above. Executor Rustfmt evidence is retained in the
+[execution receipt](../../executions/2722-hosted-edit-start.md), not rerun here.
+
+**Evidence retained:** independent browser 21/21 and previous owner/host checks
+remain applicable because their product/test source is unchanged. **Not run on the
+corrected pin:** native Windows build/tests, exact hosted/ACL cases, other native
+platform checks, `just ci`, installed normal launch and human/live delivery checks.
+Do not interpret the earlier 39 passing tests as a green Windows gate.
+
+Return to conductor for the authorized corrected Windows run. All reviewer processes
+are terminal; no mutation or port 4173 listener remains. Only this signed report
+addendum is committed. Historical sections below remain evidence and are superseded
+by this current pin and platform status. The quality footer's `rework / partial`
+continues to mean outstanding platform/human acceptance, not further source repair.
+
+## Historical source re-gate — round 2
 
 **Source accepted. All findings closed: C=0 / H=0 / M=0 / L=0.**
 No further implementation correction is recommended. Full merge/release acceptance
@@ -380,3 +434,6 @@ quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=par
 
 
 quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=f95d075b365486a432732d603ba4511cf19fe7ff..571ecf9497a14095c6db9a15682aae53de3df3f0 findings=C=0/H=0/M=0/L=0 rework_rounds=2
+
+
+quality: model=unknown effort=unknown stage=post-audit verdict=rework verify=partial commits=21099d751150a219e4c3d342aafea9ff04495f0e..bd03a6c4845597f1975ac5cd2f8e6ee0aebc8f3c findings=C=0/H=0/M=0/L=0 rework_rounds=3
