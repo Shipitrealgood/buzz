@@ -46,6 +46,39 @@ No release flag, service installation, existing placement migration or live
 activation is performed by this source change. See
 `docs/executions/3721-host-discovery-windows.md` for tests and native limitations.
 
+## Package and select a Linux host release
+
+Use a clean checkout of the release commit, the pinned Rust toolchain, a populated
+Cargo cache, and Python 3.11 or newer. Build in a dedicated checkout whose Cargo
+output is separate from installed executables. Give each release a fresh directory
+under a persistent, private host release root. The package contains `buzz`,
+`buzz-acp`, `buzz-hostd`, `buzz-host-runtime`, source provenance and
+`MANIFEST.sha256`.
+
+```sh
+. ./bin/activate-hermit
+scripts/paired-hosts/package-release.py "$source_commit" "$new_package"
+```
+
+For a registered host using automatic discovery (`runtimes: {}`), select the
+package once to prepare the next catalog. Supply the package's final absolute
+location. The selector checks the CLI and harness against the manifest, pins
+`local.buzz_acp` and puts its package first on `local.tool_path`. It writes a
+new private candidate. This keeps controller, launcher, native provider login
+and other account configuration under their existing operator controls.
+
+```sh
+scripts/paired-hosts/stage-release-catalog.py "$new_package" "$deployment" "$candidate"
+```
+
+Review the candidate and verify the release manifest against the delivery receipt
+before an approved activation. Preserve the exact previous catalog bytes and
+release directory for rollback. Changing the catalog changes its revision.
+Running conversations retain their original environment. Actions against
+prepared instances can require the earlier catalog revision. Coordinate the
+activation window with their owners, keep those units running, and use fresh
+discovery for the disposable acceptance agent.
+
 ## Legacy provisioning reference
 
 The isolated-account/root-helper instructions below apply only to the separate
