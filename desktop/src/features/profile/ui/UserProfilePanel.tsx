@@ -491,9 +491,10 @@ export function UserProfilePanel({
     ],
   );
 
-  const { handleAgentPrimaryAction, handleAgentRestart } =
+  const { primaryAction, handleAgentPrimaryAction, handleAgentRestart } =
     useAgentLifecycleActions({
-      availability: presenceStatus,
+      currentPubkey,
+      availability: getAvailability(managedAgent?.pubkey),
       channels: channelsQuery.data,
       managedAgent,
       relayAgents: relayAgentsQuery.data,
@@ -860,6 +861,7 @@ export function UserProfilePanel({
           displayName={displayName}
           followMutation={followMutation}
           agentInstruction={agentInstruction}
+          primaryAction={primaryAction}
           handleAgentPrimaryAction={handleAgentPrimaryAction}
           handleAgentRestart={handleAgentRestart}
           handleEditAgent={handleEditAgent}

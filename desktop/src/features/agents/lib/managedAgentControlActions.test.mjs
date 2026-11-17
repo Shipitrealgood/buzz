@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getManagedAgentPrimaryAction,
+  stopManagedAgentWithRules,
   startManagedAgentWithRules,
   respawnManagedAgentWithRules,
 } from "./managedAgentControlActions.ts";
@@ -200,4 +202,93 @@ test("removing an unrelated relay during a respawn's stop still restarts it", as
   );
   await result;
   assert.equal(started.length, 1);
+});
+
+test("hosted lifecycle uses only owner/community presence; remote send pins its signer, relay and sole recipient", async (t) => {
+  const target = agent({
+    status: "deployed",
+    backend: {
+      type: "registered_host",
+      scope: {
+        community: "https://community.example",
+        owner: "a".repeat(64),
+      },
+    },
+  });
+  const session = {
+    expectedRelay: "wss://community.example",
+    expectedOwner: target.backend.scope.owner,
+  };
+  const localStops = [];
+  const ipc = [];
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  });
+  globalThis.window = {
+    __TAURI_INTERNALS__: {
+      invoke: async (command, args) => {
+        ipc.push([command, args]);
+        return { event_id: "event" };
+      },
+    },
+  };
+  const stop = (record, session, relayAgents) =>
+    stopManagedAgentWithRules({
+      agent: record,
+      session,
+      channels: [],
+      relayAgents,
+      stopManagedAgent: async (pubkey) => {
+        localStops.push(pubkey);
+      },
+    });
+  const directory = [{ pubkey: target.pubkey, channelIds: ["target-channel"] }];
+  for (const wrong of [
+    undefined,
+    { ...session, expectedRelay: "wss://other.example" },
+    { ...session, expectedOwner: "b".repeat(64) },
+  ]) {
+    assert.equal(
+      getManagedAgentPrimaryAction(target, "online", wrong),
+      undefined,
+    );
+    await assert.rejects(stop(target, wrong, directory), /community and owner/);
+  }
+  for (const presence of ["online", "away", "offline", undefined]) {
+    const present = presence === "online" || presence === "away";
+    assert.deepEqual(getManagedAgentPrimaryAction(target, presence, session), {
+      stop: present,
+      label: present ? "Stop" : "Start agent",
+    });
+  }
+  await assert.rejects(
+    stop(target, session, [
+      { pubkey: "b".repeat(64), channelIds: ["wrong-channel"] },
+    ]),
+    /no channel could be resolved/,
+  );
+  assert.deepEqual(ipc, []);
+  const request = await stop(target, session, directory);
+  assert.match(request.noticeMessage, /^Shutdown requested/);
+  assert.equal(ipc.length, 1);
+  const [[command, args]] = ipc;
+  assert.equal(command, "send_channel_message");
+  assert.equal(args.channelId, "target-channel");
+  assert.deepEqual(args.mentionPubkeys, [target.pubkey]);
+  assert.equal(args.content, "!shutdown");
+  assert.equal(args.expectedRelayUrl, session.expectedRelay);
+  assert.equal(args.expectedSignerPubkey, session.expectedOwner);
+  const provider = agent({ backend: { type: "provider" }, status: "deployed" });
+  assert.match(
+    (await stop(provider, undefined, directory)).noticeMessage,
+    /^Shutdown requested/,
+  );
+  assert.equal(ipc[1][1].expectedSignerPubkey, null);
+  assert.deepEqual(ipc[1][1].mentionPubkeys, [provider.pubkey]);
+  assert.deepEqual(localStops, []);
+  await stop(agent({ status: "running" }), undefined, []);
+  assert.deepEqual(localStops, [target.pubkey]);
+  assert.equal(ipc.length, 2);
 });

@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { resolveAgentAvailability } from "./useAgentAvailability.ts";
 import {
-  getManagedAgentPrimaryActionLabel,
+  getManagedAgentPrimaryAction,
   isManagedAgentActive,
 } from "./managedAgentControlActions.ts";
 import { AgentRuntimeAvatarControl } from "../ui/AgentRuntimeAvatarControl.tsx";
@@ -22,7 +22,10 @@ for (const presence of ["online", "away", "offline", undefined]) {
     // Controls retain their existing routing. Offline is not permission to
     // spawn a second body, nor proof that a shutdown message succeeded.
     assert.equal(isManagedAgentActive(deployed), true);
-    assert.equal(getManagedAgentPrimaryActionLabel(deployed), "Shutdown");
+    assert.equal(
+      getManagedAgentPrimaryAction(deployed, availability).label,
+      "Shutdown",
+    );
     const html = renderToStaticMarkup(
       createElement(AgentRuntimeAvatarControl, {
         activeTestId: "active",
@@ -75,7 +78,7 @@ for (const lifecycle of ["running", "stopped"]) {
     const agent = { status: lifecycle, backend: { type: "local" } };
     const isActive = isManagedAgentActive(agent);
     assert.equal(
-      getManagedAgentPrimaryActionLabel(agent),
+      getManagedAgentPrimaryAction(agent, "online").label,
       isActive ? "Stop" : "Start agent",
     );
     const html = renderToStaticMarkup(

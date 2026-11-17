@@ -548,6 +548,7 @@ export function MembersSidebar({
     actionErrorMessage,
     actionNoticeMessage,
     handleLifecycleAction: handleAgentLifecycleAction,
+    primaryActionFor,
     handleRemoveMember,
     isActionPending,
   } = useMembersSidebarActions({
@@ -689,6 +690,7 @@ export function MembersSidebar({
     // Mirrors the dispatch condition in useMembersSidebarActions: local
     // agents in a community context act on the pair; provider agents keep
     // the agent-wide deploy/!shutdown action.
+    const primaryAction = managedAgent && primaryActionFor(managedAgent);
     const pairAction =
       managedAgent?.backend.type === "local" && relayUrl
         ? managedAgentPairAction(managedAgentRuntime)
@@ -717,7 +719,12 @@ export function MembersSidebar({
         }}
         onEditRespondTo={memberIsBot ? setEditRespondToAgent : undefined}
         onManagedAgentAction={(agent) => {
-          void handleAgentLifecycleAction(agent, managedAgentRuntime);
+          if (primaryAction)
+            void handleAgentLifecycleAction(
+              agent,
+              primaryAction,
+              managedAgentRuntime,
+            );
         }}
         onOpenProfile={handleOpenProfile}
         onRemoveMember={handleRemoveMember}
@@ -732,6 +739,7 @@ export function MembersSidebar({
               }
             : undefined
         }
+        primaryAction={primaryAction}
         pairAction={pairAction}
         presenceStatus={getAvailability(member.pubkey)}
         profileAvatarUrl={memberProfile?.avatarUrl ?? null}

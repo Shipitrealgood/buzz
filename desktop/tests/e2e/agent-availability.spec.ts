@@ -753,3 +753,77 @@ for (const scenario of [
     }
   });
 }
+
+test("member menu requests hosted shutdown in the selected channel", async ({
+  page,
+}) => {
+  const owner = "deadbeef".repeat(8);
+  const community = "https://community.example";
+  await installMockBridge(
+    page,
+    {
+      managedAgents: [
+        {
+          pubkey: LOCAL,
+          name: "Hosted member",
+          status: "stopped",
+          channelNames: ["agents"],
+          backend: {
+            type: "registered_host",
+            scope: {
+              community,
+              owner,
+              host: "a".repeat(64),
+              generation: "c".repeat(64),
+            },
+          },
+        },
+      ],
+    },
+    { relayWsUrl: "wss://community.example" },
+  );
+  await page.goto("/");
+  await page.getByTestId("channel-agents").click();
+  await page.getByTestId("channel-members-trigger").click();
+  const row = page.getByTestId(`sidebar-member-${LOCAL}`);
+  await expect(row).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+          channelName: "agents",
+          kind: 20001,
+        }),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(
+    (pubkey) =>
+      window.__BUZZ_E2E_EMIT_MOCK_PRESENCE__?.({ pubkey, status: "away" }),
+    LOCAL,
+  );
+  await expect(
+    page.getByTestId(`sidebar-managed-agent-status-${LOCAL}`),
+  ).toHaveText("Away");
+  await row.hover();
+  await page.getByTestId(`sidebar-member-menu-${LOCAL}`).click();
+  const action = page.getByTestId(`sidebar-agent-action-${LOCAL}`);
+  await expect(action).toHaveText("Stop");
+  await action.click();
+  await expect(
+    page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: "Shutdown requested." }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (window.__BUZZ_E2E_COMMANDS__ ?? []).filter((command) =>
+        [
+          "send_channel_message",
+          "stop_managed_agent",
+          "start_managed_agent",
+        ].includes(command),
+      ),
+    ),
+  ).toEqual(["send_channel_message"]);
+});

@@ -5,10 +5,7 @@ import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarke
 import { useIsOtherSetupAgent } from "@/features/agents/useKnownAgentPubkeys";
 import { useAgentWorking } from "@/features/agents/agentWorkingSignal";
 import { agentPresenceStartBlockReason } from "@/features/agents/lib/useAgentAvailability";
-import {
-  getManagedAgentPrimaryActionLabel,
-  isManagedAgentActive,
-} from "@/features/agents/lib/managedAgentControlActions";
+import type { ManagedAgentPrimaryAction } from "@/features/agents/lib/managedAgentControlActions";
 import { RestartDiffBadge } from "@/features/agents/ui/RestartDiffBadge";
 import { RunOnSummarySection } from "@/features/agents/ui/RunOnSummarySection";
 import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
@@ -73,6 +70,7 @@ export type ProfileSummaryViewProps = {
   followMutation: ReturnType<typeof useFollowMutation>;
   canInstantiateAgent: boolean;
   agentInstruction: string | null;
+  primaryAction?: ManagedAgentPrimaryAction;
   handleAgentPrimaryAction: () => void;
   handleAgentRestart: () => void;
   handleEditAgent: () => void;
@@ -149,6 +147,7 @@ export function ProfileSummaryView({
   followMutation,
   canInstantiateAgent,
   agentInstruction,
+  primaryAction,
   handleAgentPrimaryAction,
   handleAgentRestart,
   handleEditAgent,
@@ -427,22 +426,15 @@ export function ProfileSummaryView({
           followMutation={followMutation}
           agentActionDisabled={isAgentActionPending}
           agentStartBlockReason={
-            managedAgent
+            primaryAction
               ? agentPresenceStartBlockReason(
-                  isManagedAgentActive(managedAgent),
+                  primaryAction.stop,
                   presenceStatus,
                 )
               : undefined
           }
-          agentActionLabel={
-            isOwner === true && managedAgent
-              ? getManagedAgentPrimaryActionLabel(managedAgent)
-              : undefined
-          }
-          agentActionLive={
-            managedAgent?.status === "running" ||
-            managedAgent?.status === "deployed"
-          }
+          agentActionLabel={isOwner === true ? primaryAction?.label : undefined}
+          agentActionLive={primaryAction?.stop}
           onAgentPrimaryAction={
             isOwner === true && managedAgent
               ? handleAgentPrimaryAction

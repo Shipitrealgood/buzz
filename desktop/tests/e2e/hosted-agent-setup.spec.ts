@@ -28,6 +28,7 @@ type Fixture = {
   failSave?: boolean;
   sibling?: boolean;
   runtimeSurface?: boolean;
+  shutdownChannel?: string;
   storedScope?: Partial<Pick<HostedSetup["scope"], "community" | "owner">>;
   localGrok?: boolean;
   delayContext?: boolean;
@@ -102,6 +103,15 @@ async function open(
             auth_status: { status: "not_applicable" },
             source: "builtin",
             login_hint: null,
+          },
+        ],
+      }),
+      ...(overrides.shutdownChannel && {
+        relayAgents: [
+          {
+            pubkey: "72".repeat(32),
+            name: "Hosted synthetic agent",
+            channelNames: [overrides.shutdownChannel],
           },
         ],
       }),
@@ -1298,6 +1308,54 @@ test("card Edit waits for an explicit sibling before querying its host", async (
     expect(scope).toMatchObject({ host: "82".repeat(32) });
 });
 
+for (const presence of ["online", "away"] as const) {
+  test(`registered-host profile offers Stop when ${presence} and reports the delivery result`, async ({
+    page,
+  }) => {
+    const shutdownChannel = presence === "online" ? "agents" : undefined;
+    await openCreatedProfile(page, { presence, shutdownChannel });
+    const button = page.getByTestId("user-profile-agent-primary-action");
+    await expect(button).toHaveAccessibleName("Stop");
+    await page.evaluate(() => {
+      window.__HOSTED_SETUP_FIXTURE__.calls = [];
+    });
+    await button.click();
+    await expect(
+      page.getByText(
+        shutdownChannel
+          ? /^Shutdown requested/
+          : /Cannot stop: no channel could be resolved/,
+      ),
+    ).toBeVisible();
+    const actions = await page.evaluate(() =>
+      window.__HOSTED_SETUP_FIXTURE__.calls.filter(({ command }) =>
+        [
+          "send_channel_message",
+          "stop_managed_agent",
+          "start_managed_agent",
+        ].includes(command),
+      ),
+    );
+    if (shutdownChannel) {
+      expect(actions).toHaveLength(1);
+      expect(actions[0]).toMatchObject({
+        command: "send_channel_message",
+        args: {
+          expectedRelayUrl: "wss://community.example",
+          expectedSignerPubkey: "deadbeef".repeat(8),
+          channelId: await page
+            .getByTestId("channel-agents")
+            .getAttribute("data-channel-id"),
+          content: "!shutdown",
+          mentionPubkeys: ["72".repeat(32)],
+        },
+      });
+    } else {
+      expect(actions).toEqual([]);
+    }
+  });
+}
+
 test("registered-host Runtime shows reported and saved settings with placement and presence", async ({
   page,
 }) => {
@@ -1348,6 +1406,9 @@ for (const [mismatch, storedScope] of [
       presence: "online",
       storedScope,
     });
+    await expect(
+      page.getByTestId("user-profile-agent-primary-action"),
+    ).toHaveCount(0);
     await page.getByRole("tab", { name: "Runtime", exact: true }).click();
     await expect(page.getByTestId("user-profile-agent-status")).toContainText(
       "Availability unknown",

@@ -1,6 +1,13 @@
 import { captureRelayRemovals } from "@/features/agents/managedAgentRelayCleanup";
 import { sendChannelMessage } from "@/shared/api/tauri";
-import type { Channel, ManagedAgent, RelayAgent } from "@/shared/api/types";
+import { hostBelongsToSession } from "./hostDestination";
+import type { Session } from "./hostDirectory";
+import type {
+  Channel,
+  ManagedAgent,
+  PresenceStatus,
+  RelayAgent,
+} from "@/shared/api/types";
 import type { AgentAvailabilityReader } from "./useAgentAvailability";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
@@ -33,17 +40,28 @@ export function isManagedAgentActive(agent: Pick<ManagedAgent, "status">) {
   return agent.status === "running" || agent.status === "deployed";
 }
 
-export function getManagedAgentPrimaryActionLabel(agent: ManagedAgent) {
+export function getManagedAgentPrimaryAction(
+  agent: ManagedAgent,
+  availability: PresenceStatus | undefined,
+  session?: Session,
+) {
+  if (agent.backend.type === "registered_host") {
+    if (!session || !hostBelongsToSession(agent.backend, session))
+      return undefined;
+    const stop = availability === "online" || availability === "away";
+    return { stop, label: stop ? "Stop" : "Start agent" };
+  }
+
+  const stop = isManagedAgentActive(agent);
   if (agent.backend.type === "provider") {
-    return isManagedAgentActive(agent) ? "Shutdown" : "Deploy";
+    return { stop, label: stop ? "Shutdown" : "Deploy" };
   }
-
-  if (isManagedAgentActive(agent)) {
-    return "Stop";
-  }
-
-  return "Start agent";
+  return { stop, label: stop ? "Stop" : "Start agent" };
 }
+
+export type ManagedAgentPrimaryAction = NonNullable<
+  ReturnType<typeof getManagedAgentPrimaryAction>
+>;
 
 export function resolveManagedAgentChannelId(
   agent: Pick<ManagedAgent, "pubkey">,
@@ -120,24 +138,48 @@ export async function stopManagedAgentWithRules({
   channels,
   preferredChannelId,
   relayAgents,
+  session,
   stopManagedAgent,
 }: {
   agent: ManagedAgent;
   stopManagedAgent: StopManagedAgent;
+  session?: Session;
 } & ManagedAgentChannelContext): Promise<ManagedAgentActionResult> {
-  if (agent.backend.type === "provider") {
+  const hosted =
+    agent.backend.type === "registered_host" ? agent.backend : undefined;
+  if (hosted || agent.backend.type === "provider") {
+    if (hosted && (!session || !hostBelongsToSession(hosted, session))) {
+      throw new Error(
+        "Cannot stop: select the registered host’s community and owner identity.",
+      );
+    }
     const channelId = resolveManagedAgentChannelId(agent, {
       channels,
       preferredChannelId,
       relayAgents,
     });
     if (!channelId) {
-      throw new Error("Cannot stop: agent is not in any channel");
+      throw new Error(
+        hosted
+          ? "Cannot stop: no channel could be resolved for this agent."
+          : "Cannot stop: agent is not in any channel",
+      );
     }
 
-    await sendChannelMessage(channelId, "!shutdown", undefined, undefined, [
-      agent.pubkey,
-    ]);
+    await sendChannelMessage(
+      channelId,
+      "!shutdown",
+      undefined,
+      undefined,
+      [agent.pubkey],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      hosted ? session?.expectedRelay : undefined,
+      hosted?.scope.owner,
+    );
     return {
       noticeMessage:
         "Shutdown requested. This does not confirm the agent has stopped.",

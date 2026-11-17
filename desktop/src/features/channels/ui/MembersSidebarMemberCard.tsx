@@ -16,11 +16,12 @@ import {
 } from "lucide-react";
 
 import {
-  getManagedAgentPrimaryActionLabel,
+  type ManagedAgentPrimaryAction,
   isManagedAgentActive,
 } from "@/features/agents/lib/managedAgentControlActions";
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
 import {
   agentCommunityAvailability,
@@ -57,6 +58,7 @@ type MembersSidebarMemberCardProps = {
   managedAgentRuntime?: ManagedAgentRuntimeStatus;
   /** When set, the lifecycle menu item controls this agent+community pair
    * (local agents in a community context) instead of the whole agent. */
+  primaryAction?: ManagedAgentPrimaryAction;
   pairAction?: ManagedAgentPairAction;
   member: ChannelMember;
   memberAvatarLabel: string;
@@ -127,6 +129,7 @@ export function MembersSidebarMemberCard({
   managedAgent,
   managedAgentRuntime,
   pairAction,
+  primaryAction,
   member,
   memberAvatarLabel,
   memberIsBot,
@@ -160,6 +163,21 @@ export function MembersSidebarMemberCard({
   const hasActions = memberIsBot
     ? Boolean(managedAgent) || canRemoveMember || canViewActivity
     : canRemoveMember || canChangeRole || canModerateMember;
+
+  let statusLabel: string;
+  if (managedAgent?.backend.type === "registered_host") {
+    statusLabel =
+      primaryAction && presenceStatus
+        ? getPresenceLabel(presenceStatus)
+        : "Availability unknown";
+  } else if (managedAgentRuntime) {
+    statusLabel = agentCommunityAvailability(managedAgentRuntime);
+  } else {
+    statusLabel =
+      managedAgent && isManagedAgentActive(managedAgent)
+        ? "Running"
+        : "Stopped";
+  }
 
   const memberIdentity = (
     <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
@@ -223,20 +241,12 @@ export function MembersSidebarMemberCard({
               className="normal-case tracking-normal"
               data-testid={`sidebar-managed-agent-status-${member.pubkey}`}
               variant={
-                managedAgentRuntime
-                  ? agentCommunityAvailability(managedAgentRuntime) === "Here"
-                    ? "default"
-                    : "secondary"
-                  : managedAgent && isManagedAgentActive(managedAgent)
-                    ? "default"
-                    : "secondary"
+                ["Here", "Running", "Online"].includes(statusLabel)
+                  ? "default"
+                  : "secondary"
               }
             >
-              {managedAgentRuntime
-                ? agentCommunityAvailability(managedAgentRuntime)
-                : managedAgent && isManagedAgentActive(managedAgent)
-                  ? "Running"
-                  : "Stopped"}
+              {statusLabel}
             </Badge>
             {managedAgent ? (
               <Badge
@@ -293,6 +303,7 @@ export function MembersSidebarMemberCard({
           onUnban={onUnban}
           onUntimeout={onUntimeout}
           onViewActivity={onViewActivity}
+          primaryAction={primaryAction}
           pairAction={pairAction}
           availability={presenceStatus ?? undefined}
         />
@@ -324,6 +335,7 @@ function MemberActionsMenu({
   onUntimeout,
   onViewActivity,
   pairAction,
+  primaryAction,
 }: {
   canChangeRole: boolean;
   availability: PresenceStatus | undefined;
@@ -344,6 +356,7 @@ function MemberActionsMenu({
   onUnban: (member: ChannelMember) => void;
   onUntimeout: (member: ChannelMember) => void;
   onViewActivity?: (pubkey: string) => void;
+  primaryAction?: ManagedAgentPrimaryAction;
   pairAction?: ManagedAgentPairAction;
 }) {
   const showChangeRole =
@@ -351,9 +364,9 @@ function MemberActionsMenu({
   const isBanned = moderationState?.banned ?? false;
   const isTimedOut = moderationState?.timedOut ?? false;
 
-  const startBlockReason = managedAgent
+  const startBlockReason = primaryAction
     ? agentPresenceStartBlockReason(
-        pairAction ? pairAction === "stop" : isManagedAgentActive(managedAgent),
+        pairAction ? pairAction === "stop" : primaryAction.stop,
         availability,
       )
     : undefined;
@@ -385,21 +398,23 @@ function MemberActionsMenu({
         {memberIsBot && managedAgent ? (
           <>
             {canViewActivity ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
-              data-testid={`sidebar-agent-action-${member.pubkey}`}
-              disabled={disabled || Boolean(startBlockReason)}
-              title={startBlockReason}
-              onClick={() => {
-                if (!startBlockReason) onManagedAgentAction(managedAgent);
-              }}
-            >
-              {pairAction
-                ? getPairActionIcon(pairAction)
-                : getManagedAgentActionIcon(managedAgent)}
-              {pairAction
-                ? MANAGED_AGENT_PAIR_ACTION_LABELS[pairAction]
-                : getManagedAgentPrimaryActionLabel(managedAgent)}
-            </DropdownMenuItem>
+            {primaryAction && (
+              <DropdownMenuItem
+                data-testid={`sidebar-agent-action-${member.pubkey}`}
+                disabled={disabled || Boolean(startBlockReason)}
+                title={startBlockReason}
+                onClick={() => {
+                  if (!startBlockReason) onManagedAgentAction(managedAgent);
+                }}
+              >
+                {pairAction
+                  ? getPairActionIcon(pairAction)
+                  : getManagedAgentActionIcon(managedAgent, primaryAction.stop)}
+                {pairAction
+                  ? MANAGED_AGENT_PAIR_ACTION_LABELS[pairAction]
+                  : primaryAction.label}
+              </DropdownMenuItem>
+            )}
             {onEditRespondTo ? (
               <DropdownMenuItem
                 data-testid={`sidebar-edit-respond-to-${member.pubkey}`}
@@ -529,8 +544,8 @@ function getPairActionIcon(action: ManagedAgentPairAction) {
   return <Play className="h-4 w-4" />;
 }
 
-function getManagedAgentActionIcon(agent: ManagedAgent) {
-  if (isManagedAgentActive(agent)) {
+function getManagedAgentActionIcon(agent: ManagedAgent, stop: boolean) {
+  if (stop) {
     return <Square className="h-4 w-4" />;
   }
 

@@ -11,6 +11,8 @@ import {
   useStopManagedAgentMutation,
 } from "@/features/agents/hooks";
 import {
+  getManagedAgentPrimaryAction,
+  type ManagedAgentPrimaryAction,
   respawnManagedAgentWithRules,
   isManagedAgentActive,
   startManagedAgentWithRules,
@@ -159,8 +161,21 @@ export function useMembersSidebarActions({
     }
   }
 
+  const session =
+    relayUrl && currentPubkey
+      ? { expectedRelay: relayUrl, expectedOwner: currentPubkey }
+      : undefined;
+  function primaryActionFor(agent: ManagedAgent) {
+    return getManagedAgentPrimaryAction(
+      agent,
+      getAvailability(agent.pubkey),
+      session,
+    );
+  }
+
   async function handleLifecycleAction(
     agent: ManagedAgent,
+    primaryAction: ManagedAgentPrimaryAction,
     runtime?: ManagedAgentRuntimeStatus,
   ) {
     clearActionFeedback();
@@ -189,8 +204,9 @@ export function useMembersSidebarActions({
         return;
       }
 
-      if (isManagedAgentActive(agent)) {
-        await stopManagedAgentWithRules({
+      if (primaryAction.stop) {
+        const result = await stopManagedAgentWithRules({
+          session,
           agent,
           ...EMPTY_AGENT_CONTEXT,
           preferredChannelId: channelId,
@@ -200,9 +216,11 @@ export function useMembersSidebarActions({
           clearActiveTurnsForAgentOnStop(agent.pubkey);
         }
         setActionNoticeMessage(
-          agent.backend.type === "provider"
-            ? `Shutdown command sent to ${agent.name}.`
-            : `Stopped ${agent.name}.`,
+          agent.backend.type === "registered_host"
+            ? (result.noticeMessage ?? null)
+            : agent.backend.type === "provider"
+              ? `Shutdown command sent to ${agent.name}.`
+              : `Stopped ${agent.name}.`,
         );
         return;
       }
@@ -331,6 +349,7 @@ export function useMembersSidebarActions({
     actionErrorMessage,
     actionNoticeMessage,
     handleLifecycleAction,
+    primaryActionFor,
     handleRemoveAll,
     handleRemoveMember,
     handleRespawnAll,
@@ -343,6 +362,8 @@ export function useMembersSidebarActions({
 }
 
 function getLifecycleSuccessMessage(agent: ManagedAgent) {
+  if (agent.backend.type === "registered_host")
+    return `Start requested for ${agent.name}.`;
   if (agent.backend.type === "provider") {
     return `Deployed ${agent.name}.`;
   }

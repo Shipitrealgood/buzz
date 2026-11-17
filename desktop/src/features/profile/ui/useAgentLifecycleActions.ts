@@ -2,6 +2,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import {
+  getManagedAgentPrimaryAction,
   isManagedAgentActive,
   respawnManagedAgentWithRules,
   startManagedAgentWithRules,
@@ -20,6 +21,7 @@ import type {
 
 export function useAgentLifecycleActions({
   availability,
+  currentPubkey,
   channels,
   managedAgent,
   relayAgents,
@@ -27,6 +29,7 @@ export function useAgentLifecycleActions({
   stopManagedAgent,
 }: {
   availability: PresenceStatus | undefined;
+  currentPubkey?: string;
   channels: readonly Channel[] | undefined;
   managedAgent: ManagedAgent | undefined;
   relayAgents: readonly RelayAgent[] | undefined;
@@ -34,13 +37,24 @@ export function useAgentLifecycleActions({
   stopManagedAgent: (pubkey: string) => Promise<unknown>;
 }) {
   const relayUrl = useCommunities().activeCommunity?.relayUrl;
+  const session = React.useMemo(
+    () =>
+      relayUrl && currentPubkey
+        ? { expectedRelay: relayUrl, expectedOwner: currentPubkey }
+        : undefined,
+    [relayUrl, currentPubkey],
+  );
+  const primaryAction =
+    managedAgent &&
+    getManagedAgentPrimaryAction(managedAgent, availability, session);
   const handleAgentPrimaryAction = React.useCallback(async () => {
-    if (!managedAgent) return;
+    if (!managedAgent || !primaryAction) return;
 
     try {
-      if (isManagedAgentActive(managedAgent)) {
+      if (primaryAction.stop) {
         const result = await stopManagedAgentWithRules({
           agent: managedAgent,
+          session,
           channels: channels ?? [],
           relayAgents: relayAgents ?? [],
           stopManagedAgent,
@@ -73,6 +87,8 @@ export function useAgentLifecycleActions({
   }, [
     availability,
     channels,
+    primaryAction,
+    session,
     managedAgent,
     relayAgents,
     startManagedAgent,
@@ -110,5 +126,5 @@ export function useAgentLifecycleActions({
     stopManagedAgent,
   ]);
 
-  return { handleAgentPrimaryAction, handleAgentRestart };
+  return { primaryAction, handleAgentPrimaryAction, handleAgentRestart };
 }
