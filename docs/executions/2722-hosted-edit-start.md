@@ -3,6 +3,47 @@
 Source implementation complete for independent review; native Windows compilation,
 independent review, and human acceptance remain pending. This is not release acceptance.
 
+## Review corrections (2026-11-17)
+
+Conductor accepted H-1/M-1/M-2/M-3 from the unchanged
+[review report](../audits/post-audit/2722-hosted-management-followthrough.md) for
+fix-in-lane. Rework began at clean `0ce26a88cd81caf3e9fe85370a9896ddf22f306f`.
+Signed correction source commit: `0e0839640f1af0b024343463926baeb767868271`.
+The human authorized net +500 for these four fixes only, preserving the same
+13 production files. Measured correction: four existing production files,
+net +29; aggregate **13 files, +570/-92, net +478**.
+
+- H-1: Windows-only Start dispatch is platform-gated; other platforms return an
+  explicit unsupported error without compiling the Windows journal module.
+- M-1: hosted selected-record Save converges command, arguments and MCP command
+  from the chosen metadata regardless of an already-committed definition. Missing
+  metadata preserves offline unchanged-selection behavior. The regression now
+  changes Grok to Claude, fails the record write, then retries after definition
+  refetch and checks the exact installed ID and Claude's empty argument vector.
+- M-2: only id-bearing existing-definition Edit gets hosted context. Duplicate
+  uses main's local catalog/create path. The regression verifies local backend,
+  immediate spawn intent, and no host discovery/prepare calls with host unavailable.
+- M-3: initial legacy context is resolved and frozen per dialog before fields are
+  exposed. The existing editor shell/footer shows loading/error and usable Cancel.
+  Later query results preserve authored instructions and the initial exact runtime.
+  A source key remount prevents the editor's source-change effect from clearing a
+  newly seeded hosted selection on reopen.
+
+Rework validation: `pnpm exec playwright test --project=smoke hosted-agent-setup.spec.ts`: **21 passed**, 1.7m. `pnpm build:e2e` (including `tsc`),
+`pnpm typecheck`, affected Biome, Rust formatting and diff checks passed. Final
+source build has only the existing Vite chunk warnings. Initial regression runs
+caught the reopen reset (fixed); Duplicate fixture iterations corrected its local
+availability, default-suffixed label and expected empty args, matching main's
+`instanceInputForDefinition.ts` local path (args resolve at spawn). No local-path
+production behavior was changed to satisfy those test expectations.
+
+Local logs: `/tmp/2722-review-fixes-{build,typecheck,focused,duplicate,browser}.log`.
+Owner/host logic is unchanged; earlier green evidence remains applicable and those
+suites/mutations were not repeated. Native Windows/Linux compile, Windows tests,
+`just ci` and human acceptance remain not run; source inspection is not a compile
+claim. Re-gate belongs to the same independent reviewer, followed by conductor's
+Windows workflow. No additional feature or live-system change was made.
+
 ## Scope and source
 
 Workspace `/home/bryce/services/buzz-wt-3720-host-registration`, branch
@@ -14,8 +55,8 @@ relay/hostd production changes, schema, push, release, CI dispatch or taskctl ac
 
 Active source: `/home/bryce/services/buzz-agents/docs/specs/2722-hosted-save-next-spawn.md`,
 top execution authorization and superseding narrowing amendment. The human approved
-continuation up to **13 production files / net +450** after the first +370 estimate
-proved too small. Historical online Save validation, desired/applied UI and 18-file
+initial continuation to +450 after the +370 estimate proved too small, then
+**13 production files / net +500 for the four specific review corrections**. Historical online Save validation, desired/applied UI and 18-file
 proposals are superseded. The approved contract is:
 
 - Edit uses the exact selected hosted instance and its host context. Canonical harness
@@ -47,18 +88,18 @@ AGENTS guidance and docs. Normal rustfmt/Biome formatting; no compression to fit
 | --- | ---: | ---: | ---: |
 | `crates/buzz-paired-owner/src/deployment/continuation.rs` | 75 | 9 | 66 |
 | `desktop/src-tauri/src/commands/agent_models_update.rs` | 30 | 1 | 29 |
-| `desktop/src-tauri/src/commands/agents.rs` | 10 | 4 | 6 |
+| `desktop/src-tauri/src/commands/agents.rs` | 13 | 4 | 9 |
 | `desktop/src-tauri/src/commands/agents_hosted.rs` | 224 | 30 | 194 |
 | `desktop/src-tauri/src/commands/agents_hosted_cleanup.rs` | 2 | 8 | -6 |
 | `desktop/src-tauri/src/managed_agents/types.rs` | 3 | 0 | 3 |
 | `desktop/src-tauri/src/managed_agents/types/requests.rs` | 3 | 0 | 3 |
-| `desktop/src/features/agents/ui/AgentDefinitionDialog.tsx` | 12 | 4 | 8 |
+| `desktop/src/features/agents/ui/AgentDefinitionDialog.tsx` | 21 | 6 | 15 |
 | `desktop/src/features/profile/ui/UserProfilePanel.tsx` | 10 | 2 | 8 |
-| `desktop/src/features/profile/ui/UserProfilePanelPersonaSubmit.ts` | 31 | 5 | 26 |
-| `desktop/src/features/profile/ui/UserProfilePersonaDialogs.tsx` | 132 | 24 | 108 |
+| `desktop/src/features/profile/ui/UserProfilePanelPersonaSubmit.ts` | 32 | 5 | 27 |
+| `desktop/src/features/profile/ui/UserProfilePersonaDialogs.tsx` | 150 | 24 | 126 |
 | `desktop/src/features/profile/ui/useAgentLifecycleActions.ts` | 5 | 3 | 2 |
 | `desktop/src/shared/api/types.ts` | 2 | 0 | 2 |
-| **13 files** | **539** | **90** | **449** |
+| **13 files** | **570** | **92** | **478** |
 
 Approved scope-neutral substitution: `AgentDefinitionDialog.tsx` replaces planned
 `AgentDialog.tsx`, since the shared definition editor required fresh models for Edit.
@@ -122,8 +163,8 @@ The fixture exercises candidate/recovery seams, not the entire live Start transp
 Browser coverage cannot prove native persistence or network delivery.
 
 `just ci`, native platform gates, real provider/service runs, human acceptance and
-independent review are **not run**. The next gate is fresh independent Astra Chuck
-review of the conductor's combined `f95d075..HEAD` range, then the existing Windows
+independent review are **not run**. The next gate is the same independent reviewer re-gating the four correction
+findings, then the existing Windows
 workflow as authorized by the conductor. See [review brief](../briefs/2722-hosted-edit-start-review.md).
 No product decision remains open within this bounded contract. Final process scan found no task-owned test/build/browser process and `/proc/net/tcp*`
 contained no port 4173 listener. All tool sessions were terminal before the signed

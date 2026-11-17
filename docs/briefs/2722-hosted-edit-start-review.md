@@ -3,6 +3,31 @@
 Requested by conductor, 2026-11-16; next role: fresh Astra/high Chuck reviewer.
 Executor requested Astra/high; actual runtime model/effort is unknown.
 
+## Correction re-gate (2026-11-17)
+
+Same review assignment; re-gate H-1/M-1/M-2/M-3 and defects introduced by their fixes.
+Starting review pin `0ce26a88cd81caf3e9fe85370a9896ddf22f306f`; correction source pin
+`0e0839640f1af0b024343463926baeb767868271`. The prior reviewer report remains unchanged. Current aggregate
+is **13 production files, net +478**, within the human's four-fix +500 allowance.
+
+- `desktop/src-tauri/src/commands/agents.rs:1060`: Windows dispatch guard and explicit
+  non-Windows error. Native compilation still awaits the conductor's platform gate.
+- `UserProfilePanelPersonaSubmit.ts:113`: metadata-derived command/args/MCP convergence
+  on every hosted record Save, independently of definition-runtime delta. Missing
+  metadata does not invent new facts or trigger network validation.
+- `UserProfilePersonaDialogs.tsx:105`: id-bearing Edit intent limits host source and
+  run-location provider; Duplicate keeps local main behavior.
+- Same file `:141` freezes the initial runtime for the dialog. At `:191`, the editor
+  key separates local/host source lifetimes; at `:204`, unresolved context shows the
+  existing editor's loading/error status. `AgentDefinitionDialog.tsx:1083` hides
+  editable fields until resolved, leaving Cancel usable. Refetch must not reseed.
+
+Existing browser fixture now covers cross-canonical partial Save retry, unavailable
+host/local Duplicate, delayed context, later refetch preservation, error/Cancel and
+retry. `pnpm exec playwright test --project=smoke hosted-agent-setup.spec.ts`: **21 passed**, 1.7m. Build/typecheck/format passed. No owner mutation or
+broader test campaign repeated; previous owner/host evidence remains unchanged.
+See the execution receipt for exact results and test-iteration explanations.
+
 ## 1. Where work lives
 
 Worktree `/home/bryce/services/buzz-wt-3720-host-registration`, branch
@@ -23,7 +48,7 @@ The existing profile editor now uses exact host context and installed runtime ID
 Save uses ordinary definition and selected-instance writes offline with partial-error
 and next-start feedback. Explicit Start reuses main's effective projection and existing
 revisioned Deploy; retained Start recovery preserves later edits. Measured production
-scope is **13 files, net +449**, against the approved +450 ceiling.
+scope at initial review was **13 files, net +449**; current correction count is above.
 
 Active contract: `/home/bryce/services/buzz-agents/docs/specs/2722-hosted-save-next-spawn.md`
 top authorization/amendment, summarized in the [execution receipt](../executions/2722-hosted-edit-start.md).
