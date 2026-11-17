@@ -170,12 +170,6 @@ export function UserProfilePanel({
     },
     [],
   );
-  const {
-    focus: editAgentFocus,
-    open: editAgentOpen,
-    setFocus: setEditAgentFocus,
-    setOpen: setEditAgentOpen,
-  } = useProfileEditAgentRequest(pubkey);
   const [addToChannelOpen, setAddToChannelOpen] = React.useState(false);
   const [personaDialogState, setPersonaDialogState] =
     React.useState<PersonaDialogState | null>(null);
@@ -239,8 +233,18 @@ export function UserProfilePanel({
   }, [effectivePubkey, profileQuery.refetch]);
 
   const relayAgentsQuery = useRelayAgentsQuery({ enabled: true });
-  const availableRuntimesQuery = useAvailableAcpRuntimes();
-  const acpRuntimesQuery = useAcpRuntimesQuery();
+  const hosted = managedAgent?.backend.type === "registered_host";
+  const localCatalogEnabled =
+    managedAgentsQuery.isSuccess &&
+    (!hosted ||
+      (personaDialogState !== null &&
+        !("id" in personaDialogState.initialValues)));
+  const availableRuntimesQuery = useAvailableAcpRuntimes({
+    enabled: localCatalogEnabled,
+  });
+  const acpRuntimesQuery = useAcpRuntimesQuery({
+    enabled: localCatalogEnabled,
+  });
   const createAgentMutation = useCreateManagedAgentMutation();
   const updateManagedAgentMutation = useUpdateManagedAgentMutation();
   const startAgentMutation = useStartManagedAgentMutation();
@@ -400,17 +404,44 @@ export function UserProfilePanel({
     onClose,
     viewerIsOwner,
   });
+  const chooseInstanceForEdit =
+    !pubkey &&
+    instanceBuckets.live.length + instanceBuckets.archived.length > 1 &&
+    [...instanceBuckets.live, ...instanceBuckets.archived].some(
+      (agent) => agent.backend.type === "registered_host",
+    );
   const openResolvedPersonaEditor = React.useCallback(() => {
+    if (chooseInstanceForEdit) {
+      setTab("runtime");
+      toast.info("Choose an instance under Instances, then select Edit.");
+      return true;
+    }
     if (!resolvedPersona) return false;
     setPersonaDialogState(
       editPersonaDialogState(resolvedPersona, managedAgent),
     );
     return true;
-  }, [managedAgent, resolvedPersona]);
+  }, [chooseInstanceForEdit, managedAgent, resolvedPersona, setTab]);
+  const openHostedEditor = React.useCallback(() => {
+    if (!openResolvedPersonaEditor())
+      toast.error("The saved agent definition is unavailable.");
+  }, [openResolvedPersonaEditor]);
+  const {
+    focus: editAgentFocus,
+    open: editAgentOpen,
+    setFocus: setEditAgentFocus,
+    setOpen: setEditAgentOpen,
+  } = useProfileEditAgentRequest(
+    managedAgent && (!hosted || resolvedPersona || personasQuery.isFetched)
+      ? pubkey
+      : null,
+    hosted ? openHostedEditor : undefined,
+  );
   const handleEditAgent = React.useCallback(() => {
+    if (hosted) return openHostedEditor();
     if (openResolvedPersonaEditor()) return;
     setEditAgentOpen(true);
-  }, [openResolvedPersonaEditor, setEditAgentOpen]);
+  }, [hosted, openHostedEditor, openResolvedPersonaEditor, setEditAgentOpen]);
   const { deleteManagedAgentRecord, deleteManagedAgentsForPersona } =
     useProfileAgentDeletion({
       channels: channelsQuery.data,
@@ -912,27 +943,28 @@ export function UserProfilePanel({
       ) : null}
     </AuxiliaryPanelBody>
   );
-  const editAgentDialog = (
-    <UserProfileEditAgentDialog
-      agent={managedAgent}
-      canEdit={canEditAgent}
-      initialFocus={editAgentFocus}
-      onEditLinkedPersona={
-        resolvedPersona && !resolvedPersona.isBuiltIn
-          ? () => {
-              setEditAgentOpen(false);
-              setEditAgentFocus(undefined);
-              openResolvedPersonaEditor();
-            }
-          : undefined
-      }
-      onOpenChange={(next) => {
-        setEditAgentOpen(next);
-        if (!next) setEditAgentFocus(undefined);
-      }}
-      open={editAgentOpen}
-    />
-  );
+  const editAgentDialog =
+    hosted && !editAgentOpen ? null : (
+      <UserProfileEditAgentDialog
+        agent={managedAgent}
+        canEdit={canEditAgent}
+        initialFocus={editAgentFocus}
+        onEditLinkedPersona={
+          resolvedPersona && !resolvedPersona.isBuiltIn
+            ? () => {
+                setEditAgentOpen(false);
+                setEditAgentFocus(undefined);
+                openResolvedPersonaEditor();
+              }
+            : undefined
+        }
+        onOpenChange={(next) => {
+          setEditAgentOpen(next);
+          if (!next) setEditAgentFocus(undefined);
+        }}
+        open={editAgentOpen}
+      />
+    );
   const addAgentToChannelDialog = managedAgent ? (
     <AddAgentToChannelDialog
       agent={managedAgent ?? null}

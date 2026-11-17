@@ -553,6 +553,7 @@ export function ProfileSummaryView({
                     isOwner === true && managedAgent !== undefined ? (
                       <AgentConfigPanel
                         advancedMode="flat"
+                        hosted={managedAgent.backend.type === "registered_host"}
                         onEdit={canEditAgent ? handleEditAgent : undefined}
                         pubkey={managedAgent.pubkey}
                         sections={["model"]}

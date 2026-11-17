@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 
 import { ProfileSectionGroup } from "@/features/profile/ui/UserProfilePanelFields";
 import type { ManagedAgent } from "@/shared/api/types";
+import { truncateNpub } from "@/shared/lib/pubkey";
 import { cn } from "@/shared/lib/cn";
 
 function ProfileInstanceRow({
@@ -26,13 +27,23 @@ function ProfileInstanceRow({
     >
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {instance.name}
+        {currentPubkey === null && (
+          <span
+            className="ml-2 text-xs text-muted-foreground"
+            title={instance.pubkey}
+          >
+            {truncateNpub(instance.pubkey)}
+          </span>
+        )}
       </span>
       <span className="text-xs capitalize text-muted-foreground">
         {archived
           ? "Archived"
           : isCurrent
             ? "Current"
-            : instance.status.replace("_", " ")}
+            : instance.backend?.type === "registered_host"
+              ? "Registered host"
+              : instance.status.replace("_", " ")}
       </span>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
@@ -49,16 +60,18 @@ function ProfileInstanceRow({
  */
 export function ProfileInstancesSection({
   archivedInstances,
+  initiallyExpanded = false,
   currentPubkey,
   instances,
   onOpenInstance,
 }: {
   archivedInstances: ManagedAgent[];
+  initiallyExpanded?: boolean;
   currentPubkey: string | null;
   instances: ManagedAgent[];
   onOpenInstance: (pubkey: string) => void;
 }) {
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(initiallyExpanded);
   const totalCount = instances.length + archivedInstances.length;
   if (totalCount === 0) return null;
   const instanceCountLabel = `${totalCount} instance${totalCount === 1 ? "" : "s"}`;

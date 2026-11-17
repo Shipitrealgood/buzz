@@ -26,6 +26,8 @@ type Fixture = {
   createState?: string;
   createError?: string;
   failSave?: boolean;
+  sibling?: boolean;
+  runtimeSurface?: boolean;
   localGrok?: boolean;
   delayContext?: boolean;
   contextError?: boolean;
@@ -58,6 +60,27 @@ async function open(
     page,
     {
       addChannelMembersErrors: ["Fixture membership denied", null],
+      ...(overrides.runtimeSurface && {
+        agentConfigSurface: {
+          runtimeId: null,
+          isPreSpawn: false,
+          advanced: [],
+          extensions: [],
+          sources: {},
+          normalized: {
+            model: {
+              value: "observed-model",
+              origin: "acpConfigOption",
+              overriddenValue: "saved-model",
+              overriddenOrigin: "personaDefault",
+            },
+            systemPrompt: {
+              value: "Saved host instructions",
+              origin: "personaDefault",
+            },
+          },
+        },
+      }),
       ...(overrides.localGrok && {
         acpRuntimesCatalog: [
           {
@@ -239,7 +262,7 @@ async function open(
             scope:
               fixture.catalogMode === "wrong-scope"
                 ? { ...scope, generation: "99".repeat(32) }
-                : scope,
+                : (args?.scope ?? scope),
             availability: fixture.catalogMode === "stale" ? "stale" : "current",
             expires_at: Math.floor(Date.now() / 1000) + 120,
             capability: {
@@ -347,7 +370,22 @@ async function open(
           string,
           unknown
         >[];
-        return record ? [...records, record] : records;
+        if (!record) return records;
+        const sibling = fixture.sibling
+          ? [
+              {
+                ...record,
+                name: "Another hosted instance",
+                pubkey: "81".repeat(32),
+                backend: {
+                  type: "registered_host",
+                  scope: { ...scope, host: "82".repeat(32) },
+                  installed_runtime: "second/grok",
+                },
+              },
+            ]
+          : [];
+        return [...records, ...sibling, record];
       }
       if (command === "hosted_prepare") {
         const input = args?.input as {
@@ -1073,19 +1111,14 @@ for (const outcome of [
   });
 }
 
-test("profile hosted Edit saves offline, preserves exact runtime and exposes partial Save", async ({
+test("card and profile hosted Edit save offline, preserves exact runtime and exposes partial Save", async ({
   page,
 }) => {
   await open(page, false, { createState: "applied" });
   await page.getByTestId("persona-dialog-submit").click();
   await expect(page.getByTestId("persona-dialog-submit")).toHaveCount(0);
-  await page
-    .getByRole("button", {
-      name: "Hosted synthetic agent agent profile",
-      exact: true,
-    })
-    .click();
-  await page.getByTestId("user-profile-header-edit-agent").click();
+  await page.getByLabel("Open actions for Hosted synthetic agent").click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Edit agent",
     exact: true,
@@ -1205,6 +1238,92 @@ async function openCreatedProfile(
     })
     .click();
 }
+
+test("card Edit waits for an explicit sibling before querying its host", async ({
+  page,
+}) => {
+  await open(page, false, { createState: "applied", sibling: true });
+  await page.getByTestId("persona-dialog-submit").click();
+  await expect(page.getByTestId("persona-dialog-submit")).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: "Hosted synthetic agent agent profile",
+      exact: true,
+    })
+    .click();
+  await page.getByTestId("user-profile-header-edit-agent").click();
+  await expect(page.getByTestId("user-profile-instances")).toBeVisible();
+  await expect(page.getByTestId("persona-dialog")).toHaveCount(0);
+  await page.getByTestId("auxiliary-panel-close").click();
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.calls = [];
+  });
+  await page.getByLabel("Open actions for Hosted synthetic agent").click();
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  const choices = page.getByRole("dialog", {
+    name: "Select an instance to edit",
+  });
+  await expect(choices).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      window.__HOSTED_SETUP_FIXTURE__.calls.filter(
+        (c) => c.command === "hosted_catalog",
+      ),
+    ),
+  ).toEqual([]);
+  await choices.getByTestId(`user-profile-instance-${"81".repeat(32)}`).click();
+  await expect(
+    page
+      .getByTestId("persona-dialog")
+      .getByRole("button", { name: "Agent harness" }),
+  ).toContainText("second/grok");
+  const scopes = await page.evaluate(() =>
+    window.__HOSTED_SETUP_FIXTURE__.calls
+      .filter((c) => c.command === "hosted_catalog")
+      .map((c) => c.args?.scope),
+  );
+  expect(scopes.length).toBeGreaterThan(0);
+  for (const scope of scopes)
+    expect(scope).toMatchObject({ host: "82".repeat(32) });
+});
+
+test("registered-host Runtime shows reported and saved settings with placement and presence", async ({
+  page,
+}) => {
+  await openCreatedProfile(page, { runtimeSurface: true, presence: "online" });
+  await page.evaluate(() => {
+    window.__HOSTED_SETUP_FIXTURE__.calls = [];
+  });
+  await page.getByRole("tab", { name: "Runtime", exact: true }).click();
+  const model = page.getByTestId("user-profile-model-settings-section");
+  await expect(model).toContainText("Last reported by session");
+  await expect(model).toContainText("observed-model");
+  await expect(model).not.toContainText("saved-model");
+  await expect(model).not.toContainText("Saved host instructions");
+  await expect(page.getByTestId("edit-agent-run-on")).toContainText(
+    "Synthetic workshop",
+  );
+  await expect(page.getByTestId("user-profile-agent-status")).toContainText(
+    "Online",
+  );
+  await expect(page.getByTestId("user-profile-start-on-launch")).toHaveCount(0);
+  await expect(page.getByTestId("user-profile-acp")).toHaveCount(0);
+  const calls = await page.evaluate(
+    () => window.__HOSTED_SETUP_FIXTURE__.calls,
+  );
+  expect(
+    calls
+      .filter((c) => c.command === "get_agent_config_surface")
+      .map((c) => c.args?.pubkey),
+  ).toContain("72".repeat(32));
+  expect(
+    calls.filter((c) =>
+      /^(hosted_models|hosted_catalog|hosted_setup_action|get_runtime_file_config|discover_acp_runtimes|discover_agent_models)$/.test(
+        c.command,
+      ),
+    ),
+  ).toEqual([]);
+});
 
 test("Duplicate from a hosted profile keeps the existing local create path", async ({
   page,

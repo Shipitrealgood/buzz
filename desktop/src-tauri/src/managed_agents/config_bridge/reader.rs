@@ -1,6 +1,6 @@
 use crate::managed_agents::discovery::EffortNormalization;
 use crate::managed_agents::discovery::KnownAcpRuntime;
-use crate::managed_agents::types::ManagedAgentRecord;
+use crate::managed_agents::types::{BackendKind, ManagedAgentRecord};
 
 use super::effort::effort_tier_alias;
 use super::types::*;
@@ -219,7 +219,11 @@ pub(crate) fn read_config_surface(
         } else {
             ConfigTierStatus::NotApplicable
         },
-        env_vars: ConfigTierStatus::Available,
+        env_vars: if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
+            ConfigTierStatus::NotApplicable
+        } else {
+            ConfigTierStatus::Available
+        },
         config_file: if file_was_read {
             ConfigTierStatus::Available
         } else {
@@ -369,7 +373,15 @@ fn build_model_field(
     // The top configured candidate becomes the secondary (the overridden baseline).
     // Equal-value case: ACP == baseline → fall through to normal resolution so
     // the field carries the correct baseline origin rather than RuntimeOverride.
-    if model_overridden {
+    // A hosted agent can still be running with the model from its previous
+    // deployment after a Save. Keep its reported model and saved baseline.
+    let hosted = matches!(record.backend, BackendKind::RegisteredHost { .. });
+    if model_overridden || hosted {
+        let observed_origin = if model_overridden {
+            ConfigOrigin::RuntimeOverride
+        } else {
+            ConfigOrigin::AcpConfigOption
+        };
         if let Some(acp) = acp_model.as_deref() {
             let baseline = configured.iter().find(|(v, _)| v.is_some());
             match baseline {
@@ -382,7 +394,7 @@ fn build_model_field(
                 Some((Some(baseline_value), baseline_origin)) => {
                     return NormalizedField {
                         value: Some(acp.to_string()),
-                        origin: ConfigOrigin::RuntimeOverride,
+                        origin: observed_origin,
                         write_via: model_write_mechanism(
                             is_pre_spawn,
                             supports_acp_model,
@@ -398,7 +410,7 @@ fn build_model_field(
                     // No configured baseline — ACP is the only source.
                     return NormalizedField {
                         value: Some(acp.to_string()),
-                        origin: ConfigOrigin::RuntimeOverride,
+                        origin: observed_origin,
                         write_via: model_write_mechanism(
                             is_pre_spawn,
                             supports_acp_model,

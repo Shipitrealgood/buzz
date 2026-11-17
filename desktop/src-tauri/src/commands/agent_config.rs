@@ -14,8 +14,9 @@ use crate::{
         },
         current_instance_id, is_reserved_env_key, is_safe_to_reveal, is_well_formed_env_key,
         known_acp_runtime, load_managed_agents, load_personas, resolve_effective_agent_env,
-        save_managed_agents, sync_managed_agent_processes, AgentDefinition, GlobalAgentConfig,
-        KnownAcpRuntime, ManagedAgentRecord, ManagedAgentRuntimeKey, MAX_ENV_VALUE_BYTES,
+        save_managed_agents, sync_managed_agent_processes, AgentDefinition, BackendKind,
+        GlobalAgentConfig, KnownAcpRuntime, ManagedAgentRecord, ManagedAgentRuntimeKey,
+        MAX_ENV_VALUE_BYTES,
     },
 };
 
@@ -130,6 +131,33 @@ fn resolve_config_surface(
         record.system_prompt = None;
         record.model = None;
         record.provider = None;
+    }
+
+    if matches!(record.backend, BackendKind::RegisteredHost { .. }) {
+        use crate::managed_agents::effective_config::{
+            resolve_effective_config, ConfigSource, EffectiveConfigResult,
+        };
+
+        // Use Deploy's structured projection. The desktop env and harness-file
+        // tiers apply to a different machine.
+        let desired = resolve_effective_config(&record, personas, global);
+        let mut tiers = InheritedConfigTiers::default();
+        if let EffectiveConfigResult::Resolved(config) = desired {
+            record.model = None;
+            match config.model.source {
+                ConfigSource::Definition => tiers.persona_model = config.model.value,
+                ConfigSource::Global => tiers.global_model = config.model.value,
+                ConfigSource::InstanceLegacy => record.model = config.model.value,
+            }
+            if record.persona_id.is_some() {
+                tiers.persona_prompt = config.system_prompt.value;
+            } else {
+                record.system_prompt = config.system_prompt.value;
+            }
+        }
+        record.provider = None;
+        record.env_vars.clear();
+        return read_config_surface(&record, None, session_cache, &tiers, None);
     }
 
     let tiers = build_inherited_tiers(
@@ -264,36 +292,42 @@ pub async fn get_agent_config_surface(
             .lock()
             .map_err(|e| e.to_string())?;
         let mut records = load_managed_agents(&app)?;
-        let mut runtimes = state
-            .managed_agent_processes
-            .lock()
-            .map_err(|e| e.to_string())?;
-        let (sync_changed, exited_pubkeys) =
-            sync_managed_agent_processes(&mut records, &mut runtimes, &current_instance_id(&app));
-        if sync_changed {
-            save_managed_agents(&app, &records)?;
+        let index = records
+            .iter()
+            .position(|r| r.pubkey == pubkey)
+            .ok_or_else(|| format!("agent {pubkey} not found"))?;
+        if !matches!(records[index].backend, BackendKind::RegisteredHost { .. }) {
+            let mut runtimes = state
+                .managed_agent_processes
+                .lock()
+                .map_err(|e| e.to_string())?;
+            let (sync_changed, exited_pubkeys) = sync_managed_agent_processes(
+                &mut records,
+                &mut runtimes,
+                &current_instance_id(&app),
+            );
+            if sync_changed {
+                save_managed_agents(&app, &records)?;
+            }
+            for pubkey in &exited_pubkeys {
+                state.clear_agent_session_caches(pubkey);
+            }
         }
-        for pubkey in &exited_pubkeys {
-            state.clear_agent_session_caches(pubkey);
-        }
-        records
-            .into_iter()
-            .find(|r| r.pubkey == pubkey)
-            .ok_or_else(|| format!("agent {pubkey} not found"))?
+        records.swap_remove(index)
     };
 
     let personas = load_personas(&app).unwrap_or_default();
-    let effective_cmd = crate::managed_agents::record_agent_command(&record, &personas);
-    let runtime_meta = known_acp_runtime(&effective_cmd);
-    let runtime_key = ManagedAgentRuntimeKey::new(
-        pubkey.clone(),
-        &crate::relay::effective_agent_relay_url(
-            &record.relay_url,
-            &crate::relay::relay_ws_url_with_override(&state),
-        ),
-    )?;
+    let runtime_key =
+        config_surface_key(&record, &crate::relay::relay_ws_url_with_override(&state))?;
     let session_cache = state.get_session_cache(&runtime_key);
     let global = crate::managed_agents::load_global_agent_config(&app).unwrap_or_default();
+
+    let runtime_meta = match record.backend {
+        BackendKind::RegisteredHost { .. } => None,
+        _ => known_acp_runtime(&crate::managed_agents::record_agent_command(
+            &record, &personas,
+        )),
+    };
 
     // #3493: for claude agents, resolve the settings.json and .claude.json paths
     // from the agent's effective CLAUDE_CONFIG_DIR env var (if set), falling
@@ -326,6 +360,17 @@ pub async fn get_agent_config_surface(
         &global,
         claude_config_dir.as_deref(),
     ))
+}
+
+fn config_surface_key(
+    record: &ManagedAgentRecord,
+    workspace_relay: &str,
+) -> Result<ManagedAgentRuntimeKey, String> {
+    let relay = match &record.backend {
+        BackendKind::RegisteredHost { .. } => record.relay_url.clone(),
+        _ => crate::relay::effective_agent_relay_url(&record.relay_url, workspace_relay),
+    };
+    ManagedAgentRuntimeKey::new(record.pubkey.clone(), &relay)
 }
 
 /// Store a `session_config_captured` observer event payload into the session cache.

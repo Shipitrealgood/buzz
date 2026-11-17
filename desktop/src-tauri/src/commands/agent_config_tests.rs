@@ -174,6 +174,95 @@ fn session_cache(current_model: &str, model_overridden: bool) -> SessionConfigCa
     }
 }
 
+#[test]
+fn registered_host_runtime_uses_saved_config_and_only_its_session() {
+    let desktop = tempfile::tempdir().unwrap();
+    std::fs::write(
+        desktop.path().join("settings.json"),
+        r#"{"model":"windows-model","statusLine":{"command":"windows-hook"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        desktop.path().join(".claude.json"),
+        r#"{"mcpServers":{"windows-mcp":{}}}"#,
+    )
+    .unwrap();
+    let mut record = agent_record();
+    record.pubkey = "aa".repeat(32);
+    record.relay_url = "wss://host.example".into();
+    record.model = Some("stale snapshot".into());
+    let global = GlobalAgentConfig {
+        model: Some("desired-default".into()),
+        provider: Some("windows-provider".into()),
+        env_vars: [("BUZZ_ACP_SYSTEM_PROMPT".into(), "windows-prompt".into())].into(),
+        ..Default::default()
+    };
+    let personas = [persona_with_model("saved-host-model")];
+    let surface = |record, session, personas: &[AgentDefinition]| {
+        resolve_config_surface(
+            record,
+            personas,
+            known_acp_runtime("claude"),
+            session,
+            &global,
+            Some(desktop.path()),
+        )
+    };
+    let local = surface(record.clone(), None, &personas);
+    assert!(serde_json::to_string(&local)
+        .unwrap()
+        .contains("windows-hook"));
+    assert_eq!(local.extensions[0].name, "windows-mcp");
+    assert!(local.claude_config_dir_custom);
+
+    let workspace = "wss://other.example";
+    let other_relay = config_surface_key(&record, workspace).unwrap();
+    record.backend = serde_json::from_value(serde_json::json!({
+        "type":"registered_host", "scope": {
+            "community":"https://host.example", "generation":"33".repeat(32),
+            "owner": nostr::Keys::generate().public_key(), "host": nostr::Keys::generate().public_key()
+        }
+    })).unwrap();
+    let key = config_surface_key(&record, workspace).unwrap();
+    let other_agent = ManagedAgentRuntimeKey::new("bb".repeat(32), &record.relay_url).unwrap();
+    let caches = std::collections::HashMap::from([
+        (other_relay, session_cache("wrong-relay", true)),
+        (other_agent, session_cache("wrong-agent", true)),
+        (
+            ManagedAgentRuntimeKey::new(record.pubkey.clone(), &record.relay_url).unwrap(),
+            session_cache("reported-model", false),
+        ),
+    ]);
+    let hosted = surface(record.clone(), caches.get(&key), &personas);
+    let model = hosted.normalized.model.as_ref().unwrap();
+    assert_eq!(model.value.as_deref(), Some("reported-model"));
+    assert_eq!(model.origin, ConfigOrigin::AcpConfigOption);
+    assert_eq!(model.overridden_value.as_deref(), Some("saved-host-model"));
+    assert_eq!(model.overridden_origin, Some(ConfigOrigin::PersonaDefault));
+    assert_eq!(
+        hosted
+            .normalized
+            .system_prompt
+            .as_ref()
+            .unwrap()
+            .value
+            .as_deref(),
+        Some("You are a persona.")
+    );
+    assert!(
+        hosted.sources.config_file_path.is_none() && hosted.sources.mcp_config_file_path.is_none()
+    );
+    assert!(hosted.advanced.is_empty() && hosted.extensions.is_empty());
+    assert!(!hosted.claude_config_dir_custom);
+    assert!(!serde_json::to_string(&hosted).unwrap().contains("windows-"));
+
+    let offline = surface(record, None, &[persona_with_model("")]);
+    let model = offline.normalized.model.unwrap();
+    assert_eq!(model.value.as_deref(), Some("desired-default"));
+    assert_eq!(model.origin, ConfigOrigin::GlobalDefault);
+    assert!(offline.normalized.mode.is_none());
+}
+
 /// Definition-authoritative: a stale materialized `record.model` on a
 /// linked instance must never outrank (or even be consulted against) the
 /// linked persona's model. `update_managed_agent` already blocks writing

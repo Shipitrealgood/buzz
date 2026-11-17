@@ -6,7 +6,10 @@ import {
   subscribeOpenEditAgent,
 } from "@/features/agents/openEditAgentEvent";
 
-export function useProfileEditAgentRequest(pubkey: string | null | undefined) {
+export function useProfileEditAgentRequest(
+  pubkey: string | null | undefined,
+  onHostedEdit?: () => void,
+) {
   const [open, setOpen] = React.useState(false);
   const [focus, setFocus] = React.useState<EditAgentFocusTarget | undefined>(
     undefined,
@@ -17,17 +20,21 @@ export function useProfileEditAgentRequest(pubkey: string | null | undefined) {
       return;
     }
 
-    const pending = consumePendingOpenEditAgent(pubkey);
-    if (pending !== false) {
-      setFocus(pending === true ? undefined : pending);
-      setOpen(true);
-    }
-
-    return subscribeOpenEditAgent(pubkey, (nextFocus) => {
+    function openRequestedEditor(nextFocus?: EditAgentFocusTarget) {
+      if (!nextFocus && onHostedEdit) {
+        onHostedEdit();
+        return;
+      }
       setFocus(nextFocus);
       setOpen(true);
-    });
-  }, [pubkey]);
+    }
+    const pending = consumePendingOpenEditAgent(pubkey);
+    if (pending !== false) {
+      openRequestedEditor(pending === true ? undefined : pending);
+    }
+
+    return subscribeOpenEditAgent(pubkey, openRequestedEditor);
+  }, [pubkey, onHostedEdit]);
 
   return { focus, open, setFocus, setOpen };
 }

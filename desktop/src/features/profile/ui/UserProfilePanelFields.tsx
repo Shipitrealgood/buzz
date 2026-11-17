@@ -10,6 +10,7 @@ import {
   UserRound,
 } from "lucide-react";
 import * as React from "react";
+import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { AgentStatusBadge } from "@/features/agents/ui/AgentStatusBadge";
 import { canonicalNpub, truncateNpub } from "@/shared/lib/pubkey";
 import {
@@ -291,10 +292,14 @@ export function buildOwnerFields({
     return fields;
   }
 
-  if (managedAgent?.agentCommand) {
+  const hosted = managedAgent?.backend.type === "registered_host";
+  const harness = hosted
+    ? (managedAgent.runtime ?? persona?.runtime)
+    : managedAgent?.agentCommand;
+  if (harness) {
     fields.push({
-      copyValue: managedAgent.agentCommand,
-      displayValue: runtimeLabel(managedAgent.agentCommand),
+      copyValue: harness,
+      displayValue: runtimeLabel(harness),
       icon: Terminal,
       label: "Runtime",
       testId: "user-profile-runtime",
@@ -325,7 +330,16 @@ export function buildOwnerFields({
     });
   }
 
-  if (managedAgent) {
+  if (hosted) {
+    fields.push({
+      displayValue: presenceStatus
+        ? getPresenceLabel(presenceStatus)
+        : "Availability unknown",
+      icon: Activity,
+      label: "Status",
+      testId: "user-profile-agent-status",
+    });
+  } else if (managedAgent) {
     fields.push({
       displayValue: managedAgent.status
         .replace(/_/g, " ")
@@ -345,7 +359,7 @@ export function buildOwnerFields({
     });
   }
 
-  if (managedAgent?.acpCommand) {
+  if (!hosted && managedAgent?.acpCommand) {
     fields.push({
       copyValue: managedAgent.acpCommand,
       displayValue: managedAgent.acpCommand,
@@ -355,7 +369,7 @@ export function buildOwnerFields({
     });
   }
 
-  if (managedAgent?.mcpCommand) {
+  if (!hosted && managedAgent?.mcpCommand) {
     fields.push({
       copyValue: managedAgent.mcpCommand,
       displayValue: managedAgent.mcpCommand,
@@ -376,7 +390,7 @@ export function buildOwnerFields({
     });
   }
 
-  if (managedAgent) {
+  if (managedAgent && !hosted) {
     fields.push({
       displayValue: managedAgent.startOnAppLaunch ? "Yes" : "No",
       icon: Server,

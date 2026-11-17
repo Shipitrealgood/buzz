@@ -41,12 +41,14 @@ const ALL_AGENT_CONFIG_SECTIONS: readonly AgentConfigPanelSection[] = [
 type Props = {
   pubkey: string;
   advancedMode?: "collapsed" | "flat";
+  hosted?: boolean;
   onEdit?: () => void;
   sections?: readonly AgentConfigPanelSection[];
 };
 
 type AgentConfigSurfaceRowsProps = {
   advancedMode?: "collapsed" | "flat";
+  hosted?: boolean;
   data: RuntimeConfigSurface;
   onEdit?: () => void;
   sections?: readonly AgentConfigPanelSection[];
@@ -127,12 +129,14 @@ function NormalizedRow({
   field,
   onEdit,
   variant = "compact",
+  sourceLabel,
 }: {
   fieldKey: keyof NormalizedConfig;
   label: string;
   field: NormalizedField;
   onEdit?: () => void;
   variant?: RowVariant;
+  sourceLabel?: string;
 }) {
   const Icon = NORMALIZED_ICONS[fieldKey];
   const rawDisplayValue = field.value ?? "—";
@@ -150,7 +154,9 @@ function NormalizedRow({
       />
       <span className="min-w-0 flex-1 text-left">
         {variant === "profile" ? (
-          <ConfigFieldLabel label={label} />
+          <ConfigFieldLabel
+            label={sourceLabel ? `${label} · ${sourceLabel}` : label}
+          />
         ) : (
           <span className="block text-xs font-medium text-foreground">
             {label}
@@ -315,6 +321,7 @@ function ClaudeConfigDirNotice() {
 
 export function AgentConfigPanel({
   advancedMode = "collapsed",
+  hosted = false,
   onEdit,
   pubkey,
   sections = ALL_AGENT_CONFIG_SECTIONS,
@@ -365,14 +372,24 @@ export function AgentConfigPanel({
     <AgentConfigSurfaceRows
       advancedMode={advancedMode}
       data={data}
+      hosted={hosted}
       onEdit={onEdit}
       sections={sections}
     />
   );
 }
 
+const hostedSourceLabels: Partial<Record<ConfigOrigin, string>> = {
+  buzzExplicit: "Saved on agent",
+  personaDefault: "Saved in definition",
+  globalDefault: "Saved desktop default for deployment",
+  runtimeOverride: "Last reported by session",
+  acpConfigOption: "Last reported by session",
+};
+
 export function AgentConfigSurfaceRows({
   advancedMode = "collapsed",
+  hosted = false,
   data,
   onEdit,
   sections = ALL_AGENT_CONFIG_SECTIONS,
@@ -425,6 +442,11 @@ export function AgentConfigSurfaceRows({
                   fieldKey={key}
                   key={key}
                   label={NORMALIZED_LABELS[key]}
+                  sourceLabel={
+                    hosted && field.value
+                      ? hostedSourceLabels[field.origin]
+                      : undefined
+                  }
                   onEdit={onEdit}
                   variant="profile"
                 />

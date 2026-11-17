@@ -10,6 +10,10 @@ import { effectiveAgentDescription } from "@/features/agents/lib/agentDescriptio
 import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastError";
 import type { AgentAvailabilityReader } from "@/features/agents/lib/useAgentAvailability";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
+import { requestOpenEditAgent } from "@/features/agents/openEditAgentEvent";
+import { bucketPersonaInstances } from "@/features/profile/lib/useCanonicalManagedAgentProfile";
+import { ProfileInstancesSection } from "@/features/profile/ui/ProfileInstancesSection";
+import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import { pickProfileAgent } from "@/features/agents/lib/pickProfileAgent";
 import { useIsArchivedPredicate } from "@/features/identity-archive/hooks";
 import { useUserProfileQuery } from "@/features/profile/hooks";
@@ -109,6 +113,18 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
     () => buildUnifiedGroups(personas, agents, isArchived),
     [personas, agents, isArchived],
   );
+  const [selectingId, setSelectingId] = React.useState<string | null>(null);
+  const selecting = selectingId
+    ? groups.find((g) => g.persona.id === selectingId)
+    : undefined;
+  const candidates =
+    selecting && bucketPersonaInstances(selecting.agents, isArchived);
+  function editInstance(persona: AgentPersona, instance: ManagedAgent) {
+    if (instance.backend.type !== "registered_host")
+      return onEditPersona(persona);
+    onOpenAgentProfile(instance.pubkey);
+    requestOpenEditAgent(instance.pubkey);
+  }
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
   function toggle(key: string) {
     setCollapsed((prev) => {
@@ -154,7 +170,19 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
                       onDeactivate={onDeactivatePersona}
                       onDelete={onDeletePersona}
                       onDuplicate={onDuplicatePersona}
-                      onEdit={onEditPersona}
+                      onEdit={(persona) => {
+                        if (
+                          !group.agents.some(
+                            (agent) => agent.backend.type === "registered_host",
+                          )
+                        ) {
+                          onEditPersona(persona);
+                        } else if (group.agents.length === 1 && profileAgent) {
+                          editInstance(persona, profileAgent);
+                        } else {
+                          setSelectingId(persona.id);
+                        }
+                      }}
                       onShare={(persona, linkedAgent) =>
                         onSharePersona(persona, linkedAgent, effectiveAvatarUrl)
                       }
@@ -216,6 +244,26 @@ export function UnifiedAgentsSection(props: UnifiedAgentsSectionProps) {
         </div>
       ) : null}
 
+      {selecting && candidates && (
+        <Dialog open onOpenChange={() => setSelectingId(null)}>
+          <DialogContent aria-describedby={undefined}>
+            <DialogTitle>Select an instance to edit</DialogTitle>
+            <ProfileInstancesSection
+              initiallyExpanded
+              currentPubkey={null}
+              instances={candidates.live}
+              archivedInstances={candidates.archived}
+              onOpenInstance={(key) => {
+                const instance = selecting.agents.find(
+                  (agent) => agent.pubkey === key,
+                );
+                setSelectingId(null);
+                if (instance) editInstance(selecting.persona, instance);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
       {agentsError ? (
         <p
           className={`${AGENT_CARD_COLUMN_CLASS} rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive`}
