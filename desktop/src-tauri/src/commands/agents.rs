@@ -1037,7 +1037,10 @@ pub async fn start_managed_agent(
         ));
 
         let target = if let BackendKind::RegisteredHost { scope, .. } = &record.backend {
-            crate::relay::assert_expected_relay_scope(Some(&reconcile_relay), &scope.community)?;
+            crate::relay::assert_expected_relay_scope(
+                Some(reconcile_relay.as_str()),
+                &scope.community,
+            )?;
             crate::relay::assert_expected_signer(Some(&owner_hex), &scope.owner.to_hex())?;
             if replay_floor_unix.is_some() {
                 return Err("Hosted Start does not support replaying a triggering mention".into());

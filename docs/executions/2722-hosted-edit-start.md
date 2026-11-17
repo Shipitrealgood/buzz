@@ -3,6 +3,21 @@
 Source implementation complete for independent review; native Windows compilation,
 independent review, and human acceptance remain pending. This is not release acceptance.
 
+## Windows compiler correction (2026-11-17)
+
+At clean `ec804bf9dd8563e18433eabc675391f79565599b`, corrected the E0308 recorded
+in the [failed Windows receipt](2722-hosted-edit-windows.md): the hosted Start
+scope assertion now passes `reconcile_relay.as_str()` instead of a reference to
+`ScopedWorkspaceRelay`. This uses the existing accessor on the already captured
+relay; scope validation remains intact. Rustfmt expands the call by three lines:
+current production total is **13 files/net +481**, within +500.
+
+Focused rustfmt and diff checks passed. No browser/owner suites or native compile
+were rerun for this accessor-only change. Failed run 43986614016 recorded 39 Windows
+tests passed before desktop compilation failed; exact hosted/ACL cases did not run
+and no installer was produced. Reviewer checks this exact delta before the conductor
+publishes/reruns Windows CI. All executor processes are terminal; no live/push/CI action.
+
 ## Round-1 lint residual (2026-11-17)
 
 At clean `84fb2d6b63e45593a586c5952eab75019c22be0d`, changed only the non-Windows
@@ -97,7 +112,7 @@ AGENTS guidance and docs. Normal rustfmt/Biome formatting; no compression to fit
 | --- | ---: | ---: | ---: |
 | `crates/buzz-paired-owner/src/deployment/continuation.rs` | 75 | 9 | 66 |
 | `desktop/src-tauri/src/commands/agent_models_update.rs` | 30 | 1 | 29 |
-| `desktop/src-tauri/src/commands/agents.rs` | 13 | 4 | 9 |
+| `desktop/src-tauri/src/commands/agents.rs` | 16 | 4 | 12 |
 | `desktop/src-tauri/src/commands/agents_hosted.rs` | 224 | 30 | 194 |
 | `desktop/src-tauri/src/commands/agents_hosted_cleanup.rs` | 2 | 8 | -6 |
 | `desktop/src-tauri/src/managed_agents/types.rs` | 3 | 0 | 3 |
@@ -108,7 +123,7 @@ AGENTS guidance and docs. Normal rustfmt/Biome formatting; no compression to fit
 | `desktop/src/features/profile/ui/UserProfilePersonaDialogs.tsx` | 150 | 24 | 126 |
 | `desktop/src/features/profile/ui/useAgentLifecycleActions.ts` | 5 | 3 | 2 |
 | `desktop/src/shared/api/types.ts` | 2 | 0 | 2 |
-| **13 files** | **570** | **92** | **478** |
+| **13 files** | **573** | **92** | **481** |
 
 Approved scope-neutral substitution: `AgentDefinitionDialog.tsx` replaces planned
 `AgentDialog.tsx`, since the shared definition editor required fresh models for Edit.
