@@ -1530,11 +1530,29 @@ mod postgres_tests {
             .sql
             .as_str();
         assert!(retirement.starts_with("SET LOCAL lock_timeout = '5s';"));
-        // Tables added after docs/database.md Rule 1 never had a fence.
+        // The deployed host migrations used application admission from the start.
+        for version in [81, 82] {
+            let migration = EXTENSION_MIGRATOR
+                .iter()
+                .find(|migration| migration.version == version)
+                .expect("deployed host migration");
+            let sql = strip_sql_comments(migration.sql.as_str()).to_ascii_lowercase();
+            assert!(
+                !sql.contains("community_write_fence") && !sql.contains("create trigger"),
+                "host extension {version} must not install a universal write fence"
+            );
+        }
+        // These tenant tables never needed a trigger drop in canonical 0090.
         let never_fenced = [
             "nip_fi_profile_heads",
             "media_uploaders",
             "media_publications",
+            "paired_agent_operations",
+            "paired_agent_placements",
+            "paired_host_bindings",
+            "paired_host_deployment_status",
+            "paired_host_events",
+            "paired_host_requests",
         ];
         for table in crate::deletion::EXPECTED_SCOPED_TABLES
             .iter()
