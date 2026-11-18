@@ -30,6 +30,10 @@ pub mod network;
 pub mod nip10;
 /// Agent observer frame helpers.
 pub mod observer;
+/// Signed, peer-encrypted enrollment of a paired host.
+pub mod paired_host;
+/// Signed, encrypted post-enrollment paired host messages.
+pub mod paired_message;
 /// NIP-AB device pairing — crypto primitives, message types, and errors.
 pub mod pairing;
 /// Presence status types shared across crates.
@@ -89,3 +93,15 @@ pub mod artifact_sync;
 
 /// Local media reference extraction.
 pub mod media;
+
+/// Private root-WebSocket host registration fork protocol.
+pub mod host_registry;
+
+/// Registered-host deployment wire contract.
+pub mod host_deployment;
+
+/// Shared pure ACP model normalization and response types.
+pub mod agent_models;
+
+/// Portable registered-host inventory facts.
+pub mod harness;

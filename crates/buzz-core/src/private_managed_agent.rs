@@ -525,7 +525,12 @@ fn validate_active(
     Ok(())
 }
 
-fn validate_auth_tag(auth_tag: &str, expected_owner: &str, agent: &PublicKey) -> Result<(), Error> {
+/// Shared owner-to-agent attestation check for encrypted native identity transfers.
+pub(crate) fn validate_auth_tag(
+    auth_tag: &str,
+    expected_owner: &str,
+    agent: &PublicKey,
+) -> Result<(), Error> {
     if auth_tag.is_empty() || auth_tag.len() > 4096 {
         return Err(Error::InvalidPayload("invalid auth_tag".into()));
     }

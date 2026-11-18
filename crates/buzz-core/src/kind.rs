@@ -589,6 +589,22 @@ pub const KIND_JOB_RESULT: u32 = 43004;
 pub const KIND_JOB_CANCEL: u32 = 43005;
 /// An agent job failed with an error.
 pub const KIND_JOB_ERROR: u32 = 43006;
+/// Private paired-host enrollment envelope, exchanged only via dedicated transport.
+pub const KIND_PAIRED_HOST_V1: u32 = 43102;
+
+/// Private root-WebSocket host registry v2 (local fork allocation; separate from v1).
+pub const KIND_HOST_REGISTRY_V2: u32 = 43103;
+
+/// Private fork host deployment protocol, version 1.
+pub const KIND_HOST_DEPLOYMENT_V1: u32 = 43104;
+
+/// These kinds are accepted only by their private host transport.
+pub const fn is_private_host_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_PAIRED_HOST_V1 | KIND_HOST_REGISTRY_V2 | KIND_HOST_DEPLOYMENT_V1
+    )
+}
 
 /// Relay-signed notification: the target pubkey was added to a channel.
 /// Stored globally (channel_id = None) with p-tag = target, h-tag = channel UUID.
@@ -797,6 +813,9 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_JOB_RESULT,
     KIND_JOB_CANCEL,
     KIND_JOB_ERROR,
+    KIND_PAIRED_HOST_V1,
+    KIND_HOST_REGISTRY_V2,
+    KIND_HOST_DEPLOYMENT_V1,
     KIND_MEMBER_ADDED_NOTIFICATION,
     KIND_MEMBER_REMOVED_NOTIFICATION,
     KIND_AGENT_TURN_METRIC,
