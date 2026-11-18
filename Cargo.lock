@@ -1277,6 +1277,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "buzz-hostd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "buzz-core",
+ "buzz-sdk",
+ "buzz-ws-client",
+ "clap",
+ "futures-util",
+ "hex",
+ "nostr 0.44.7",
+ "rand 0.10.1",
+ "reqwest 0.13.4",
+ "rusqlite",
+ "rustix",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "buzz-media"
 version = "0.1.0"
 dependencies = [
@@ -1645,6 +1673,7 @@ dependencies = [
 name = "buzz-ws-client"
 version = "0.1.0"
 dependencies = [
+ "buzz-core",
  "futures-util",
  "nostr 0.44.7",
  "serde_json",

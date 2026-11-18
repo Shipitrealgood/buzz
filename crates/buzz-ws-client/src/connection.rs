@@ -9,7 +9,8 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
 use tokio_tungstenite::tungstenite::http::{header::USER_AGENT, HeaderMap, HeaderValue};
 use tokio_tungstenite::{
-    client_async, connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream,
+    client_async, connect_async_tls_with_config, tungstenite::Message, Connector, MaybeTlsStream,
+    WebSocketStream,
 };
 use tracing::debug;
 
@@ -105,18 +106,28 @@ impl NostrWsConnection {
         url: &str,
         headers: HeaderMap,
     ) -> Result<Self, WsClientError> {
+        Self::connect_with_options(url, headers, None).await
+    }
+
+    /// Connect using an explicit TLS connector, for communities with a private CA.
+    pub async fn connect_with_tls_connector(
+        url: &str,
+        connector: Connector,
+    ) -> Result<Self, WsClientError> {
+        Self::connect_with_options(url, HeaderMap::new(), Some(connector)).await
+    }
+
+    async fn connect_with_options(
+        url: &str,
+        headers: HeaderMap,
+        connector: Option<Connector>,
+    ) -> Result<Self, WsClientError> {
         let parsed = url
             .parse::<url::Url>()
             .map_err(|e| WsClientError::Url(e.to_string()))?;
-
         let request = upgrade_request(&parsed, headers)?;
-
-        let (ws, _response) = connect_async(request)
-            .await
-            .map_err(WsClientError::WebSocket)?;
-
+        let (ws, _) = connect_async_tls_with_config(request, None, false, connector).await?;
         debug!("connected to relay at {url}");
-
         Ok(Self::from_stream(ws, url))
     }
 
@@ -161,13 +172,33 @@ impl NostrWsConnection {
         signer: &S,
         auth_tag: Option<&Tag>,
     ) -> Result<(), WsClientError> {
+        self.authenticate_using(async |challenge, relay| {
+            build_auth_event(challenge, relay, signer, auth_tag).await
+        })
+        .await
+    }
+
+    /// Request the signature only after the challenge arrives, so native callers
+    /// can revalidate their active identity before signing.
+    pub async fn authenticate_with_signer(
+        &mut self,
+        sign: impl FnOnce(&str, &str) -> Result<Event, WsClientError>,
+    ) -> Result<(), WsClientError> {
+        self.authenticate_using(async move |challenge, relay| sign(challenge, relay))
+            .await
+    }
+
+    async fn authenticate_using(
+        &mut self,
+        sign: impl AsyncFnOnce(&str, &str) -> Result<Event, WsClientError>,
+    ) -> Result<(), WsClientError> {
         // Each network phase is capped as a whole, writes (and Pongs sent
         // while reading) included. Signing between them is the signer's to
         // bound: a remote signer may hold it for a person's decision.
         let wait = Duration::from_secs(AUTH_CHALLENGE_TIMEOUT_SECS);
         let challenge = phase(wait, self.wait_for_auth_challenge(wait)).await?;
 
-        let auth_event = build_auth_event(&challenge, &self.relay_url, signer, auth_tag).await?;
+        let auth_event = sign(&challenge, &self.relay_url).await?;
         let event_id = auth_event.id.to_hex();
 
         let wait = Duration::from_secs(AUTH_OK_TIMEOUT_SECS);
@@ -189,7 +220,10 @@ impl NostrWsConnection {
         let event_id = event.id.to_hex();
         let wait = Duration::from_secs(PUBLISH_OK_TIMEOUT_SECS);
         phase(wait, async {
-            self.send_raw(&json!(["EVENT", event])).await?;
+            // Host journals compare the relay's exact stored signed event bytes.
+            let text = serde_json::to_string(&("EVENT", &event))?;
+            debug!("→ relay: {text}");
+            self.ws.send(Message::Text(text.into())).await?;
             self.wait_for_ok(&event_id, wait).await
         })
         .await
@@ -433,6 +467,85 @@ mod tests {
     #[test]
     fn publish_ok_timeout_meets_floor() {
         const { assert!(PUBLISH_OK_TIMEOUT_SECS >= 30) };
+    }
+
+    #[tokio::test]
+    async fn changed_session_after_challenge_cannot_send_auth() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let active = Arc::new(AtomicBool::new(true));
+        let server_active = active.clone();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            server_active.store(false, Ordering::Release);
+            socket
+                .send(Message::Text(
+                    json!(["AUTH", "delayed-challenge"]).to_string().into(),
+                ))
+                .await
+                .unwrap();
+            // A refused signer must produce no AUTH frame.
+            match tokio::time::timeout(Duration::from_millis(100), socket.next()).await {
+                Err(_) | Ok(None) | Ok(Some(Err(_))) => (),
+                other => panic!("unexpected frame after session changed: {other:?}"),
+            }
+        });
+        let mut connection = NostrWsConnection::connect(&url).await.unwrap();
+        let keys = nostr::Keys::generate();
+        let result = connection
+            .authenticate_with_signer(|challenge, relay| {
+                if !active.load(Ordering::Acquire) {
+                    return Err(WsClientError::AuthFailed("session changed".into()));
+                }
+                let relay = nostr::RelayUrl::parse(relay).unwrap();
+                Ok(nostr::EventBuilder::auth(challenge, relay).sign_with_keys(&keys)?)
+            })
+            .await;
+        assert!(matches!(result, Err(WsClientError::AuthFailed(_))));
+        server.await.unwrap();
+    }
+
+    #[allow(clippy::result_large_err)] // Tungstenite's handshake callback type.
+    #[tokio::test]
+    async fn explicit_connector_preserves_upgrade_and_publishes_journal_bytes() {
+        use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+
+        let event = nostr::EventBuilder::text_note("journal fixture")
+            .sign_with_keys(&nostr::Keys::generate())
+            .unwrap();
+        let event_id = event.id.to_hex();
+        let expected = format!(r#"["EVENT",{}]"#, serde_json::to_string(&event).unwrap());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_hdr_async(
+                stream,
+                |request: &Request, response: Response| {
+                    assert_eq!(request.headers()[USER_AGENT], DEFAULT_USER_AGENT);
+                    Ok(response)
+                },
+            )
+            .await
+            .unwrap();
+            let message = ws.next().await.unwrap().unwrap();
+            assert_eq!(message.to_text().unwrap(), expected);
+            ws.send(Message::Text(
+                json!(["OK", event_id, true, ""]).to_string().into(),
+            ))
+            .await
+            .unwrap();
+        });
+        let mut connection = NostrWsConnection::connect_with_tls_connector(&url, Connector::Plain)
+            .await
+            .unwrap();
+        assert!(connection.send_event(event).await.unwrap().accepted);
+        server.await.unwrap();
     }
 
     // The handshake callback's `Result<Response, ErrorResponse>` is fixed by tungstenite.

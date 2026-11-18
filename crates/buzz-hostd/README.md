@@ -1,0 +1,148 @@
+# Linux paired host
+
+## Ordinary registered-host deployment (source only; activation remains gated)
+
+The `--deployment` route runs under the configured non-root host account and
+uses that account’s normal HOME, native harness logins, tool PATH, workspace and
+networking. It shares the registration journal and owner authority; it has no
+root-helper fallback. Each agent retains its own Buzz identity and protected
+generated artifacts. Same-account agents are trusted and can use that account’s
+files, tools and provider sessions under the existing main chat-access policy.
+
+The private `deployment.json` retains community, relay signing key, label and
+capacity. Its `local` object specifies absolute `home`, `workspace`, `unit_dir`,
+`launcher` (buzz-host-runtime), `systemctl`, `tool_path`, optional normal XDG
+locations in `environment`, and optional `buzz_acp`. With `local.buzz_acp` set,
+`runtimes: {}` automatically discovers main’s builtin/preset candidates using
+that account PATH. No per-provider rows are required. Explicit local rows can
+retain installed IDs and limit candidates when automatic discovery is omitted;
+they still resolve main’s command names and reject unsupported args/config at
+readiness. Remote commands never supply paths, argv or environment.
+
+Main’s catalog and pure classifiers live in `buzz-core::harness`, shared with
+Desktop. Inventory distinguishes missing adapter/CLI and main’s adapter version
+floor. Required normalized configuration outside this hosted projection and
+unknown/custom harnesses remain unsupported. Version is absent unless main
+requires its check. Installed, authenticated, models and provider entitlement
+are separate facts. Claude/Codex use main’s native status probes; Grok’s
+NotApplicable means authentication was not checked. Native sign-in is performed
+externally on the host under the configured account, followed by Refresh in
+Windows Add Agent. There is no Buzz-host login command for this route.
+
+Prepare and Refresh run bounded current readiness and real main ACP model
+discovery. Start rechecks readiness and exact selected model immediately before
+launching main ACP with this agent’s key, policy and the same account context.
+The fixed user service is persistent for the running conversation (`Restart=no`,
+no idle-stop timer); explicit main shutdown is preserved. Automatic reboot
+startup or persistent explicit-stop state is not implemented here. Cleanup
+stops only the recorded unit and removes generated Buzz files, preserving
+HOME, native login/config and repositories even after launch paths move.
+
+Status/Observation optional fields preserve old messages as unknown for new
+readers. Older readers deny new fields: deployment requires a matched
+host/client rollout while hosted creation stays gated off. Existing 8 KiB
+status, 2 KiB observation and 64-entry bounds apply; overflow is unavailable.
+No release flag, service installation, existing placement migration or live
+activation is performed by this source change. See
+`docs/executions/3721-host-discovery-windows.md` for tests and native limitations.
+
+## Legacy provisioning reference
+
+The isolated-account/root-helper instructions below apply only to the separate
+legacy provisioning entrypoint. They are not installation instructions for the
+ordinary registered-host deployment route above.
+
+Run the control plane under a dedicated Linux account with an empty HOME. This account owns one host key and journal, and must be separate from desktop, relay-admin, agent-runtime and operator accounts. Run these commands in that account on a private console:
+
+```sh
+install -d -m 0700 "$PWD/host-state"
+buzz-hostd --state-dir "$PWD/host-state" init
+buzz-hostd --state-dir "$PWD/host-state" offer --community https://team.example
+buzz-hostd --state-dir "$PWD/host-state" status
+buzz-hostd --state-dir "$PWD/host-state" serve --catalog "$PWD/catalog.json"
+```
+
+`offer` prints a ten-minute single-use JSON invitation to an interactive terminal. Import it into the selected community on the owner device. The journal retains only the proof digest until consumption, five distinct invalid attempts, or expiration. A new offer replaces any outstanding invitation. Successful pairing persists one owner, community, generation and the exact signed acknowledgement. Service restarts retry pending HTTP delivery. Shut off console/session recording before issuing an invitation.
+
+To revoke while offline, copy the exact generation from `status` and run `buzz-hostd --state-dir "$PWD/host-state" unpair --generation "$GENERATION"`. Local revocation takes effect on commit. The service uploads the same signed tombstone on reconnect. Keep the journal for historical delivery and reconciliation.
+
+Treat the SQLite database as a credential store. Grant-store loss or a potentially stale backup requires a fresh host key and enrollment in a new empty state directory. Starting a restored copy can resurrect authority, so keep old journals offline during recovery.
+
+## Catalog and service account
+
+Catalog IDs use `plugin/type`. The catalog is a local operator artifact. Each entry pins the absolute, canonical path and SHA-256 of a conversational `buzz-acp` harness and one adapter. Both executables and their ancestors must be root-owned and unwritable by group/others. A catalog revision covers the complete file, including limits, fixed adapter args and the credential profile name. The OS trust store itself is managed separately. The key in `relay_key` is the community relay signing public key for authoritative roster and presence snapshots. Obtain it from the operator.
+
+```json
+{
+  "community": "https://team.example",
+  "label": "Linux pilot",
+  "capacity": 2,
+  "relay_key": "<64 lowercase hex characters>",
+  "runtimes": {
+    "local/goose": {
+      "harness": {"path":"/usr/local/libexec/buzz-acp","sha256":"<digest>"},
+      "adapter": {"path":"/usr/local/libexec/goose","sha256":"<digest>"},
+      "args":["acp"],
+      "credential_profile":"none"
+    }
+  }
+}
+```
+
+A named provider profile selects `/etc/buzz-hostd/providers/<name>.json`. Install that file root-owned, mode 0600. Its root-owned directory must allow the host service to stat the file at commit. Only the installed root helper reads its contents. It contains only the explicitly supported provider API key variables. The profile named `none` needs no provider secret.
+
+The production service expects the control journal at `/var/lib/buzz-hostd/host.sqlite` and catalog at `/etc/buzz-hostd/catalog.json`. Install the three binaries `buzz-hostd`, `buzz-host-runtime` and `buzz-host-activate` root-owned under `/usr/local/libexec`. Install the four units from `deploy/` into `/etc/systemd/system`. Create the system user and group `buzz-hostd` with a disabled login. Give it only its own mode-0700 state directory. Initialize its journal as that user and issue the console invitation. The OS operator explicitly runs `systemctl daemon-reload` and `systemctl enable --now buzz-hostd-activate.socket buzz-hostd.service`. Check the catalog executables, their complete dependencies and the service confinement on the intended OS before enabling this.
+
+The host verifies committed credentials and checks the exact public profile, directory, registration and every requested channel's relay-signed roster. It stages the candidate key, OA, exact scope, runtime selector, frozen catalog revision and requested policies under its own UID. It sends only fixed local actions and a derived 64-hex instance ID to the root socket. The root helper checks SO_PEERCRED against the dedicated service account, serializes root reservations against its independent capacity ceiling, and refuses foreign templates or overrides. It resolves runtime and provider authority independently from `/etc/buzz-hostd/catalog.json`. Worker credentials are immutable in a root-only store. A root reservation creates no process. The daemon journals the start intent before asking the helper to enable the fixed instance.
+
+The DynamicUser launcher reopens the root catalog at every boot and starts the pinned harness with an empty environment and its own provider profile. The paired unit uses `Type=notify` and a 75-second startup timeout. The main harness sends readiness only after eager ACP initialization and relay EOSE for membership and all requested channel subscriptions on the current connection. The journal separately requires confirmed writer-side heads, per-channel roster and presence before reporting ready. A failed start or detected post-start conflict quiesces only the owned instance; recovery repeats pending cleanup after a lost reply. An initial missing membership remains awaiting the owner's signed channel addition. Only the submitting owner device sees a refusal of its 9000 publication. An empty-condition OA is a portable credential for that individual agent after delivery.
+
+## Isolated rehearsal
+
+Build with `cargo build --locked -p buzz-hostd`. The two binaries for unit activation and worker launch use Linux/systemd. Local protocol tests use ephemeral keys and real SQLite, without any real service-manager calls. A new journal in another location can exchange protocol messages and verify public relay records, and reports awaiting system bootstrap before attempting actual unit activation.
+
+For a disposable GitHub-hosted Ubuntu VM, build the three host binaries, the `buzz` CLI and the `buzz-acp` harness into a single bin directory. A test relay using an ephemeral CA needs consumers built with native TLS roots; enable the `tokio-tungstenite/rustls-tls-native-roots` feature for the staging ACP/CLI build. Run:
+
+```sh
+sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT \
+  crates/buzz-hostd/deploy/stage-on-actions.sh "$BIN_DIR" "$STAGING_CA" "$RELAY_PUBKEY"
+sudo -u buzz-hostd /usr/local/libexec/buzz-hostd --state-dir /var/lib/buzz-hostd status
+```
+
+The bootstrap installs its ephemeral CA on that disposable VM, a digest-pinned `local/fixture` ACP adapter and the isolated service units. If scripting the private console enrollment for E2E, use a nonlogged pseudo-terminal redirected into a 0600 file under the private test directory. Disable shell tracing. After a successful create, check the exact signed result, each channel roster, `systemctl is-active` and `systemctl is-enabled` for the opaque instance, and an eligible and denied message from independent clients. Studio/UI tests, OS sandbox tests and production rollout are separate gates.
+
+### Checkpoint 2 source layout (not activated)
+
+The opt-in `deploy/buzz-host-registration.service.d/50-deployment.conf` keeps
+`StateDirectory=buzz-host-registration` and the existing key/database. A later
+approved installation must stop the old controller, transition that directory's
+ownership to the fixed `buzz-hostd` account, and mount the same physical directory
+at `/var/lib/buzz-hostd` in both controller and helper namespaces (helper read-only).
+Verify the staged inode agrees in both namespaces before enabling `--deployment`.
+Keep the socket root:buzz-hostd 0660. Rollback removes the opt-in drop-in and restores
+registration-only ownership with the controller stopped, preserving that same journal.
+Do not enable the legacy `buzz-hostd.service` alongside registration.
+
+The canonical agent unit uses an empty `/var/lib/buzz-agent-root` mount view,
+explicit runtime/library/CA/identity binds and systemd-owned per-unit state/runtime
+and credential mounts. It does not copy a rootfs. Before installation, pin the
+runtime dependency closure in `/opt/buzz-runtime` and review the bound library
+paths as runtime-only material. Missing dependencies fail; they do not authorize
+broad host mounts. Existing operator/sibling homes are never an input.
+
+Install the reviewed `execution-policy.json` as a root-owned file: its only accepted
+value is `"disabled"`. `PrivateNetwork=yes` is the source default. This policy is
+configuration, not native-isolation evidence. Login/models still execute the real
+fixed commands offline; model results cannot authorize online launch. Conversation
+refuses network-disabled. N1 (#3719) must supply a reviewed online policy variant,
+namespace/network configuration and native denial/positive evidence before rollout.
+
+Fixed finite actions run in `buzz-paired-agent@<unit>.service`, with the same HOME,
+GROK_HOME, XDG directories and cwd as conversation. Root generates the execution
+credential and exact `50-buzz-execution-mode.conf` (`Restart=no`); no caller supplies
+argv, environment or paths. Active units refuse finite actions. Raw device-login
+output is only polled by the root-local `buzz-host-activate --login UNIT` terminal
+from RuntimeDirectory, which systemd removes on stop; terminal state is sanitized.
+The socket peer can invoke models but cannot invoke login or obtain raw login output.
+Native login success is a command outcome, never proven subscription entitlement.
+See `docs/executions/3721-host-service-discovery.md` for measured and unrun gates.

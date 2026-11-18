@@ -1,0 +1,55 @@
+[Unit]
+Description=Buzz paired agent %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=75s
+DynamicUser=yes
+StateDirectory=buzz-agent-%i
+StateDirectoryMode=0700
+RuntimeDirectory=buzz-agent-%i
+RuntimeDirectoryMode=0700
+RootDirectory=/var/lib/buzz-agent-root
+MountAPIVFS=yes
+BindReadOnlyPaths=/usr/local/libexec/buzz-host-runtime /etc/buzz-hostd/catalog.json /opt/buzz-runtime /usr/lib -/lib -/lib64 -/etc/ssl/certs -/etc/resolv.conf -/etc/hosts -/etc/nsswitch.conf -/etc/passwd -/etc/group
+PrivateNetwork=yes
+WorkingDirectory=/var/lib/buzz-agent-%i
+LoadCredential=instance:/var/lib/buzz-paired-units/%i.cred
+LoadCredential=native-login:/var/lib/buzz-paired-units/%i.login
+LoadCredential=execution:/var/lib/buzz-paired-units/%i.execution
+LoadCredential=network-policy:/etc/buzz-hostd/execution-policy.json
+StandardOutput=null
+StandardError=null
+KillMode=control-group
+SendSIGKILL=yes
+TimeoutStopSec=5s
+ExecStart=/usr/local/libexec/buzz-host-runtime
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/home -/root -/srv -/mnt -/media
+# Empty RootDirectory hides ambient /etc, /var, /run and operator state.
+# StateDirectory, RuntimeDirectory, credentials and notify mounts are systemd-owned.
+UMask=0077
+MemoryMax=1G
+TasksMax=128
+CPUQuota=100%
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

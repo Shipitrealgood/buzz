@@ -1,0 +1,10 @@
+[Socket]
+ListenStream=/run/buzz-hostd-activate.sock
+Accept=yes
+SocketUser=root
+SocketGroup=buzz-hostd
+SocketMode=0660
+MaxConnections=8
+
+[Install]
+WantedBy=sockets.target
