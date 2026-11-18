@@ -1404,36 +1404,50 @@ async fn handle_text_message(text: String, conn: Arc<ConnectionState>, state: Ar
         return;
     }
 
-    let frame = ClientMessage::frame(&text);
-    if let Ok(frame) = &frame {
-        if handlers::host_registry::private_frame(frame, conn.registry.generation().is_some())
-            && (handlers::host_deployment::dispatch(&text, conn.clone(), state.clone()).await
-                || handlers::host_registry::dispatch(&text, conn.clone(), state.clone()).await)
-        {
-            return;
-        }
-    }
-    let msg = match frame.and_then(|value| ClientMessage::parse_frame(&value)) {
-        Ok(m) => m,
+    let frame = match ClientMessage::frame(&text) {
+        Ok(frame) => frame,
         Err(e) => {
             conn.send(RelayMessage::notice(&format!("invalid message: {e}")));
             return;
         }
     };
-
-    match &msg {
-        ClientMessage::Req { .. } => crate::metrics::record_ws_read("req"),
-        ClientMessage::Count { .. } => crate::metrics::record_ws_read("count"),
-        ClientMessage::ArtifactSync { .. } => crate::metrics::record_ws_read("sync"),
-        _ => {}
+    let host_scoped = conn.registry.generation().is_some();
+    let private = handlers::host_registry::private_frame(&frame, host_scoped);
+    let recovery = private && handlers::host_registry::restrictive_frame(&frame);
+    if !private || (!host_scoped && !recovery) {
+        let msg = match ClientMessage::parse_frame(&frame) {
+            Ok(msg) => msg,
+            Err(e) => {
+                conn.send(RelayMessage::notice(&format!("invalid message: {e}")));
+                return;
+            }
+        };
+        match &msg {
+            ClientMessage::Req { .. } => crate::metrics::record_ws_read("req"),
+            ClientMessage::Count { .. } => crate::metrics::record_ws_read("count"),
+            ClientMessage::ArtifactSync { .. } => crate::metrics::record_ws_read("sync"),
+            _ => {}
+        }
+        if let Err(reason) = enforce_ws_admission(&msg, &conn, &state).await {
+            crate::access::ReadLog::refused(&msg, &conn, reason);
+            return;
+        }
+        if !private {
+            handle_admitted_message(msg, conn, state).await;
+            return;
+        }
     }
-
-    if let Err(reason) = enforce_ws_admission(&msg, &conn, &state).await {
-        // An EVENT's write line is written where its OK is sent.
-        crate::access::ReadLog::refused(&msg, &conn, reason);
-        return;
+    // Private validation needs the original signed JSON and extension fields.
+    if !handlers::host_deployment::dispatch(&text, conn.clone(), state.clone()).await {
+        handlers::host_registry::dispatch(&text, conn, state, recovery).await;
     }
+}
 
+async fn handle_admitted_message(
+    msg: ClientMessage,
+    conn: Arc<ConnectionState>,
+    state: Arc<AppState>,
+) {
     match msg {
         ClientMessage::Auth(event) => {
             // AUTH remains inline so only one frame can race the connection's
@@ -1949,6 +1963,65 @@ pub(crate) mod tests {
             WsMessage::Text(text) => serde_json::from_str(&text).expect("valid JSON frame"),
             other => panic!("unexpected websocket message: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn private_owner_frames_use_shared_ws_admission_except_binding_recovery() {
+        use serde_json::json;
+        let mut state = crate::state::tests::test_state().await;
+        Arc::make_mut(&mut Arc::make_mut(&mut state).config).host_registry_enabled = false;
+        let key = Keys::generate();
+        let mut auth = auth_context();
+        auth.pubkey = key.public_key();
+        let (conn, mut rx) = test_conn_with_auth(AuthState::Authenticated(auth));
+        for (kind, extension) in [(43103u16, "host_registry"), (43104, "host_deployment")] {
+            let event = EventBuilder::new(Kind::Custom(kind), "")
+                .sign_with_keys(&key)
+                .unwrap();
+            handle_text_message(
+                json!(["EVENT", event]).to_string(),
+                conn.clone(),
+                state.clone(),
+            )
+            .await;
+            assert_eq!(
+                read_frame(&mut rx),
+                json!([
+                    "OK",
+                    event.id.to_hex(),
+                    false,
+                    "rate-limited: shared admission unavailable"
+                ])
+            );
+            let mut filter = json!({"kinds":[kind]});
+            filter[extension] = json!({"view":"live"});
+            handle_text_message(
+                json!(["REQ", "private", filter]).to_string(),
+                conn.clone(),
+                state.clone(),
+            )
+            .await;
+            assert_eq!(
+                read_frame(&mut rx),
+                json!([
+                    "CLOSED",
+                    "private",
+                    "rate-limited: shared admission unavailable"
+                ])
+            );
+        }
+        // A valid binding filter reaches the reserved registry lane even when shared admission is unavailable.
+        let binding = json!({"kinds":[43103], "#p":[key.public_key().to_hex()],
+            "host_registry":{"v":2,"view":"binding","nonce":"aa".repeat(32),"cursor":null,"generation":"bb".repeat(32)}});
+        handle_text_message(json!(["REQ", "recover", binding]).to_string(), conn, state).await;
+        assert_eq!(
+            read_frame(&mut rx),
+            json!([
+                "CLOSED",
+                "recover",
+                "resync_required: host registry unavailable"
+            ])
+        );
     }
 
     /// Exercise the real state-transition methods for every terminal. The

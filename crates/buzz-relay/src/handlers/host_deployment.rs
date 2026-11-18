@@ -1,5 +1,5 @@
 //! Opt-in private deployment traffic. Never enters generic event storage/fanout.
-use super::host_registry::actor;
+use super::host_registry::{actor, publish_wake, settle_post};
 use crate::{connection::ConnectionState, protocol::RelayMessage, state::AppState};
 use buzz_core::{host_deployment::wire, kind::KIND_HOST_DEPLOYMENT_V1};
 use nostr::{EventBuilder, Kind};
@@ -103,9 +103,10 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
     };
     tokio::spawn(async move {
         let result = if event {
-            tokio::time::timeout(Duration::from_secs(5), post(&raw, &c, &s))
-                .await
-                .unwrap_or(Err(()))
+            settle_post(&id, &c, post(&raw, &c, &s), |signal| {
+                publish_wake(signal, &c, &s)
+            })
+            .await
         } else if let Some(owner) = owner {
             request(&sub, owner, &raw, &c, &s).await
         } else {
@@ -123,9 +124,9 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
     });
     true
 }
-async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
+async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<EventBuilder, ()> {
     let who = actor(c)?;
-    let (e, h) = wire::verify(raw.as_bytes(), &origin(c), who).map_err(|_| ())?;
+    let (_, h) = wire::verify(raw.as_bytes(), &origin(c), who).map_err(|_| ())?;
     if let Some(g) = c.registry.generation() {
         if buzz_core::host_registry::bytes(&h.scope().generation).map_err(|_| ())? != g
             || who != h.scope().host
@@ -150,17 +151,10 @@ async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
     )
     .await
     .map_err(|_| ())?;
-    c.send(RelayMessage::ok(&e.id.to_hex(), true, ""));
-    // Non-sensitive wake only. Sending nodes independently reauthorize each view.
-    if let Ok(signal) = EventBuilder::new(Kind::Custom(KIND_HOST_DEPLOYMENT_V1 as u16), "")
-        .sign_with_keys(&s.relay_keypair)
-    {
-        let _ = s
-            .pubsub
-            .publish_event(&c.tenant, buzz_pubsub::EventTopic::Global, &signal)
-            .await;
-    }
-    Ok(())
+    Ok(EventBuilder::new(
+        Kind::Custom(KIND_HOST_DEPLOYMENT_V1 as u16),
+        "",
+    ))
 }
 async fn read(q: &wire::Query, c: &ConnectionState, s: &AppState) -> Result<nostr::Event, ()> {
     if !s.config.serves_host_deployment() || q.scope.community != origin(c) {
@@ -209,8 +203,9 @@ async fn request(
         super::close::close_if_owner(sub, owner, Some(DENIED), c, s).await;
         return Ok(());
     };
-    super::close::send_if_owner(sub, owner, RelayMessage::event(sub, &first), c).await;
-    super::close::send_if_owner(sub, owner, RelayMessage::eose(sub), c).await;
+    if !super::host_registry::send_initial_page(sub, owner, &first, c, s).await {
+        return Ok(());
+    }
     if q.view != "live" {
         super::close::close_if_owner(sub, owner, None, c, s).await;
         return Ok(());

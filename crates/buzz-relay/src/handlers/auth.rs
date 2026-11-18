@@ -563,7 +563,13 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
         .record("event_id", event_id_hex.as_str())
         .record("conn_id", conn_id.to_string().as_str());
 
-    if super::host_registry::authenticate(&event, &challenge, &conn, &state).await {
+    let host_auth = event.tags.iter().any(|tag| {
+        tag.as_slice()
+            .first()
+            .is_some_and(|name| name == "host-registry")
+    });
+    if host_auth && conn.nip_fi_assertion.is_none() {
+        super::host_registry::authenticate(&event, &challenge, &conn, &state).await;
         return;
     }
 
@@ -623,6 +629,24 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
             .await
                 == crate::nip_fi_session::PairingOutcome::Denied
             {
+                return;
+            }
+
+            // Host credentials and an FI assertion authorize different socket scopes.
+            // Resolve FI proof and pairing first, then end the attempt on the normal root path.
+            if host_auth {
+                deny_admission(
+                    &conn,
+                    &attempt,
+                    &event_id_hex,
+                    AdmissionDenial {
+                        metric: "host_scope_denied",
+                        reason: "restricted: host scope denied",
+                        outcome: AuthOutcome::HostScopeDenied,
+                        class: buzz_auth::DenialClass::AuthorizationDenied,
+                        owner_reason: None,
+                    },
+                );
                 return;
             }
 
@@ -1318,6 +1342,50 @@ mod tests {
             media_storage,
         );
         Arc::new(state)
+    }
+
+    #[tokio::test]
+    async fn host_tag_on_fi_auth_uses_terminal_proof_and_scope_denials() {
+        use crate::connection::tests::{pending_state, read_frame, test_conn};
+        use buzz_auth::DenialClass::{AuthorizationDenied, EvidenceRejected};
+        use chrono::{Duration, Utc};
+
+        let state = auth_test_state().await;
+        let signer = Keys::generate();
+        for (challenge, class) in [
+            ("test-challenge", AuthorizationDenied),
+            ("wrong-challenge", EvidenceRejected),
+        ] {
+            let assertion = buzz_auth::VerifiedAssertion::for_test(
+                Some(signer.public_key()),
+                vec![Utc::now() + Duration::hours(1)],
+            );
+            let mut socket = test_conn(pending_state(), Some(assertion));
+            let event = EventBuilder::new(Kind::Authentication, "")
+                .tag(Tag::parse(["relay", "ws://test.local"]).unwrap())
+                .tag(Tag::parse(["challenge", challenge]).unwrap())
+                .tag(Tag::parse(["host-registry", "2", &"ab".repeat(32)]).unwrap())
+                .sign_with_keys(&signer)
+                .unwrap();
+            handle_auth(event, socket.conn.clone(), state.clone()).await;
+            assert!(matches!(
+                socket.conn.auth_state_snapshot(),
+                AuthState::Failed
+            ));
+            assert!(socket.conn.cancel.is_cancelled());
+            assert_eq!(
+                read_frame(&mut socket.terminal_rx),
+                serde_json::json!(["NOTICE", class.nostr_text()])
+            );
+            assert!(socket.terminal_rx.try_recv().is_err());
+            assert!(socket.ctrl_rx.try_recv().is_err());
+            assert!(socket.send_rx.try_recv().is_err());
+            assert_eq!(
+                *socket.conn.community_control.disconnect_reason().borrow(),
+                (class == AuthorizationDenied)
+                    .then_some(crate::state::CommunityDisconnectReason::AuthorizationDenied)
+            );
+        }
     }
 
     #[tokio::test]

@@ -33,6 +33,29 @@ pub(crate) fn private_frame(frame: &serde_json::Value, scoped: bool) -> bool {
     }
 }
 
+/// Only single registry binding reads and unpair operations have a reserved recovery lane.
+pub(crate) fn restrictive_frame(frame: &serde_json::Value) -> bool {
+    let Some(parts) = frame.as_array() else {
+        return false;
+    };
+    match parts.as_slice() {
+        [verb, _, filter] if verb == "REQ" => serde_json::from_value::<Filter>(filter.clone())
+            .is_ok_and(|f| {
+                f.kinds == [KIND_HOST_REGISTRY_V2]
+                    && f.host_registry.view == "binding"
+                    && f.host_registry.validate().is_ok()
+            }),
+        [verb, event] if verb == "EVENT" && event["kind"] == KIND_HOST_REGISTRY_V2 => {
+            let Some(tags) = event["tags"].as_array() else {
+                return false;
+            };
+            let mut ops = tags.iter().filter(|tag| tag[0] == "op");
+            matches!((ops.next(), ops.next()), (Some(op), None) if op == &json!(["op","unpair"]) || op == &json!(["op","unpaired"]))
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn private_filters(filters: &[serde_json::Value]) -> bool {
     filters.iter().any(|f| {
         f.get("host_registry").is_some()
@@ -67,34 +90,21 @@ impl Connection {
     }
 }
 
-pub(crate) async fn authenticate(
-    e: &Event,
-    challenge: &str,
-    c: &ConnectionState,
-    s: &AppState,
-) -> bool {
-    if !e
-        .tags
-        .iter()
-        .any(|t| t.as_slice().first().is_some_and(|n| n == "host-registry"))
-    {
-        return false;
-    }
+pub(crate) async fn authenticate(e: &Event, challenge: &str, c: &ConnectionState, s: &AppState) {
     let id = e.id.to_hex();
     if let Err(outcome) = scope_auth(e, challenge, c, s).await {
         if !crate::access::AuthAttempt::nip42(c, e.pubkey, outcome != AuthOutcome::Invalid)
             .reject(c, outcome)
             || !c.community_control.is_open()
         {
-            return true;
+            return;
         }
         if outcome == AuthOutcome::ConcurrencyLimit {
             c.cancel.cancel();
-            return true;
+            return;
         }
         c.send(RelayMessage::ok(&id, false, DENIED));
     }
-    true
 }
 async fn scope_auth(
     e: &Event,
@@ -190,7 +200,12 @@ async fn scope_auth(
 }
 
 // Decode extension intent before generic Filter can discard unknown members.
-pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState>) -> bool {
+pub(crate) async fn dispatch(
+    raw: &str,
+    c: Arc<ConnectionState>,
+    s: Arc<AppState>,
+    restrictive: bool,
+) -> bool {
     let Ok(a) = serde_json::from_str::<Vec<Box<RawValue>>>(raw) else {
         return false;
     };
@@ -249,19 +264,6 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
         deny(&verb, &sub, &id, &c, &s).await;
         return true;
     }
-    let binding_recovery = registry_req
-        && a.get(2)
-            .and_then(|r| serde_json::from_str::<serde_json::Value>(r.get()).ok())
-            .is_some_and(|f| f["host_registry"]["view"] == "binding");
-    let restrictive = binding_recovery
-        || registry_event
-            && ev
-                .as_ref()
-                .and_then(|e| e["tags"].as_array())
-                .is_some_and(|ts| {
-                    ts.iter()
-                        .any(|t| t == &json!(["op", "unpair"]) || t == &json!(["op", "unpaired"]))
-                });
     let slots = if restrictive {
         &c.registry.recovery
     } else {
@@ -302,9 +304,10 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
         let result = if !exact {
             Err(())
         } else if let Some(event) = event {
-            tokio::time::timeout(std::time::Duration::from_secs(5), post(&event, &c, &s))
-                .await
-                .unwrap_or(Err(()))
+            settle_post(&id, &c, post(&event, &c, &s), |signal| {
+                publish_wake(signal, &c, &s)
+            })
+            .await
         } else if let Some(owner) = owner {
             // REQ bounds database work internally. Never cancel a lifecycle
             // transition halfway through its index/topic ownership effects.
@@ -388,7 +391,31 @@ pub(crate) async fn budget(
         Err(())
     }
 }
-async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
+/// Settle the write before waiting on the independent best-effort wake.
+pub(super) async fn settle_post<F: std::future::Future<Output = ()>>(
+    id: &str,
+    c: &ConnectionState,
+    write: impl std::future::Future<Output = Result<EventBuilder, ()>>,
+    publish: impl FnOnce(EventBuilder) -> F,
+) -> Result<(), ()> {
+    let signal = tokio::time::timeout(std::time::Duration::from_secs(5), write)
+        .await
+        .map_err(|_| ())??;
+    c.send(RelayMessage::ok(id, true, ""));
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), publish(signal)).await;
+    Ok(())
+}
+
+pub(super) async fn publish_wake(signal: EventBuilder, c: &ConnectionState, s: &AppState) {
+    if let Ok(signal) = signal.sign_with_keys(&s.relay_keypair) {
+        let _ = s
+            .pubsub
+            .publish_event(&c.tenant, buzz_pubsub::EventTopic::Global, &signal)
+            .await;
+    }
+}
+
+async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<EventBuilder, ()> {
     let who = actor(c)?;
     let community = origin(c);
     let bytes = raw.as_bytes().to_vec();
@@ -396,7 +423,7 @@ async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
         .await
         .map_err(|_| ())?
         .map_err(|_| ())?;
-    let (event, h) = parsed;
+    let (_, h) = parsed;
     let g = wire::bytes(&h.generation).map_err(|_| ())?;
     let restrictive = matches!(h.op.as_str(), "unpair" | "unpaired");
     if let Some(ceiling) = c.registry.generation() {
@@ -442,19 +469,11 @@ async fn post(raw: &str, c: &ConnectionState, s: &AppState) -> Result<(), ()> {
     )
     .await
     .map_err(|_| ())?;
-    c.send(RelayMessage::ok(&event.id.to_hex(), true, ""));
-    // Post-commit best effort invalidation. Exact private ciphertext never enters
-    // the ordinary event pipeline. Generic delivery rejects this private kind.
-    if let Ok(signal) = EventBuilder::new(Kind::Custom(KIND_HOST_REGISTRY_V2 as u16), "")
-        .tags(Tag::parse(["g", &h.generation]))
-        .sign_with_keys(&s.relay_keypair)
-    {
-        let _ = s
-            .pubsub
-            .publish_event(&c.tenant, buzz_pubsub::EventTopic::Global, &signal)
-            .await;
-    }
-    Ok(())
+    // Non-sensitive invalidation only. Each receiving node reauthorizes its reader.
+    Ok(
+        EventBuilder::new(Kind::Custom(KIND_HOST_REGISTRY_V2 as u16), "")
+            .tags(Tag::parse(["g", &h.generation])),
+    )
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -641,6 +660,31 @@ pub(super) async fn claim(
     true
 }
 
+/// Retire an incomplete initial snapshot. If the newer owner already replaced us,
+/// close_if_owner leaves its frames, lifecycle token, and retained topic intact.
+pub(super) async fn send_initial_page(
+    sub: &str,
+    owner: u64,
+    page: &nostr::Event,
+    c: &ConnectionState,
+    s: &AppState,
+) -> bool {
+    if super::close::send_if_owner(sub, owner, RelayMessage::event(sub, page), c).await
+        && super::close::send_if_owner(sub, owner, RelayMessage::eose(sub), c).await
+    {
+        return true;
+    }
+    super::close::close_if_owner(
+        sub,
+        owner,
+        Some("resync_required: incomplete host snapshot"),
+        c,
+        s,
+    )
+    .await;
+    false
+}
+
 async fn request_owned(
     sub: &str,
     owner: u64,
@@ -654,10 +698,9 @@ async fn request_owned(
         .map_err(|_| ())??;
     let mut high = p.high_water;
     let e = page_event(c, s, q, p, false)?;
-    if !super::close::send_if_owner(sub, owner, RelayMessage::event(sub, &e), c).await {
+    if !send_initial_page(sub, owner, &e, c, s).await {
         return Ok(());
     }
-    super::close::send_if_owner(sub, owner, RelayMessage::eose(sub), c).await;
     if q.view != "live" {
         super::close::close_if_owner(sub, owner, None, c, s).await;
         return Ok(());
@@ -768,6 +811,82 @@ mod tests {
         }
         for verb in ["AUTH", "CLOSE"] {
             assert!(!private_frame(&json!([verb, "s"]), true));
+        }
+        for (tags, recovery) in [
+            (json!([["op", "unpair"]]), true),
+            (json!([["op", "unpaired"]]), true),
+            (json!([["op", "status"]]), false),
+            (json!([["op", "status"], ["op", "unpair"]]), false),
+        ] {
+            assert_eq!(
+                restrictive_frame(&json!(["EVENT", {"kind":43103,"tags":tags}])),
+                recovery
+            );
+            assert!(!restrictive_frame(
+                &json!(["EVENT", {"kind":43104,"tags":tags}])
+            ));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn committed_write_stays_accepted_when_wake_times_out() {
+        let (conn, mut rx) = test_conn_with_auth(authenticated_state());
+        let write = async {
+            tokio::time::sleep(std::time::Duration::from_millis(4900)).await;
+            Ok(EventBuilder::new(Kind::Custom(43103), ""))
+        };
+        let settled = settle_post("committed", &conn, write, |_| std::future::pending());
+        tokio::time::timeout(std::time::Duration::from_secs(7), settled)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::connection::tests::read_frame(&mut rx),
+            json!(["OK", "committed", true, ""])
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn incomplete_initial_page_retires_only_its_own_subscription() {
+        let state = crate::state::tests::test_state().await;
+        let page = EventBuilder::new(Kind::Custom(43103), "")
+            .sign_with_keys(&state.relay_keypair)
+            .unwrap();
+        for remaining in [0, 1] {
+            let (conn, _rx) = test_conn_with_auth(authenticated_state());
+            let old = super::super::close::admit_with_limit("s", &conn, 32)
+                .await
+                .unwrap();
+            assert!(claim("s", old, true, &conn, &state).await);
+            let owner = super::super::close::admit_with_limit("s", &conn, 32)
+                .await
+                .unwrap();
+            assert!(claim("s", owner, true, &conn, &state).await);
+            // Superseded sender cannot retire its replacement even on an empty queue.
+            assert!(!send_initial_page("s", old, &page, &conn, &state).await);
+            assert!(!conn.cancel.is_cancelled());
+            assert!(super::super::close::owns(
+                &*conn.subscriptions.lock().await,
+                "s",
+                owner
+            ));
+            while conn.send_tx.capacity() > remaining {
+                assert!(conn.send("queued".into()));
+            }
+            assert!(!send_initial_page("s", owner, &page, &conn, &state).await);
+            assert!(
+                conn.cancel.is_cancelled(),
+                "CLOSED could not queue after the incomplete snapshot"
+            );
+            assert!(conn.subscriptions.lock().await.is_empty());
+            assert_eq!(
+                state
+                    .pubsub
+                    .topic_refcount(&conn.tenant, EventTopic::Global)
+                    .await,
+                0
+            );
         }
     }
 
