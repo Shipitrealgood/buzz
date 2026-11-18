@@ -269,6 +269,8 @@ pub struct OwnedAgent {
     pub model_capabilities: Option<AgentModelCapabilities>,
     /// Desired model ID (from `Config.model`). Applied after every `session_new_full()`.
     pub desired_model: Option<String>,
+    /// Refuse fresh-session fallback when a managed host selected a model.
+    pub strict_model: bool,
     /// Whether `desired_model` was set by a live `SwitchModel` control signal
     /// (as opposed to being derived from config/persona at spawn). Used by the
     /// desktop reader to distinguish a genuine runtime override from a stale
@@ -1686,95 +1688,126 @@ async fn create_session_and_apply_model(
         // taking it here keeps a leftover flag from firing a spurious success
         // on some later unrelated session.
         let pending_ack = std::mem::take(&mut agent.desired_model_pending_ack);
-        match resolve_model_switch_method(&resp.raw, desired) {
-            Some(method) => {
-                match apply_model_switch(&mut agent.acp, &resp.session_id, desired, &method).await?
-                {
-                    ModelSwitchOutcome::Applied(switch_result) => {
-                        // The adapter rebuilds `session.configOptions` for the
-                        // target model and echoes them here. Refresh capabilities
-                        // from that authoritative snapshot when present so the
-                        // idle-switch guard and the panel reflect the target
-                        // model; drop to `None` (re-derive next session) when the
-                        // adapter returned no options so a pre-switch snapshot is
-                        // never mistaken for the target model's.
-                        if switch_result
-                            .get("configOptions")
-                            .is_some_and(|v| !v.is_null())
-                        {
-                            agent.model_capabilities = Some(AgentModelCapabilities {
-                                config_options_raw: extract_model_config_options(&switch_result),
-                                available_models_raw: extract_model_state(&switch_result),
-                                thought_level_config_id: extract_thought_level_config_id(
-                                    &switch_result,
-                                ),
-                            });
-                        } else {
-                            agent.model_capabilities = None;
+        let declared_current = extract_model_config_options(&resp.raw)
+            .into_iter()
+            .find_map(|o| {
+                o.get("currentValue")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            })
+            .or_else(|| {
+                extract_model_state(&resp.raw).and_then(|state| {
+                    state
+                        .get("currentModelId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned)
+                })
+            });
+        if agent.strict_model && declared_current.as_deref() == Some(desired.as_str()) {
+            None
+        } else {
+            match resolve_model_switch_method(&resp.raw, desired) {
+                Some(method) => {
+                    match apply_model_switch(&mut agent.acp, &resp.session_id, desired, &method)
+                        .await?
+                    {
+                        ModelSwitchOutcome::Applied(switch_result) => {
+                            // The adapter rebuilds `session.configOptions` for the
+                            // target model and echoes them here. Refresh capabilities
+                            // from that authoritative snapshot when present so the
+                            // idle-switch guard and the panel reflect the target
+                            // model; drop to `None` (re-derive next session) when the
+                            // adapter returned no options so a pre-switch snapshot is
+                            // never mistaken for the target model's.
+                            if switch_result
+                                .get("configOptions")
+                                .is_some_and(|v| !v.is_null())
+                            {
+                                agent.model_capabilities = Some(AgentModelCapabilities {
+                                    config_options_raw: extract_model_config_options(
+                                        &switch_result,
+                                    ),
+                                    available_models_raw: extract_model_state(&switch_result),
+                                    thought_level_config_id: extract_thought_level_config_id(
+                                        &switch_result,
+                                    ),
+                                });
+                            } else {
+                                agent.model_capabilities = None;
+                            }
+                            // Busy-path deferred switch: emit a positive terminal so
+                            // the Desktop confirms success from a real frame instead
+                            // of inferring it from timeout silence. Gated on the
+                            // pending-ack flag so the idle path (which already acked
+                            // `switched` immediately) does not double-emit.
+                            if pending_ack {
+                                agent.acp.observe(
+                                    "control_result",
+                                    serde_json::json!({
+                                        "type": "switch_model",
+                                        "status": "switched",
+                                        "modelId": desired,
+                                        "requestId": agent.desired_model_request_id,
+                                    }),
+                                );
+                            }
+                            Some(switch_result)
                         }
-                        // Busy-path deferred switch: emit a positive terminal so
-                        // the Desktop confirms success from a real frame instead
-                        // of inferring it from timeout silence. Gated on the
-                        // pending-ack flag so the idle path (which already acked
-                        // `switched` immediately) does not double-emit.
-                        if pending_ack {
+                        ModelSwitchOutcome::Rejected => {
+                            if agent.strict_model {
+                                return Err(AcpError::Protocol("configured model rejected".into()));
+                            }
+                            // The adapter explicitly rejected the switch: the session
+                            // is still on its default model. Surface a terminal
+                            // failure so the Desktop ModelPicker rejects the live pick
+                            // instead of falsely reporting success, and preserve the
+                            // pre-switch capabilities the session is really running.
                             agent.acp.observe(
                                 "control_result",
                                 serde_json::json!({
                                     "type": "switch_model",
-                                    "status": "switched",
+                                    "status": "failure",
                                     "modelId": desired,
+                                    // Echo the pick's request_id so the Desktop can
+                                    // correlate this late frame to the operation
+                                    // that fired it, and ignore replayed results.
                                     "requestId": agent.desired_model_request_id,
                                 }),
                             );
+                            None
                         }
-                        Some(switch_result)
-                    }
-                    ModelSwitchOutcome::Rejected => {
-                        // The adapter explicitly rejected the switch: the session
-                        // is still on its default model. Surface a terminal
-                        // failure so the Desktop ModelPicker rejects the live pick
-                        // instead of falsely reporting success, and preserve the
-                        // pre-switch capabilities the session is really running.
-                        agent.acp.observe(
-                            "control_result",
-                            serde_json::json!({
-                                "type": "switch_model",
-                                "status": "failure",
-                                "modelId": desired,
-                                // Echo the pick's request_id so the Desktop can
-                                // correlate this late frame to the operation
-                                // that fired it, and ignore replayed results.
-                                "requestId": agent.desired_model_request_id,
-                            }),
-                        );
-                        None
                     }
                 }
-            }
-            None => {
-                tracing::warn!(
-                    target: "pool::model",
-                    "desired model {desired} not found in agent's available models — proceeding with agent default"
-                );
-                // Surface the miss so the desktop ModelPicker can reject a live
-                // pick rather than silently no-op. On the busy path the turn has
-                // already been cancelled+requeued by the time we get here, so the
-                // turn restarts on the unchanged model and the user is told no.
-                agent.acp.observe(
-                    "control_result",
-                    serde_json::json!({
-                        "type": "switch_model",
-                        "status": "unsupported_model",
-                        "modelId": desired,
-                        // Echo the pick's request_id (see the failure arm).
-                        "requestId": agent.desired_model_request_id,
-                    }),
-                );
-                None
+                None => {
+                    if agent.strict_model {
+                        return Err(AcpError::Protocol("configured model unavailable".into()));
+                    }
+                    tracing::warn!(
+                        target: "pool::model",
+                        "desired model {desired} not found in agent's available models — proceeding with agent default"
+                    );
+                    // Surface the miss so the desktop ModelPicker can reject a live
+                    // pick rather than silently no-op. On the busy path the turn has
+                    // already been cancelled+requeued by the time we get here, so the
+                    // turn restarts on the unchanged model and the user is told no.
+                    agent.acp.observe(
+                        "control_result",
+                        serde_json::json!({
+                            "type": "switch_model",
+                            "status": "unsupported_model",
+                            "modelId": desired,
+                            // Echo the pick's request_id (see the failure arm).
+                            "requestId": agent.desired_model_request_id,
+                        }),
+                    );
+                    None
+                }
             }
         }
     } else {
+        if agent.strict_model {
+            return Err(AcpError::Protocol("configured model missing".into()));
+        }
         None
     };
     let switch_succeeded = post_switch_snapshot.is_some();
@@ -7097,6 +7130,7 @@ pub(crate) mod tests {
                 state: SessionState::default(),
                 model_capabilities: None,
                 desired_model: None,
+                strict_model: false,
                 model_overridden: false,
                 desired_model_request_id: None,
                 desired_model_pending_ack: false,
@@ -7225,6 +7259,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -7326,6 +7361,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -7515,6 +7551,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -7730,6 +7767,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -7886,6 +7924,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -8600,6 +8639,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -8682,6 +8722,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -9745,6 +9786,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -9806,6 +9848,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -11106,6 +11149,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -11502,6 +11546,7 @@ mod startup_effort_tests {
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: None,
+            strict_model: false,
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -11762,6 +11807,7 @@ mod model_switch_tests {
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: Some(desired_model.to_string()),
+            strict_model: false,
             model_overridden: true,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -12337,6 +12383,7 @@ done"#
             state: SessionState::default(),
             model_capabilities: None,
             desired_model: Some(desired_model.to_string()),
+            strict_model: false,
             model_overridden: true,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
@@ -12445,3 +12492,7 @@ done"#
 #[cfg(all(test, unix))]
 #[path = "pool/pi_prompt_tests.rs"]
 mod pi_prompt_tests;
+
+#[cfg(test)]
+#[path = "pool_strict_model_tests.rs"]
+mod strict_model_tests;

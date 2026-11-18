@@ -1158,6 +1158,8 @@ impl TwoGenDedup {
 
 /// State maintained by the background WebSocket task.
 struct BgState {
+    #[cfg(target_os = "linux")]
+    paired_startup: Option<paired_startup::Startup>,
     /// Active subscriptions: channel_id → subscription_id string.
     active_subscriptions: HashMap<Uuid, String>,
     /// Most recent `created_at` timestamp seen per channel (for `since` filter).
@@ -1274,6 +1276,8 @@ struct BgState {
 impl BgState {
     fn new() -> Self {
         Self {
+            #[cfg(target_os = "linux")]
+            paired_startup: paired_startup::Startup::configured(),
             active_subscriptions: HashMap::new(),
             last_seen: HashMap::new(),
             seen_ids: TwoGenDedup::new(SEEN_ID_LIMIT),
@@ -1355,6 +1359,12 @@ impl BgState {
     fn note_eose(&mut self, sub_id: &str) {
         if !self.superseded_this_conn.contains(sub_id) {
             self.retired_loss_this_conn.remove(sub_id);
+            #[cfg(target_os = "linux")]
+            if self.req_sent_this_conn.contains(sub_id)
+                && self.paired_startup.as_mut().is_some_and(|s| s.eose(sub_id))
+            {
+                self.paired_startup = None;
+            }
         }
     }
 
@@ -1364,6 +1374,11 @@ impl BgState {
     /// subscription's loss record right after this, so the record is kept in
     /// `retired_loss_this_conn` until the replay is known to have finished.
     fn note_req_sent(&mut self, sub_id: &str) {
+        #[cfg(target_os = "linux")]
+        if let Some(s) = &mut self.paired_startup {
+            s.invalidate(sub_id);
+        }
+
         let loss = if sub_id == MEMBERSHIP_NOTIF_SUB_ID {
             self.membership_dropped_since
         } else {
@@ -1396,6 +1411,10 @@ impl BgState {
                     .or_insert(loss);
             }
         }
+        #[cfg(target_os = "linux")]
+        if let Some(s) = &mut self.paired_startup {
+            s.reset();
+        }
         self.req_sent_this_conn.clear();
         self.superseded_this_conn.clear();
     }
@@ -1415,6 +1434,10 @@ impl BgState {
         // for the old REQ must not count for the new one.
         self.retired_loss_this_conn
             .remove(&channel_sub_id(*channel_id));
+        #[cfg(target_os = "linux")]
+        if let Some(s) = &mut self.paired_startup {
+            s.invalidate(&channel_sub_id(*channel_id));
+        }
         self.active_filters.remove(channel_id);
         self.rate_limited_pending.remove(channel_id);
         self.resubscribe_retry.remove(channel_id);
@@ -2487,6 +2510,10 @@ async fn handle_ws_message(
                     subscription_id,
                     message,
                 } => {
+                    #[cfg(target_os = "linux")]
+                    if let Some(s) = &mut state.paired_startup {
+                        s.invalidate(&subscription_id);
+                    }
                     // A per-channel membership denial means THIS channel is
                     // forbidden, not the whole connection. Drop just this
                     // channel's subscription and keep the socket — otherwise the
@@ -4388,6 +4415,8 @@ async fn wait_for_any_ok(
     }
 }
 
+#[cfg(target_os = "linux")]
+mod paired_startup;
 mod recovery;
 
 #[cfg(test)]

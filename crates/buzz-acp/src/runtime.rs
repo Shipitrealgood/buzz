@@ -55,6 +55,7 @@ pub(crate) struct PoolStartup {
     pub(crate) extra_env: Vec<(String, String)>,
     pub(crate) has_generated_codex_config: bool,
     pub(crate) model: Option<String>,
+    pub(crate) strict_model: bool,
     pub(crate) effort_level: Option<String>,
     pub(crate) observer: Option<observer::ObserverHandle>,
 }
@@ -68,6 +69,7 @@ impl PoolStartup {
             extra_env: config.persona_env_vars.clone(),
             has_generated_codex_config: config.has_generated_codex_config,
             model: config.model.clone(),
+            strict_model: config.strict_model,
             effort_level: config.effort_level.clone(),
             observer,
         }

@@ -51,6 +51,7 @@ pub(crate) async fn execute(
         state: SessionState::default(),
         model_capabilities: None,
         desired_model: startup.model.clone(),
+        strict_model: startup.strict_model,
         model_overridden: false,
         desired_model_request_id: None,
         desired_model_pending_ack: false,
