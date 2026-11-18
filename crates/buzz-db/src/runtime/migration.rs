@@ -3999,6 +3999,33 @@ mod postgres_tests {
         );
     }
 
+    /// At these canonical retirement boundaries a registered-host deployment
+    /// already has the fork's 81 and 82 migrations on the extension ledger.
+    async fn install_pre_retirement_host_extensions(
+        pool: &PgPool,
+        store: &crate::deletion::DeletionStore,
+    ) {
+        let err = store
+            .validate_catalog()
+            .await
+            .expect_err("a stock-only schema must fail the fork's deletion check");
+        let crate::DbError::DeletionSafety(drift) = err else {
+            panic!("expected deletion catalog drift, got {err}");
+        };
+        assert_eq!(
+            drift,
+            concat!(
+                "community deletion catalog drift (missing=paired_agent_operations,",
+                "paired_agent_placements,paired_host_bindings,paired_host_deployment_status,",
+                "paired_host_events,paired_host_requests, unknown=)"
+            )
+        );
+        EXTENSION_MIGRATOR
+            .run_to(82, pool)
+            .await
+            .expect("install deployed registered-host extensions");
+    }
+
     #[tokio::test]
     #[ignore = "requires Postgres"]
     async fn migrated_catalog_retires_universal_fences_but_keeps_deletion_guards() {
@@ -4014,6 +4041,7 @@ mod postgres_tests {
             .await
             .expect("apply pre-retirement migrations");
         let store = crate::deletion::DeletionStore::new(pool.clone());
+        install_pre_retirement_host_extensions(&pool, &store).await;
         store
             .validate_serving_catalog()
             .await
@@ -4090,6 +4118,7 @@ mod postgres_tests {
             .await
             .expect("apply pre-retirement migrations");
         assert_eq!(present(&pool).await, (true, true));
+        install_pre_retirement_host_extensions(&pool, &store).await;
         store
             .validate_serving_catalog()
             .await
