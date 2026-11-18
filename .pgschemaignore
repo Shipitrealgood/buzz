@@ -10,6 +10,9 @@
 # them.
 [tables]
 patterns = [
+    # SQLx owns the migration histories. Keep their rows across declarative applies.
+    "_sqlx_migrations",
+    "_buzz_extension_migrations",
     "events_p2*",
     "!events_p2026_01",
     "!events_p2026_02",

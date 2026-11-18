@@ -1,11 +1,15 @@
 //! Embedded SQLx migrations for Buzz.
 //!
 //! Fresh deployments apply the checked-in additive SQL files under
-//! `migrations/`. The multi-tenant rewrite begins from a clean consolidated
+//! `migrations/` and the paired extensions under `crates/buzz-db/extension-migrations/`.
+//! The multi-tenant rewrite begins from a clean consolidated
 //! `0001`; legacy single-tenant cutover/backfill is a separate operator script,
 //! not startup migration state.
 
+mod extension_history;
+
 use std::future::Future;
+use std::sync::LazyLock;
 
 use sqlx::{Connection, PgConnection, PgPool};
 
@@ -13,6 +17,14 @@ use crate::deletion::SCHEMA_DESTRUCTION_LOCK_KEY;
 use crate::Result;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+
+// Use SQLx for both migration streams, including checksum validation and
+// transactionally recording newly applied migrations.
+static EXTENSION_MIGRATOR: LazyLock<sqlx::migrate::Migrator> = LazyLock::new(|| {
+    let mut migrator = sqlx::migrate!("./extension-migrations");
+    migrator.dangerous_set_table_name("public._buzz_extension_migrations");
+    migrator
+});
 
 /// Run all pending Buzz database migrations.
 ///
@@ -24,7 +36,7 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 /// why that binding, not the explicit unlock, is the safety contract.
 /// Migration execution must never bypass this wrapper — a source lint
 /// (`migration_execution_cannot_bypass_schema_destruction_lock`) enforces
-/// that `MIGRATOR.run` has no other call site.
+/// that the production migrators only run inside this wrapper.
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     with_exclusive_schema_destruction_lock(pool, |mut conn| async move {
         let outcome = run_migrations_locked(&mut conn).await;
@@ -48,12 +60,14 @@ pub(crate) async fn run_migrations_through(pool: &PgPool, target: i64) -> Result
 }
 
 async fn run_migrations_locked(conn: &mut PgConnection) -> Result<()> {
+    extension_history::reconcile(conn).await?;
     reject_legacy_nip_rs_cardinality_ambiguity(conn).await?;
     for (version, doc, indexes) in INLINE_INDEX_BUILDS {
         MIGRATOR.run_to(version - 1, &mut *conn).await?;
         build_indexes_before_migration(conn, *version, doc, indexes).await?;
     }
     MIGRATOR.run(&mut *conn).await?;
+    EXTENSION_MIGRATOR.run(&mut *conn).await?;
     Ok(())
 }
 
@@ -440,7 +454,8 @@ mod postgres_tests {
             "at least the initial migration must exist"
         );
         migrations
-            .iter()
+            .into_iter()
+            .chain(EXTENSION_MIGRATOR.iter())
             .map(|migration| migration.sql.as_ref())
             .collect::<Vec<&str>>()
             .join("\n")
@@ -2267,8 +2282,8 @@ mod postgres_tests {
             if *path == this_file {
                 assert_eq!(
                     (macro_hits, run_hits, run_to_hits),
-                    (1, 1, 2),
-                    "migration.rs must embed the migrator once, run it once in production, \
+                    (2, 2, 2),
+                    "migration.rs must embed both migrators and run each once in production, \
                      and have one test-only and one production bounded run"
                 );
             } else if *path == push_gateway_exception {
@@ -2285,7 +2300,7 @@ mod postgres_tests {
             }
         }
 
-        // Within migration.rs, the single run site must sit inside
+        // Within migration.rs, both run sites must sit inside
         // `run_migrations_locked`, and the only public entry point must wrap
         // it in the exclusive session lock.
         let source = std::fs::read_to_string(&this_file).expect("read migration.rs");
@@ -2299,6 +2314,9 @@ mod postgres_tests {
             .find("async fn with_exclusive_schema_destruction_lock")
             .expect("exclusive lock wrapper");
         let run_site = source.find(&migrator_run).expect("migrator run site");
+        let extension_run_site = source
+            .rfind(&migrator_run)
+            .expect("extension migrator run site");
         let run_to_site = source
             .find(&migrator_run_to)
             .expect("bounded test migrator run site");
@@ -2312,7 +2330,8 @@ mod postgres_tests {
             .expect("production bounded migrator run site");
         assert!(
             run_site > locked
-                && run_site < wrapper
+                && run_site < extension_run_site
+                && extension_run_site < wrapper
                 && production_run_to_site > locked
                 && production_run_to_site < run_site,
             "the production migrator run sites must live inside run_migrations_locked"
@@ -3095,8 +3114,7 @@ mod postgres_tests {
         let migrated = PgPool::connect(migrated_db.url())
             .await
             .expect("connect migrated probe database");
-        MIGRATOR
-            .run(&migrated)
+        run_migrations(&migrated)
             .await
             .expect("apply migrations for schema parity");
 
@@ -3119,6 +3137,12 @@ mod postgres_tests {
             "user_deletion_fences",
             "workflow_runs",
             "push_gateway_installations",
+            "paired_host_events",
+            "paired_host_bindings",
+            "paired_host_requests",
+            "paired_agent_placements",
+            "paired_agent_operations",
+            "paired_host_deployment_status",
         ] {
             assert_eq!(
                 columns(&desired, table).await,
@@ -3918,6 +3942,19 @@ mod postgres_tests {
             versions
         };
         assert_eq!(applied_versions(&pool).await, expected);
+        let extensions: Vec<i64> = sqlx::query_scalar(
+            "SELECT version FROM public._buzz_extension_migrations WHERE success ORDER BY version",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            extensions,
+            EXTENSION_MIGRATOR
+                .iter()
+                .map(|m| m.version)
+                .collect::<Vec<_>>()
+        );
         let sql = migration_sql();
         let tables = create_tables(sql.as_str());
         for table in [

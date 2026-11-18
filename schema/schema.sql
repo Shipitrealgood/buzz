@@ -127,6 +127,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 \i tables/public/artifact_heads.sql
 \i tables/public/artifact_revisions.sql
 
+\i tables/public/paired_host_events.sql
+\i tables/public/paired_host_bindings.sql
+\i tables/public/paired_host_requests.sql
+\i tables/public/paired_agent_placements.sql
+\i tables/public/paired_agent_operations.sql
+\i tables/public/paired_host_deployment_status.sql
+
 -- partitions
 \i partitions/events.sql
 \i partitions/delivery_log.sql
