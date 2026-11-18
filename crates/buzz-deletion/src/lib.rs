@@ -2530,12 +2530,25 @@ mod postgres_tests {
             .retain(|table| table != forward);
         validate_approved_schema(&expanded, &approved_before_expand)
             .expect("a listed forward table added after approval is not drift");
-        let mut lacks_required = decoded.clone();
-        lacks_required
-            .schema
-            .scoped_tables
-            .retain(|table| table != "workflows");
-        assert!(validate_approved_schema(&live, &lacks_required).is_err());
+        for required in [
+            "workflows",
+            "paired_agent_operations",
+            "paired_agent_placements",
+            "paired_host_deployment_status",
+            "paired_host_requests",
+            "paired_host_bindings",
+            "paired_host_events",
+        ] {
+            let mut lacks_required = decoded.clone();
+            lacks_required
+                .schema
+                .scoped_tables
+                .retain(|table| table != required);
+            assert!(
+                validate_approved_schema(&live, &lacks_required).is_err(),
+                "approval must cover {required}"
+            );
+        }
         let mut removed = live.clone();
         removed.scoped_tables.retain(|table| table != "workflows");
         assert!(validate_approved_schema(&removed, &decoded).is_err());

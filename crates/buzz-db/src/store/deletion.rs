@@ -91,6 +91,12 @@ pub const RELAY_ADMIN_TABLES: &[(&str, &str)] = &[
 /// blocks deletion until this manifest is intentionally updated.
 pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_agent_operations",
+    "paired_agent_placements",
+    "paired_host_deployment_status",
+    "paired_host_requests",
+    "paired_host_bindings",
+    "paired_host_events",
     "api_tokens",
     "archived_identities",
     "artifact_heads",
@@ -177,6 +183,12 @@ const EXCLUDED_SCOPED_TABLES: &[&str] = &[
 /// gates it).
 pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "nip_fi_profile_heads",
+    "paired_agent_operations",
+    "paired_agent_placements",
+    "paired_host_deployment_status",
+    "paired_host_requests",
+    "paired_host_bindings",
+    "paired_host_events",
     "personal_read_frontiers",
     "personal_read_accounts",
     "workflow_approvals",
@@ -4583,6 +4595,8 @@ pub(crate) mod owner_provenance_contract {
 
 #[cfg(test)]
 pub(crate) mod postgres_tests {
+    mod paired_hosts;
+
     use super::*;
     use crate::test_support::ScratchDb;
     use crate::{
@@ -4591,6 +4605,18 @@ pub(crate) mod postgres_tests {
     };
     use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
     use std::str::FromStr;
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn paired_host_tables_purge_only_the_deleted_community() {
+        paired_hosts::assert_host_purge_is_scoped().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn migration_schema_paired_host_tables_purge_only_the_deleted_community() {
+        paired_hosts::assert_host_purge_is_scoped().await;
+    }
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
