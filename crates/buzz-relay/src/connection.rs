@@ -1413,33 +1413,42 @@ async fn handle_text_message(text: String, conn: Arc<ConnectionState>, state: Ar
     };
     let host_scoped = conn.registry.generation().is_some();
     let private = handlers::host_registry::private_frame(&frame, host_scoped);
-    let recovery = private && handlers::host_registry::restrictive_frame(&frame);
-    if !private || (!host_scoped && !recovery) {
-        let msg = match ClientMessage::parse_frame(&frame) {
-            Ok(msg) => msg,
+    use handlers::host_registry::PrivateAdmission;
+    let admission = if private && handlers::host_registry::restrictive_frame(&frame) {
+        PrivateAdmission::Recovery
+    } else if private && host_scoped {
+        PrivateAdmission::Ordinary
+    } else {
+        match ClientMessage::parse_frame(&frame) {
+            Ok(msg) => {
+                match &msg {
+                    ClientMessage::Req { .. } => crate::metrics::record_ws_read("req"),
+                    ClientMessage::Count { .. } => crate::metrics::record_ws_read("count"),
+                    ClientMessage::ArtifactSync { .. } => crate::metrics::record_ws_read("sync"),
+                    _ => {}
+                }
+                if let Err(reason) = enforce_ws_admission(&msg, &conn, &state).await {
+                    crate::access::ReadLog::refused(&msg, &conn, reason);
+                    return;
+                }
+                if !private {
+                    handle_admitted_message(msg, conn, state).await;
+                    return;
+                }
+                PrivateAdmission::Ordinary
+            }
+            // The private adapter owns its correlated refusal. In particular, an
+            // invalid replacement REQ must retire the previous holder of its ID.
+            Err(_) if private => PrivateAdmission::Refused,
             Err(e) => {
                 conn.send(RelayMessage::notice(&format!("invalid message: {e}")));
                 return;
             }
-        };
-        match &msg {
-            ClientMessage::Req { .. } => crate::metrics::record_ws_read("req"),
-            ClientMessage::Count { .. } => crate::metrics::record_ws_read("count"),
-            ClientMessage::ArtifactSync { .. } => crate::metrics::record_ws_read("sync"),
-            _ => {}
         }
-        if let Err(reason) = enforce_ws_admission(&msg, &conn, &state).await {
-            crate::access::ReadLog::refused(&msg, &conn, reason);
-            return;
-        }
-        if !private {
-            handle_admitted_message(msg, conn, state).await;
-            return;
-        }
-    }
+    };
     // Private validation needs the original signed JSON and extension fields.
-    if !handlers::host_deployment::dispatch(&text, conn.clone(), state.clone()).await {
-        handlers::host_registry::dispatch(&text, conn, state, recovery).await;
+    if !handlers::host_deployment::dispatch(&text, conn.clone(), state.clone(), admission).await {
+        handlers::host_registry::dispatch(&text, conn, state, admission).await;
     }
 }
 
@@ -2022,6 +2031,67 @@ pub(crate) mod tests {
                 "resync_required: host registry unavailable"
             ])
         );
+    }
+
+    #[tokio::test]
+    async fn malformed_private_req_retires_same_id_and_correlates_refusals() {
+        use buzz_pubsub::EventTopic;
+        use serde_json::json;
+        let state = crate::state::tests::test_state().await;
+        let (conn, mut rx) = test_conn_with_auth(authenticated_state());
+        let channel = Uuid::new_v4();
+        for (kind, reason, req_reason) in [
+            (
+                43103,
+                "restricted: host registry request denied",
+                "resync_required: host registry unavailable",
+            ),
+            (
+                43104,
+                "restricted: host deployment unavailable",
+                "restricted: host deployment unavailable",
+            ),
+        ] {
+            handlers::req::claim_live_subscription(
+                "s",
+                vec![(
+                    nostr::Filter::new().kind(Kind::TextNote),
+                    crate::subscription::SubscriptionScope::channels([channel]),
+                )],
+                &conn,
+                &state,
+            )
+            .await
+            .unwrap();
+            let id = "ab".repeat(32);
+            for (frame, expected) in [
+                (
+                    json!(["EVENT", {"kind":kind,"id":id}]),
+                    json!(["OK", id, false, reason]),
+                ),
+                (
+                    json!(["COUNT","s",{"kinds":[kind],"limit":"invalid"}]),
+                    json!(["CLOSED", "s", reason]),
+                ),
+            ] {
+                handle_text_message(frame.to_string(), conn.clone(), state.clone()).await;
+                assert_eq!(read_frame(&mut rx), expected);
+                assert!(state.sub_registry.get_filters(conn.conn_id, "s").is_some());
+            }
+            let frame = json!(["REQ","s",{"kinds":[kind],"before_id":id}]);
+            handle_text_message(frame.to_string(), conn.clone(), state.clone()).await;
+            assert_eq!(read_frame(&mut rx), json!(["CLOSED", "s", req_reason]));
+            assert!(rx.try_recv().is_err());
+            assert!(conn.subscriptions.lock().await.is_empty());
+            assert!(state.sub_registry.get_filters(conn.conn_id, "s").is_none());
+            assert_eq!(
+                state
+                    .pubsub
+                    .topic_refcount(&conn.tenant, EventTopic::Channel(channel))
+                    .await,
+                0
+            );
+        }
     }
 
     /// Exercise the real state-transition methods for every terminal. The

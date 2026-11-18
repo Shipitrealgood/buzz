@@ -199,12 +199,19 @@ async fn scope_auth(
     Ok(())
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrivateAdmission {
+    Ordinary,
+    Recovery,
+    Refused,
+}
+
 // Decode extension intent before generic Filter can discard unknown members.
 pub(crate) async fn dispatch(
     raw: &str,
     c: Arc<ConnectionState>,
     s: Arc<AppState>,
-    restrictive: bool,
+    admission: PrivateAdmission,
 ) -> bool {
     let Ok(a) = serde_json::from_str::<Vec<Box<RawValue>>>(raw) else {
         return false;
@@ -246,7 +253,7 @@ pub(crate) async fn dispatch(
         .and_then(|e| e["id"].as_str())
         .unwrap_or("")
         .to_owned();
-    if !registry_req && !registry_event {
+    if admission == PrivateAdmission::Refused || (!registry_req && !registry_event) {
         deny(&verb, &sub, &id, &c, &s).await;
         return true;
     }
@@ -264,6 +271,7 @@ pub(crate) async fn dispatch(
         deny(&verb, &sub, &id, &c, &s).await;
         return true;
     }
+    let restrictive = admission == PrivateAdmission::Recovery;
     let slots = if restrictive {
         &c.registry.recovery
     } else {

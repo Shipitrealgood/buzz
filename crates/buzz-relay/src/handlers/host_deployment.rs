@@ -1,5 +1,5 @@
 //! Opt-in private deployment traffic. Never enters generic event storage/fanout.
-use super::host_registry::{actor, publish_wake, settle_post};
+use super::host_registry::{actor, publish_wake, settle_post, PrivateAdmission};
 use crate::{connection::ConnectionState, protocol::RelayMessage, state::AppState};
 use buzz_core::{host_deployment::wire, kind::KIND_HOST_DEPLOYMENT_V1};
 use nostr::{EventBuilder, Kind};
@@ -23,7 +23,12 @@ fn origin(c: &ConnectionState) -> String {
     format!("https://{}", c.tenant.host())
 }
 /// Intercept explicit management intent before generic Filter drops extensions.
-pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState>) -> bool {
+pub(crate) async fn dispatch(
+    raw: &str,
+    c: Arc<ConnectionState>,
+    s: Arc<AppState>,
+    admission: PrivateAdmission,
+) -> bool {
     let Ok(parts) = serde_json::from_str::<Vec<Box<RawValue>>>(raw) else {
         return false;
     };
@@ -70,7 +75,8 @@ pub(crate) async fn dispatch(raw: &str, c: Arc<ConnectionState>, s: Arc<AppState
             c.send(RelayMessage::closed(&sub, DENIED));
         }
     };
-    if !s.config.serves_host_deployment()
+    if admission == PrivateAdmission::Refused
+        || !s.config.serves_host_deployment()
         || actor(&c).is_err()
         || verb == "COUNT"
         || (event && parts.len() != 2)
