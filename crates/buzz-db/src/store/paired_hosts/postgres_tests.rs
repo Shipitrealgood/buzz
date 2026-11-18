@@ -110,12 +110,41 @@ async fn registry_models_admission_and_revoked_reads_have_no_agent_effects() {
             .await
         }
     };
+    // Advance the stored deadline of an earlier offer without sleeping for its expiry.
+    let earlier = w::seal(
+        &owner,
+        &scope,
+        Body::PairClaim {
+            proof: "cc".repeat(32),
+        },
+        "00".repeat(32),
+        None,
+        now,
+        now + 600,
+    )
+    .unwrap();
+    post(earlier.clone()).await.unwrap();
+    sqlx::query("UPDATE paired_host_events SET expires_at = floor(extract(epoch FROM now()))::bigint - 1 WHERE community_id=$1 AND event_id=$2")
+        .bind(t.as_uuid()).bind(earlier.id.as_bytes().as_slice()).execute(&db.pool).await.unwrap();
+    let session = db
+        .registry_session(
+            t,
+            host.public_key().as_bytes(),
+            &w::bytes(&scope.generation).unwrap(),
+            false,
+        )
+        .await
+        .unwrap();
+    assert!(session.ack_retry_only);
+    assert!(read_as(host.public_key(), true, "offers", None)
+        .await
+        .is_err());
     post(claim.clone()).await.unwrap();
     // Membership does not turn the host role into an owner role, even before selection.
     member(&db, t, host.public_key().as_bytes()).await;
     for (reader, scoped, count) in [
-        (owner.public_key(), false, 1),
-        (host.public_key(), true, 1),
+        (owner.public_key(), false, 2),
+        (host.public_key(), true, 2),
         (host.public_key(), false, 0),
     ] {
         let offers = read_as(reader, scoped, "offers", None).await.unwrap();
@@ -231,7 +260,7 @@ async fn registry_models_admission_and_revoked_reads_have_no_agent_effects() {
             .fetch_one(&db.pool)
             .await
             .unwrap();
-    assert_eq!(rows, 4, "duplicate request/reply adds no transcript row");
+    assert_eq!(rows, 5, "duplicate request/reply adds no transcript row");
     let counts:(i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM paired_agent_operations WHERE community_id=$1),(SELECT count(*) FROM paired_agent_placements WHERE community_id=$1)").bind(t.as_uuid()).fetch_one(&db.pool).await.unwrap();
     assert_eq!(
         counts,

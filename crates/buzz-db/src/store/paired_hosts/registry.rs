@@ -270,7 +270,7 @@ async fn session(
             ack_retry_only: false,
         });
     }
-    let rows=sqlx::query("SELECT owner_key, expires_at>floor(extract(epoch from now())) AS live FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND host_key=$3 AND operation='pair-claim' AND expires_at>=floor(extract(epoch from now()))-86400 AND (event_json::jsonb->>'kind')::int=43103 ORDER BY seq LIMIT 64")
+    let rows=sqlx::query("SELECT owner_key, expires_at>floor(extract(epoch from now())) AS live FROM paired_host_events WHERE community_id=$1 AND generation=$2 AND host_key=$3 AND operation='pair-claim' AND expires_at>=floor(extract(epoch from now()))-86400 AND (event_json::jsonb->>'kind')::int=43103 ORDER BY live DESC, seq LIMIT 64")
         .bind(c.as_uuid()).bind(&g[..]).bind(&host[..]).fetch_all(tx.conn()).await?;
     for r in rows {
         let o: Vec<u8> = r.get("owner_key");
