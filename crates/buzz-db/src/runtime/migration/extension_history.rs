@@ -50,7 +50,7 @@ fn legacy_receipts<'a>(main: &'a [Receipt], extensions: &[Receipt]) -> Result<&'
     let first_extension = EXTENSION_MIGRATOR
         .iter()
         .next()
-        .expect("paired hosts migration");
+        .ok_or_else(|| DbError::InvalidData("missing embedded paired hosts migration".into()))?;
     let (upstream, legacy) = if main.iter().any(|row| row.matches(first_extension)) {
         main.split_at(main.partition_point(|row| row.version <= LAST_SHARED_VERSION))
     } else {
