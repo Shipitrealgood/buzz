@@ -27,7 +27,7 @@ pub async fn handle_count(
     // Require auth
     let (pubkey_bytes, token_channel_ids) = {
         match conn.auth_state_snapshot() {
-            AuthState::Authenticated(ctx) => {
+            AuthState::Authenticated(ctx) if conn.registry.generation().is_none() => {
                 (ctx.pubkey.to_bytes().to_vec(), ctx.channel_ids.clone())
             }
             _ => {
@@ -443,6 +443,7 @@ mod tests {
         let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel::<axum::extract::ws::Message>(1);
 
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),

@@ -68,9 +68,15 @@ fn reject_artifact_query_filters(filters: &[serde_json::Value]) -> Result<()> {
 impl ClientMessage {
     /// Parse a raw JSON WebSocket frame into a [`ClientMessage`].
     pub fn parse(raw: &str) -> Result<Self> {
-        let value: Value = serde_json::from_str(raw)
-            .map_err(|e| RelayError::InvalidMessage(format!("JSON parse error: {e}")))?;
+        Self::parse_frame(&Self::frame(raw)?)
+    }
 
+    pub(crate) fn frame(raw: &str) -> Result<Value> {
+        serde_json::from_str(raw)
+            .map_err(|e| RelayError::InvalidMessage(format!("JSON parse error: {e}")))
+    }
+
+    pub(crate) fn parse_frame(value: &Value) -> Result<Self> {
         let arr = value
             .as_array()
             .ok_or_else(|| RelayError::InvalidMessage("expected JSON array".to_string()))?;

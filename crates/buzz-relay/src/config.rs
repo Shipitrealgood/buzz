@@ -185,6 +185,10 @@ pub struct Config {
     pub require_auth_token: bool,
     /// Opt-in private accessory API; disabled until explicitly deployed.
     pub buzz_v1_enabled: bool,
+    /// Opt-in private host registry fork protocol v2.
+    pub host_registry_enabled: bool,
+    /// Opt-in private deployment extension; registration alone never enables it.
+    pub host_deployment_enabled: bool,
     /// Opt-in NIP-CL compact membership projection; dark by default.
     pub membership_snapshot_enabled: bool,
     /// Opt-in NIP-CL public memberships, independent of self discovery.
@@ -712,6 +716,18 @@ fn inert_env_vars<'a>(names: &[&'a str], lookup: impl Fn(&str) -> Option<String>
 }
 
 impl Config {
+    /// Advertise and serve the complete v2 capability only under compatible admission.
+    pub(crate) fn serves_host_registry(&self) -> bool {
+        self.host_registry_enabled
+            && !self.nip_fi.mode.restricts()
+            && self.relay_url.trim_start().starts_with("wss://")
+    }
+
+    /// Deployment shares registration admission and is independently disabled by default.
+    pub(crate) fn serves_host_deployment(&self) -> bool {
+        self.host_deployment_enabled && self.serves_host_registry()
+    }
+
     /// Loads configuration from environment variables, falling back to development defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_addr_raw =
@@ -1548,6 +1564,9 @@ impl Config {
             auth,
             require_auth_token,
             buzz_v1_enabled,
+            host_registry_enabled: std::env::var("BUZZ_HOST_REGISTRY_V2").as_deref() == Ok("true"),
+            host_deployment_enabled: std::env::var("BUZZ_HOST_DEPLOYMENT_V1").as_deref()
+                == Ok("true"),
             membership_snapshot_enabled: std::env::var("BUZZ_MEMBERSHIP_SNAPSHOT_ENABLED")
                 .is_ok_and(|v| v == "true"),
             membership_public_enabled: std::env::var("BUZZ_MEMBERSHIP_PUBLIC_ENABLED")

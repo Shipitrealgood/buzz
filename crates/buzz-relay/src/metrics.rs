@@ -43,6 +43,8 @@ pub(crate) enum AuthOutcome {
     NotRelayMember,
     /// NIP-FI key pairing mismatch: the NIP-42 key differs from the asserted key.
     PairingMismatch,
+    /// A verified key lacks the requested host registration scope.
+    HostScopeDenied,
     /// Shed by the AUTH concurrency cap (`buzz.relay.concurrency.auth`).
     ConcurrencyLimit,
     Timeout,
@@ -51,7 +53,7 @@ pub(crate) enum AuthOutcome {
 }
 
 impl AuthOutcome {
-    pub(crate) const ALL: [Self; 13] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::Success,
         Self::Invalid,
         Self::Banned,
@@ -61,6 +63,7 @@ impl AuthOutcome {
         Self::RelayMembershipCheckError,
         Self::NotRelayMember,
         Self::PairingMismatch,
+        Self::HostScopeDenied,
         Self::ConcurrencyLimit,
         Self::Timeout,
         Self::Disconnect,
@@ -78,6 +81,7 @@ impl AuthOutcome {
             Self::RelayMembershipCheckError => "relay_membership_check_error",
             Self::NotRelayMember => "not_relay_member",
             Self::PairingMismatch => "pairing_mismatch",
+            Self::HostScopeDenied => "host_scope_denied",
             Self::ConcurrencyLimit => "concurrency_limit",
             Self::Timeout => "timeout",
             Self::Disconnect => "disconnect",

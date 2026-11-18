@@ -87,7 +87,7 @@ pub async fn handle_admitted_req(
     let mut access = crate::access::ReadLog::req(&conn, &sub_id, &filters);
     let (conn_id, pubkey_bytes, token_channel_ids) = {
         match conn.auth_state_snapshot() {
-            AuthState::Authenticated(ctx) => {
+            AuthState::Authenticated(ctx) if conn.registry.generation().is_none() => {
                 if !ctx.scopes.is_empty() && !ctx.scopes.contains(&Scope::MessagesRead) {
                     super::close::refuse_if_owner_with_notice(
                         &sub_id,
@@ -2127,6 +2127,9 @@ pub(crate) fn is_author_only_event(event: &nostr::Event, requester_pubkey_bytes:
 /// (NIP-98 `/query`, `/count`, FTS search) — instead of inlining the three
 /// individual predicates at each site.
 pub(crate) fn event_visible_to_reader(event: &nostr::Event, requester_pubkey_bytes: &[u8]) -> bool {
+    if buzz_core::kind::is_private_host_kind(u32::from(event.kind.as_u16())) {
+        return false;
+    }
     if is_author_only_event(event, requester_pubkey_bytes) {
         return false;
     }
@@ -2189,6 +2192,7 @@ mod tests {
         let community = buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::new_v4());
         let cancel = tokio_util::sync::CancellationToken::new();
         let conn = ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
@@ -2979,6 +2983,7 @@ mod tests {
         let community = buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::new_v4());
         let cancel = tokio_util::sync::CancellationToken::new();
         let conn = Arc::new(ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
@@ -3040,6 +3045,7 @@ mod tests {
         let community = buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::new_v4());
         let cancel = tokio_util::sync::CancellationToken::new();
         let conn = Arc::new(ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
@@ -4291,6 +4297,7 @@ mod tests {
         let subscriptions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
@@ -4421,6 +4428,7 @@ mod tests {
         let subscriptions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
@@ -4557,6 +4565,7 @@ mod tests {
         let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel::<axum::extract::ws::Message>(1);
         let subscriptions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),
@@ -4699,6 +4708,7 @@ mod tests {
         let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel::<axum::extract::ws::Message>(1);
         let subscriptions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(community, "test.local".to_string()),

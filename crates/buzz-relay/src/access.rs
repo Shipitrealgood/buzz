@@ -755,6 +755,7 @@ impl AuthResult {
             O::RelayMembershipCheckError => AuthReason::MembershipUnavailable,
             O::NotRelayMember => AuthReason::NotRelayMember,
             O::PairingMismatch => AuthReason::KeyMismatch,
+            O::HostScopeDenied => AuthReason::Restricted,
             O::ConcurrencyLimit => AuthReason::ConcurrencyLimit,
             O::Timeout => AuthReason::Timeout,
             O::Disconnect => AuthReason::Disconnect,

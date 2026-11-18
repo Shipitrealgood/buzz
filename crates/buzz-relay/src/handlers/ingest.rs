@@ -2615,6 +2615,11 @@ async fn ingest_event_inner(
         )));
     }
 
+    if buzz_core::kind::is_private_host_kind(kind_u32) {
+        return Err(IngestError::Rejected(
+            "restricted: private host protocol".into(),
+        ));
+    }
     if buzz_core::kind::is_relay_only_kind(kind_u32) {
         return Err(IngestError::Rejected("restricted: relay-only kind".into()));
     }

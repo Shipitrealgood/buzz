@@ -122,11 +122,19 @@ pub(crate) enum NotAdmitted {
 /// `CLOSE` retires a request that has not yet claimed. The previous holder
 /// stays registered until this request claims or is refused.
 pub(crate) async fn admit(sub_id: &str, conn: &ConnectionState) -> Result<u64, NotAdmitted> {
+    admit_with_limit(sub_id, conn, super::req::MAX_SUBSCRIPTIONS).await
+}
+
+pub(crate) async fn admit_with_limit(
+    sub_id: &str,
+    conn: &ConnectionState,
+    limit: usize,
+) -> Result<u64, NotAdmitted> {
     let mut subs = conn.subscriptions.lock().await;
     if conn.cancel.is_cancelled() {
         return Err(NotAdmitted::Closing);
     }
-    if !subs.contains_key(sub_id) && subs.len() >= super::req::MAX_SUBSCRIPTIONS {
+    if !subs.contains_key(sub_id) && subs.len() >= limit {
         // A new ID has no old holder to retire, but a lost CLOSED would leave
         // the client waiting on a refused request.
         if !conn.send(RelayMessage::closed(

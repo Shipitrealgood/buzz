@@ -46,6 +46,12 @@ pub struct RelayInfo {
     /// Opt-in, host-bound private accessory API; separate from legacy NIP-RS.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buzz_v1: Option<BuzzV1Descriptor>,
+    /// Explicit private fork protocol; stock relays do not implement it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_registry: Option<serde_json::Value>,
+    /// Independently enabled private deployment protocol.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_deployment: Option<serde_json::Value>,
     /// NIP-AR artifact query transport and enforced resource limits.
     pub artifacts: serde_json::Value,
     /// Relay operator's public key (hex), if published.
@@ -204,6 +210,26 @@ pub(crate) struct RelayCapabilityFlags {
 }
 
 impl RelayInfo {
+    fn advertise_host_protocols(
+        &mut self,
+        config: &crate::config::Config,
+        effective_mode: buzz_auth::NipFiMode,
+        relay_key: nostr::PublicKey,
+    ) {
+        if effective_mode.restricts() || !config.serves_host_registry() {
+            return;
+        }
+        self.pubkey = Some(relay_key.to_hex());
+        self.host_registry = Some(
+            serde_json::json!({"versions":[2],"kind":43103,"admission":"host-scoped","reads":"req-v2"}),
+        );
+        if config.serves_host_deployment() {
+            self.host_deployment = Some(
+                serde_json::json!({"versions":[1],"kind":43104,"admission":"host-scoped","reads":"req-v1"}),
+            );
+        }
+    }
+
     /// Builds the relay's NIP-11 information document.
     ///
     /// `relay_self` is the relay's own signing pubkey (hex), advertised as the
@@ -297,6 +323,8 @@ impl RelayInfo {
             membership_snapshot: None,
             membership_public: None,
             buzz_v1: None,
+            host_registry: None,
+            host_deployment: None,
             artifacts: serde_json::json!({
                 "version": 1, "revision_kind": 45010, "removal_kind": 45011,
                 "query": "/query", "count": "/count",
@@ -484,6 +512,7 @@ pub(crate) async fn nip11_document(
                 fi["public_profile"] = profile;
             }
         }
+        info.advertise_host_protocols(&state.config, policy.mode, state.relay_keypair.public_key());
         if state.config.buzz_v1_enabled {
             use buzz_db::personal_read::{ELIGIBLE_KINDS, MAX_CHANNELS, MAX_INTENTS};
             info.buzz_v1 = Some(BuzzV1Descriptor {
@@ -731,6 +760,56 @@ mod tests {
             SUPPORTED_NIPS.contains(&56),
             "NIP-56 (reporting) must be advertised — kind:1984 ingest is live"
         );
+    }
+
+    #[test]
+    fn host_discovery_requires_secure_enabled_registry_and_compatible_tenant() {
+        use buzz_auth::NipFiMode::{Enforce, Off, Shadow};
+        let relay_key = nostr::Keys::generate().public_key();
+        let mut config = crate::config::Config::for_test();
+        config.nip_fi.mode = Shadow;
+        for (secure, registry, deployment, mode, advertised_registry, advertised_deploy) in [
+            (false, true, true, Off, false, false),
+            (true, false, true, Off, false, false),
+            (true, true, true, Enforce, false, false),
+            (true, true, false, Shadow, true, false),
+            (true, true, true, Shadow, true, true),
+        ] {
+            config.relay_url = if secure {
+                "wss://relay.test"
+            } else {
+                "ws://relay.test"
+            }
+            .into();
+            config.host_registry_enabled = registry;
+            config.host_deployment_enabled = deployment;
+            let mut info = RelayInfo::build(
+                None,
+                None,
+                RelayCapabilityFlags::default(),
+                DEFAULT_MAX_FRAME_BYTES,
+                None,
+                None,
+                None,
+            );
+            info.advertise_host_protocols(&config, mode, relay_key);
+            let doc = serde_json::to_value(info).unwrap();
+            assert_eq!(doc.get("host_registry").is_some(), advertised_registry);
+            assert_eq!(doc.get("host_deployment").is_some(), advertised_deploy);
+            if advertised_registry {
+                assert_eq!(doc["pubkey"], relay_key.to_hex());
+                assert_eq!(
+                    doc["host_registry"],
+                    serde_json::json!({"versions":[2],"kind":43103,"admission":"host-scoped","reads":"req-v2"})
+                );
+            }
+            if advertised_deploy {
+                assert_eq!(
+                    doc["host_deployment"],
+                    serde_json::json!({"versions":[1],"kind":43104,"admission":"host-scoped","reads":"req-v1"})
+                );
+            }
+        }
     }
 
     #[test]

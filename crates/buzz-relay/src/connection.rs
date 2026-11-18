@@ -92,6 +92,8 @@ pub struct ConnectionState {
     pub auth_state: StdMutex<AuthState>,
     /// Active subscriptions keyed by subscription ID.
     pub subscriptions: ConnectionSubscriptions,
+    /// The host generation authenticated for this socket and its private work limits.
+    pub(crate) registry: crate::handlers::host_registry::Connection,
     /// Sender for outbound data messages (EVENT, NOTICE, OK, etc.).
     pub send_tx: mpsc::Sender<WsMessage>,
     /// Sender for outbound control frames (Pong, Close).
@@ -620,6 +622,7 @@ async fn handle_active_connection(
     });
 
     let conn = Arc::new(ConnectionState {
+        registry: Default::default(),
         refusal_budget: Arc::clone(&close.refusals),
         conn_id,
         tenant,
@@ -805,7 +808,7 @@ async fn handle_active_connection(
         let _ = auth_cancel_task.await;
         crate::handlers::close::release_connection_subscriptions(&conn, &state).await;
         state.conn_manager.deregister(conn.conn_id);
-        if let Some(auth_ctx) = authenticated {
+        if let Some(auth_ctx) = authenticated.filter(|_| conn.registry.generation().is_none()) {
             if !state.conn_manager.has_admitted_connection(
                 conn.tenant.community(),
                 auth_ctx.pubkey.to_bytes().as_slice(),
@@ -1401,7 +1404,16 @@ async fn handle_text_message(text: String, conn: Arc<ConnectionState>, state: Ar
         return;
     }
 
-    let msg = match ClientMessage::parse(&text) {
+    let frame = ClientMessage::frame(&text);
+    if let Ok(frame) = &frame {
+        if handlers::host_registry::private_frame(frame, conn.registry.generation().is_some())
+            && (handlers::host_deployment::dispatch(&text, conn.clone(), state.clone()).await
+                || handlers::host_registry::dispatch(&text, conn.clone(), state.clone()).await)
+        {
+            return;
+        }
+    }
+    let msg = match frame.and_then(|value| ClientMessage::parse_frame(&value)) {
         Ok(m) => m,
         Err(e) => {
             conn.send(RelayMessage::notice(&format!("invalid message: {e}")));
@@ -1745,6 +1757,7 @@ pub(crate) mod tests {
         let (terminal_ctrl_tx, terminal_rx) = mpsc::channel(1);
         let cancel = CancellationToken::new();
         let conn = ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: TenantContext::resolved(community, "test.local".to_string()),
@@ -1978,6 +1991,7 @@ pub(crate) mod tests {
             AuthOutcome::RelayMembershipCheckError,
             AuthOutcome::NotRelayMember,
             AuthOutcome::PairingMismatch,
+            AuthOutcome::HostScopeDenied,
             AuthOutcome::ConcurrencyLimit,
         ] {
             crate::metrics::record_auth_attempt_started();
@@ -4821,6 +4835,7 @@ pub(crate) mod tests {
         let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel::<WsMessage>(1);
 
         let conn = Arc::new(ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: uuid::Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(

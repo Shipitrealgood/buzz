@@ -1737,6 +1737,12 @@ async fn query_member_events(
     // depth_limit, feed_types) that nostr::Filter silently drops.
     let raw_filters: Vec<Value> = serde_json::from_slice(body)
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if crate::handlers::host_registry::private_filters(&raw_filters) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "host registry requires scoped WebSocket context",
+        ));
+    }
     if membership_snapshot::requested(&raw_filters) {
         caller.read_artifact(&raw_filters);
         return membership_snapshot::query(
@@ -2433,6 +2439,12 @@ async fn count_member_events(
     let pubkey_bytes = pubkey.to_bytes().to_vec();
     let raw: Vec<Value> = serde_json::from_slice(body)
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if crate::handlers::host_registry::private_filters(&raw) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "host registry requires scoped WebSocket context",
+        ));
+    }
     let routed = || caller.read_artifact(&raw);
     if let Some(result) = super::artifact::query(state, tenant, &pubkey, &raw, true, routed).await {
         return result;
@@ -10520,6 +10532,7 @@ pub(crate) mod postgres_tests {
             let (ctrl_tx, _ctrl_rx) = tokio::sync::mpsc::channel(4);
             let cancel = tokio_util::sync::CancellationToken::new();
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: uuid::Uuid::new_v4(),
                 tenant: TenantContext::resolved(self.community, self.host.clone()),

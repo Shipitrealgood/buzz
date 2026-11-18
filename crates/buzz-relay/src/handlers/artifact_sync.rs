@@ -383,7 +383,7 @@ pub async fn handle_sync(
     // Written when the initial set ends, not when live delivery does.
     let mut access = ReadLog::sync(&conn, &sub_id, &filter.channels);
     let (reader, bound) = match conn.auth_state_snapshot() {
-        AuthState::Authenticated(ctx) => {
+        AuthState::Authenticated(ctx) if conn.registry.generation().is_none() => {
             if !ctx.scopes.is_empty() && !ctx.scopes.contains(&Scope::MessagesRead) {
                 super::close::close_if_owner(
                     &sub_id,

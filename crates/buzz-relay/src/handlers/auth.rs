@@ -513,7 +513,7 @@ pub fn extract_auth_tag_json(event: &nostr::Event) -> Option<String> {
 
 /// How long a verified AUTH waits for an [`AppState::auth_gate`] permit before
 /// it is shed. Well inside every client's own AUTH timeout.
-const AUTH_PERMIT_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+pub(super) const AUTH_PERMIT_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Handle a NIP-42 AUTH message: verify the challenge response and transition
 /// the connection to authenticated state.
@@ -562,6 +562,10 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
     tracing::Span::current()
         .record("event_id", event_id_hex.as_str())
         .record("conn_id", conn_id.to_string().as_str());
+
+    if super::host_registry::authenticate(&event, &challenge, &conn, &state).await {
+        return;
+    }
 
     // Extract the NIP-OA auth tag before verification consumes the event.
     // The tag is integrity-protected by the event's Schnorr signature — if
@@ -1342,6 +1346,7 @@ mod tests {
         let cancel = CancellationToken::new();
 
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(
@@ -1492,6 +1497,7 @@ mod tests {
         cancel.cancel();
 
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::tenant::TenantContext::resolved(
@@ -1582,6 +1588,7 @@ mod tests {
                 }
             });
             let conn = std::sync::Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: uuid::Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -2534,6 +2541,7 @@ mod tests {
             let backpressure = Arc::new(std::sync::atomic::AtomicU8::new(0));
             let subscriptions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: uuid::Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -3538,6 +3546,7 @@ mod tests {
                 crate::state::CommunityConnectionControl::new(cancel.clone());
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -3745,6 +3754,7 @@ mod tests {
             let community = buzz_core::tenant::CommunityId::from_uuid(Uuid::new_v4());
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -3935,6 +3945,7 @@ mod tests {
             let community = buzz_core::tenant::CommunityId::from_uuid(Uuid::new_v4());
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -4114,6 +4125,7 @@ mod tests {
             let community = buzz_core::tenant::CommunityId::from_uuid(Uuid::nil());
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -4233,6 +4245,7 @@ mod tests {
             let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel::<WsMessage>(1);
             let cancel = CancellationToken::new();
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -4387,6 +4400,7 @@ mod tests {
             let cancel = CancellationToken::new();
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(

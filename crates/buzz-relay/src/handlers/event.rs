@@ -154,6 +154,9 @@ async fn check_fanout_access(
         allowed,
         unverified: Vec::new(),
     };
+    if buzz_core::kind::is_private_host_kind(event_kind_u32(&stored_event.event)) {
+        return verified(Vec::new());
+    }
     // First enforce the receiver-side tenant label. Subscription indexes are
     // community-scoped, but stale/injected matches and future fan-out helpers
     // must still fail closed at the send chokepoint: a connection bound to
@@ -716,7 +719,7 @@ pub async fn handle_event(event: Event, conn: Arc<ConnectionState>, state: Arc<A
 
     let (conn_id, pubkey_bytes, auth_pubkey, scopes, channel_ids) = {
         match conn.auth_state_snapshot() {
-            AuthState::Authenticated(ctx) => (
+            AuthState::Authenticated(ctx) if conn.registry.generation().is_none() => (
                 conn.conn_id,
                 ctx.pubkey.to_bytes().to_vec(),
                 ctx.pubkey,
@@ -1830,6 +1833,7 @@ mod tests {
         let (ctrl_tx, _ctrl_rx) = mpsc::channel(1);
         let (terminal_ctrl_tx, _terminal_ctrl_rx) = mpsc::channel(1);
         let conn = Arc::new(crate::connection::ConnectionState {
+            registry: Default::default(),
             refusal_budget: Default::default(),
             conn_id: Uuid::new_v4(),
             tenant: buzz_core::TenantContext::resolved(community_b, "b.example"),
@@ -1920,6 +1924,7 @@ mod tests {
             let (send_tx, mut send_rx) = mpsc::channel(10);
             let (ctrl_tx, _ctrl_rx) = mpsc::channel(10);
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
@@ -2082,6 +2087,7 @@ mod tests {
             }
             let (send_tx, _send_rx) = mpsc::channel(10);
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
@@ -2205,6 +2211,7 @@ mod tests {
             let (send_tx, mut send_rx) = mpsc::channel(10);
             let (ctrl_tx, _ctrl_rx) = mpsc::channel(10);
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: tenant.clone(),
@@ -3748,6 +3755,7 @@ mod tests {
             let (ctrl_tx, _) = mpsc::channel(8);
             let (terminal_ctrl_tx, _) = mpsc::channel(1);
             let conn = std::sync::Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: uuid::Uuid::new_v4(),
                 tenant,
@@ -4172,6 +4180,7 @@ mod tests {
                 mpsc::channel::<axum::extract::ws::Message>(1);
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
@@ -4366,6 +4375,7 @@ mod tests {
                 mpsc::channel::<axum::extract::ws::Message>(1);
 
             let conn = Arc::new(crate::connection::ConnectionState {
+                registry: Default::default(),
                 refusal_budget: Default::default(),
                 conn_id: Uuid::new_v4(),
                 tenant: buzz_core::tenant::TenantContext::resolved(
