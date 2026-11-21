@@ -1268,78 +1268,65 @@ use cleanup_tests::seed_intent;
 #[path = "deployment/cleanup_tests.rs"]
 mod cleanup_tests;
 
+fn paired_scope(device: &mut Device, owner: &Keys, host: &Keys) -> Scope {
+    use buzz_core::paired_host;
+    let community = "https://owner.test";
+    let t = now().unwrap();
+    let (offer, proof) =
+        paired_host::Offer::issue(community.to_string(), host.public_key(), t).unwrap();
+    let json = serde_json::json!({
+        "v": 1,
+        "community": community,
+        "generation": offer.generation,
+        "host": offer.host.to_hex(),
+        "expires_at": offer.expires_at,
+        "proof": *proof.expose_hex(),
+    })
+    .to_string();
+    let (paired_scope, claim) = device.pair(community, owner, &json).unwrap();
+    let verified = paired_host::verify_claim(
+        claim.event.get().as_bytes(),
+        host,
+        &offer,
+        Some(owner.public_key()),
+        &proof.digest(),
+        t,
+    )
+    .unwrap();
+    let ack = crate::Packet {
+        event: serde_json::value::to_raw_value(
+            &paired_host::build_ack(host, &verified, t).unwrap(),
+        )
+        .unwrap(),
+        route: buzz_core::paired_message::Route {
+            r: None,
+            prev: Some(id(&claim).unwrap()),
+            expires_at: offer.expires_at,
+        },
+    };
+    let binding = crate::Binding {
+        generation: paired_scope.generation.clone(),
+        owner: owner.public_key().to_hex(),
+        host: host.public_key().to_hex(),
+        state: "active".into(),
+        claim,
+        ack,
+        inventory: None,
+        tombstone: None,
+        high_water: None,
+    };
+    device.restore(community, owner, &binding).unwrap();
+    paired_scope
+}
+
 #[test]
 fn reservation_replay_mismatch_desired_profile_and_tombstone_fencing() {
-    use buzz_core::paired_host;
     let owner = Keys::generate();
     let host = Keys::generate();
-    let other_host = Keys::generate();
     let dir = tempfile::tempdir().unwrap();
     let mut device = Device::at(&dir.path().join("owner.sqlite")).unwrap();
-    let mut scope = Scope {
-        community: "https://owner.test".into(),
-        owner: owner.public_key(),
-        host: host.public_key(),
-        generation: "ab".repeat(32),
-    };
-    let mut other_scope = Scope {
-        host: other_host.public_key(),
-        generation: "cd".repeat(32),
-        ..scope.clone()
-    };
-    for is_other in [false, true] {
-        let s = if is_other { &other_scope } else { &scope };
-        let host_keys = if is_other { &other_host } else { &host };
-        let t = now().unwrap();
-        let (offer, proof) = paired_host::Offer::issue(s.community.clone(), s.host, t).unwrap();
-        let json = serde_json::json!({
-            "v": 1,
-            "community": s.community,
-            "generation": offer.generation,
-            "host": offer.host.to_hex(),
-            "expires_at": offer.expires_at,
-            "proof": *proof.expose_hex(),
-        })
-        .to_string();
-        let (paired_scope, claim) = device.pair(&s.community, &owner, &json).unwrap();
-        let verified = paired_host::verify_claim(
-            claim.event.get().as_bytes(),
-            host_keys,
-            &offer,
-            Some(owner.public_key()),
-            &proof.digest(),
-            t,
-        )
-        .unwrap();
-        let ack = crate::Packet {
-            event: serde_json::value::to_raw_value(
-                &paired_host::build_ack(host_keys, &verified, t).unwrap(),
-            )
-            .unwrap(),
-            route: buzz_core::paired_message::Route {
-                r: None,
-                prev: Some(id(&claim).unwrap()),
-                expires_at: offer.expires_at,
-            },
-        };
-        let binding = crate::Binding {
-            generation: paired_scope.generation.clone(),
-            owner: owner.public_key().to_hex(),
-            host: s.host.to_hex(),
-            state: "active".into(),
-            claim,
-            ack,
-            inventory: None,
-            tombstone: None,
-            high_water: None,
-        };
-        device.restore(&s.community, &owner, &binding).unwrap();
-        if is_other {
-            other_scope.generation = paired_scope.generation;
-        } else {
-            scope.generation = paired_scope.generation;
-        }
-    }
+    let scope = paired_scope(&mut device, &owner, &host);
+    let other_scope = paired_scope(&mut device, &owner, &Keys::generate());
     let cfg = ReservationConfig {
         instructions: Some("be concise".into()),
         effort: None,
@@ -1445,7 +1432,59 @@ fn reservation_replay_mismatch_desired_profile_and_tombstone_fencing() {
         .unwrap();
     assert_eq!(rebound.nip_oa.as_ref(), Some(&auth_tag));
 
-    let op_id = "11".repeat(32);
+    let (status, command, authority, snapshot) = reservation_deploy(&rebound);
+    let op_id = authority.operation_id.clone();
+    // Save the authentic pre-retention row to reproduce an older journal whose
+    // command was committed before its reservation link.
+    device
+        .db
+        .execute_batch("CREATE TEMP TABLE legacy_reservation AS SELECT * FROM agent_reservations")
+        .unwrap();
+    let first = device
+        .prepare_deployment(
+            &scope.community,
+            &owner,
+            authority.clone(),
+            &command,
+            &status,
+            snapshot.clone(),
+        )
+        .unwrap();
+    device
+        .db
+        .execute_batch("INSERT OR REPLACE INTO agent_reservations SELECT * FROM legacy_reservation")
+        .unwrap();
+    let mut legacy_competitor = authority.clone();
+    legacy_competitor.operation_id = "dc".repeat(32);
+    let conflict = device
+        .prepare_deployment(
+            &scope.community,
+            &owner,
+            legacy_competitor,
+            &command,
+            &status,
+            snapshot.clone(),
+        )
+        .err()
+        .unwrap();
+    assert!(conflict.to_string().contains("earlier deployment"));
+    let unchanged = device
+        .reservation(&scope.community, &owner, &res1.agent)
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.state, ReservationState::Reserved);
+    assert!(unchanged.operation_id.is_none());
+    let repaired = device
+        .prepare_deployment(
+            &scope.community,
+            &owner,
+            authority.clone(),
+            &command,
+            &status,
+            snapshot.clone(),
+        )
+        .unwrap();
+    assert_eq!(repaired.event, first.event);
     device
         .mark_reservation_prepared(&scope.community, &owner, &res1.agent, &op_id)
         .unwrap();
@@ -1550,35 +1589,22 @@ fn reservation_replay_mismatch_desired_profile_and_tombstone_fencing() {
         .is_err());
 }
 
-#[tokio::test]
-async fn continue_deployment_with_effort_updates_effort_field() {
-    use d::observation::{LoginState, Models, Observation, ResultBody};
-    use futures_util::{SinkExt, StreamExt};
-    let owner = Keys::generate();
-    let host = Keys::generate();
-    let relay = Keys::generate();
-    let agent = Keys::generate();
-    let scope = Scope {
-        community: "https://owner.test".into(),
-        owner: owner.public_key(),
-        host: host.public_key(),
-        generation: "ab".repeat(32),
-    };
+fn reservation_deploy(r: &Reservation) -> (d::Status, d::Command, d::Authority, Value) {
     let status = d::Status {
         inventory: None,
-        scope: scope.clone(),
+        scope: r.scope.clone(),
         availability: d::Availability::Current,
         capability: d::Capability::Supported {
             catalog_revision: "cd".repeat(32),
-            runtimes: vec!["acp/claude".into()],
-            harnesses: [("acp/claude".into(), "claude".into())].into(),
+            runtimes: vec![r.runtime_id.clone()],
+            harnesses: [(r.runtime_id.clone(), "claude".into())].into(),
         },
         expires_at: now().unwrap() + 120,
     };
     let config = d::Deploy {
         catalog_revision: "cd".repeat(32),
-        runtime_id: "acp/claude".into(),
-        name: "Effort Agent".into(),
+        runtime_id: r.runtime_id.clone(),
+        name: r.name_scope.clone(),
         policy: Policy {
             respond_to: "owner-only".into(),
             respond_to_allowlist: vec![],
@@ -1586,23 +1612,21 @@ async fn continue_deployment_with_effort_updates_effort_field() {
         },
         model: d::ModelSelection::PendingLogin {},
         provider: None,
-        system_prompt: None,
+        system_prompt: r.config.instructions.clone(),
         effort: None,
         parallelism: 1,
     };
     let command = d::Command::Deploy {
-        config: Box::new(config.clone()),
+        config: Box::new(config),
         identity: PrivateIdentity {
-            private_key_nsec: agent.secret_key().to_bech32().unwrap(),
-            auth_tag: Some(
-                buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap(),
-            ),
+            private_key_nsec: r.agent_nsec.as_ref().unwrap().as_str().into(),
+            auth_tag: Some(serde_json::to_string(r.nip_oa.as_ref().unwrap()).unwrap()),
         },
     };
     let authority = d::Authority {
         v: 1,
-        scope: scope.clone(),
-        agent: agent.public_key(),
+        scope: r.scope.clone(),
+        agent: r.agent,
         action: d::Action::Deploy,
         operation_id: "bc".repeat(32),
         expected_revision: 0,
@@ -1611,13 +1635,59 @@ async fn continue_deployment_with_effort_updates_effort_field() {
     };
     let snapshot = serde_json::json!({
         "record": {
-            "pubkey": agent.public_key().to_hex(),
+            "pubkey": r.agent.to_hex(),
             "model": null,
             "effort": null
         }
     });
+    (status, command, authority, snapshot)
+}
+
+#[tokio::test]
+async fn continue_deployment_with_effort_updates_effort_field() {
+    use d::observation::{LoginState, Models, Observation, ResultBody};
+    use futures_util::{SinkExt, StreamExt};
+    let owner = Keys::generate();
+    let host = Keys::generate();
+    let relay = Keys::generate();
     let dir = tempfile::tempdir().unwrap();
-    let mut device = Device::at(&dir.path().join("effort.sqlite")).unwrap();
+    let path = dir.path().join("effort.sqlite");
+    let mut device = Device::at(&path).unwrap();
+    let scope = paired_scope(&mut device, &owner, &host);
+    let reservation = device
+        .reserve_agent(
+            &scope.community,
+            &owner,
+            ReserveAgent {
+                scope: &scope,
+                runtime_id: "acp/claude",
+                name: "Effort Agent",
+                picture: None,
+                config: ReservationConfig {
+                    instructions: None,
+                    effort: None,
+                    parallelism: 1,
+                    respond_to: "owner-only".into(),
+                    respond_to_allowlist: vec![],
+                    channel_add_policy: "owner_only".into(),
+                },
+            },
+        )
+        .unwrap();
+    let agent = reservation.agent;
+    let attestation = buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent, "").unwrap();
+    let reservation = device
+        .bind_reservation_attestation(
+            &scope.community,
+            &owner,
+            &agent,
+            serde_json::from_str(&attestation).unwrap(),
+        )
+        .unwrap();
+    let (status, command, authority, snapshot) = reservation_deploy(&reservation);
+    let d::Command::Deploy { ref config, .. } = command else {
+        panic!("expected deployment");
+    };
     let first = device
         .prepare_deployment(
             &scope.community,
@@ -1628,6 +1698,51 @@ async fn continue_deployment_with_effort_updates_effort_field() {
             snapshot.clone(),
         )
         .unwrap();
+    let reopen = |device: Device, expected: &Intent, count: usize| {
+        drop(device);
+        let device = Device::at(&path).unwrap();
+        let reservation = device
+            .reservation(&scope.community, &owner, &agent)
+            .unwrap()
+            .unwrap();
+        assert_eq!(reservation.state, ReservationState::Prepared);
+        assert_eq!(
+            reservation.operation_id.as_deref(),
+            Some(expected.protected.authority.operation_id.as_str())
+        );
+        let retained = device
+            .deployment_intent(
+                &scope.community,
+                &owner,
+                reservation.operation_id.as_deref().unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.phase, 0);
+        assert_eq!(retained.protected.ciphertext, expected.protected.ciphertext);
+        assert_eq!(retained.event, expected.event);
+        assert_eq!(
+            device
+                .deployment_intents(&scope.community, &owner)
+                .unwrap()
+                .len(),
+            count
+        );
+        device
+    };
+    device = reopen(device, &first, 1);
+    let mut competitor = authority.clone();
+    competitor.operation_id = "dc".repeat(32);
+    assert!(device
+        .prepare_deployment(
+            &scope.community,
+            &owner,
+            competitor,
+            &command,
+            &status,
+            snapshot.clone()
+        )
+        .is_err());
     let catalog = buzz_core::agent_models::AgentModelsResponse {
         agent_name: "Claude".into(),
         agent_version: "1.0".into(),
@@ -1650,7 +1765,7 @@ async fn continue_deployment_with_effort_updates_effort_field() {
             readiness: Some(buzz_core::harness::Readiness::LoggedIn),
             availability: Some(buzz_core::harness::AcpAvailabilityStatus::Available),
             scope: scope.clone(),
-            agent: agent.public_key(),
+            agent,
             runtime_id: config.runtime_id.clone(),
             catalog_revision: config.catalog_revision.clone(),
             operation_id: first.protected.authority.operation_id.clone(),
@@ -1674,7 +1789,11 @@ async fn continue_deployment_with_effort_updates_effort_field() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let relay_srv = relay.clone();
+    let first_id = first.protected.authority.operation_id.clone();
+    let host_key = host.clone();
+    let owner_key = owner.public_key();
     let peer = tokio::spawn(async move {
+        let mut sent = std::collections::BTreeMap::new();
         let (socket, _) = listener.accept().await.unwrap();
         let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
         while let Some(Ok(frame)) = socket.next().await {
@@ -1682,13 +1801,55 @@ async fn continue_deployment_with_effort_updates_effort_field() {
                 continue;
             };
             let msg: Value = serde_json::from_str(text).unwrap();
-            if msg[0] == "REQ" {
+            if msg[0] == "EVENT" {
+                let ev: Event = serde_json::from_value(msg[1].clone()).unwrap();
+                let raw = serde_json::to_string(&ev).unwrap();
+                let (_, wire::Header::Command { authority }) =
+                    wire::verify(raw.as_bytes(), "https://owner.test", owner_key).unwrap()
+                else {
+                    panic!("expected deployment");
+                };
+                wire::open_command(&host_key, &ev, &authority).unwrap();
+                assert_eq!(authority.agent, agent);
+                let entry = if authority.operation_id == first_id {
+                    assert_eq!(served["event"], raw);
+                    served.clone()
+                } else {
+                    assert_eq!(authority.expected_revision, 1);
+                    let receipt = wire::result(
+                        &host_key,
+                        &d::DeploymentResult {
+                            request: authority.clone(),
+                            applied_revision: Some(2),
+                            outcome: d::Outcome::Applied,
+                        },
+                        now().unwrap(),
+                    )
+                    .unwrap();
+                    serde_json::json!({"event":raw, "result":serde_json::to_string(&receipt).unwrap(), "state":"applied","unit_id":"ef".repeat(32),"revision":2})
+                };
+                assert!(
+                    sent.insert(authority.operation_id, entry).is_none(),
+                    "duplicate host effect"
+                );
+                socket
+                    .send(
+                        serde_json::json!(["OK", ev.id, true, ""])
+                            .to_string()
+                            .into(),
+                    )
+                    .await
+                    .unwrap();
+            } else if msg[0] == "REQ" {
                 let query: wire::Query =
                     serde_json::from_value(msg[2]["host_deployment"].clone()).unwrap();
                 let reply = wire::Reply {
                     query: query.clone(),
                     expires_at: now().unwrap() + wire::PERMIT_SECONDS,
-                    data: served.clone(),
+                    data: sent
+                        .get(query.operation_id.as_ref().unwrap())
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({"state":"missing-or-superseded"})),
                 };
                 let event =
                     wire::reply(&relay_srv, query.scope.owner, &reply, now().unwrap()).unwrap();
@@ -1708,6 +1869,7 @@ async fn continue_deployment_with_effort_updates_effort_field() {
                     .unwrap();
             }
         }
+        sent
     });
     let ws = buzz_ws_client::NostrWsConnection::connect(&format!("ws://{addr}"))
         .await
@@ -1721,6 +1883,16 @@ async fn continue_deployment_with_effort_updates_effort_field() {
     )
     .unwrap();
     let signer = || Ok(owner.clone());
+    let dispatch = async |device: &mut Device, management: &mut Management, intent: &Intent| {
+        let id = &intent.protected.authority.operation_id;
+        for phase in 1..=2 {
+            device
+                .deployment_advance(&scope.community, &owner, id, phase)
+                .unwrap();
+        }
+        management.dispatch(device, &signer, id).await.unwrap();
+    };
+    dispatch(&mut device, &mut management, &first).await;
     let mut selected_snapshot = snapshot.clone();
     selected_snapshot["record"]["model"] = "claude-sonnet".into();
     selected_snapshot["record"]["effort"] = "high".into();
@@ -1740,6 +1912,13 @@ async fn continue_deployment_with_effort_updates_effort_field() {
         )
         .await
         .unwrap();
+    device = reopen(device, &next, 2);
+    dispatch(&mut device, &mut management, &next).await;
+    let applied = management
+        .operation(&mut device, &signer, &next.protected.authority.operation_id)
+        .await
+        .unwrap();
+    assert!(applied.admitted && applied.current && applied.state == "applied");
     let d::Command::Deploy {
         config: updated_cfg,
         ..
@@ -1760,6 +1939,10 @@ async fn continue_deployment_with_effort_updates_effort_field() {
         }
     );
     drop(management);
-    peer.abort();
-    let _ = peer.await;
+    let sent = peer.await.unwrap();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(
+        sent[&next.protected.authority.operation_id]["event"],
+        next.event
+    );
 }

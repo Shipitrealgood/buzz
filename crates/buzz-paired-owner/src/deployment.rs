@@ -138,7 +138,15 @@ impl Device {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        cleanup::ensure_deploy_open(&tx, selected, keys, &authority)?;
+        let first_for_reservation = reservation::link_deployment(
+            &tx,
+            keys,
+            &authority,
+            &config.runtime_id,
+            previous.map(|(id, _)| id),
+            wall,
+        )?;
+        cleanup::ensure_deploy_open(&tx, selected, keys, &authority, first_for_reservation)?;
         let raw: Option<String> = tx.query_row(
             "SELECT data FROM deployment_intents WHERE community=? AND owner=? AND operation_id=?",
             params![selected, keys.public_key().to_hex(), authority.operation_id],
@@ -156,6 +164,7 @@ impl Device {
                     && restore_snapshot(keys, &old)? == snapshot,
                 "operation inputs changed"
             );
+            tx.commit()?;
             return Ok(old);
         }
         if let Some((previous, absent_peers)) = previous {
@@ -253,7 +262,7 @@ impl Device {
             "nonmonotonic intent phase"
         );
         if intent.protected.authority.action == buzz_core::host_deployment::Action::Deploy {
-            cleanup::ensure_deploy_open(&tx, selected, keys, &intent.protected.authority)?;
+            cleanup::ensure_deploy_open(&tx, selected, keys, &intent.protected.authority, false)?;
         }
         intent.phase = phase;
         tx.execute(

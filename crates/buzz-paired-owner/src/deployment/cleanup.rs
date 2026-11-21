@@ -17,7 +17,7 @@ impl Device {
     /// A validated retained Cleanup or retired reservation permanently prevents this agent's Deploy.
     pub fn deployment_open(&self, selected: &str, keys: &Keys, a: &Authority) -> Result<()> {
         self.deployment_schema()?;
-        ensure_deploy_open(&self.db, selected, keys, a)
+        ensure_deploy_open(&self.db, selected, keys, a, false)
     }
 
     /// Restore display/recovery inputs from the bound original Deploy, never a
@@ -311,6 +311,7 @@ pub(super) fn ensure_deploy_open(
     selected: &str,
     keys: &Keys,
     a: &Authority,
+    first_for_reservation: bool,
 ) -> Result<()> {
     let mut stmt =
         db.prepare("SELECT data FROM deployment_intents WHERE community=? AND owner=? LIMIT 1025")?;
@@ -321,6 +322,12 @@ pub(super) fn ensure_deploy_open(
         let intent: Intent = serde_json::from_str(&raw?)?;
         validate_materialization(selected, keys, &intent)?;
         let other = &intent.protected.authority;
+        if first_for_reservation && other.scope == a.scope && other.agent == a.agent {
+            ensure!(
+                other.action != Action::Deploy || other.operation_id == a.operation_id,
+                "An earlier deployment is retained for this unfinished agent. Remove the unfinished agent before starting again."
+            );
+        }
         ensure!(
             other.scope != a.scope || other.agent != a.agent || other.action != Action::Cleanup,
             "Cleanup retained; this agent cannot be deployed again"

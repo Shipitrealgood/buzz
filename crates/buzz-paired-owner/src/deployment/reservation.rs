@@ -255,6 +255,59 @@ fn save_row(
     Ok(())
 }
 
+/// Called in the transaction retaining these exact Deploy bytes. A legacy client
+/// without an agent reservation still owns its own materialization sequence.
+/// Returns true when a first reservation link needs to exclude older, unlinked Deploys.
+pub(super) fn link_deployment(
+    tx: &Transaction<'_>,
+    keys: &Keys,
+    authority: &Authority,
+    runtime: &str,
+    previous: Option<&str>,
+    wall: u64,
+) -> Result<bool> {
+    let scope = &authority.scope;
+    let Some((mut reservation, profile_ts)) = q_one(
+        tx,
+        keys,
+        "agent",
+        params![
+            scope.community,
+            keys.public_key().to_hex(),
+            authority.agent.to_hex()
+        ],
+    )?
+    else {
+        return Ok(false);
+    };
+    ensure!(
+        authority.action == buzz_core::host_deployment::Action::Deploy
+            && reservation.scope == *scope
+            && reservation.agent == authority.agent
+            && reservation.runtime_id == runtime,
+        "reservation placement mismatch"
+    );
+    if reservation.operation_id.as_deref() == Some(&authority.operation_id) {
+        ensure!(
+            matches!(reservation.state, Prepared | Active),
+            "invalid reservation state"
+        );
+        return Ok(false);
+    }
+    ensure!(
+        reservation.operation_id.as_deref() == previous
+            && match previous {
+                None => reservation.state == Reserved && authority.expected_revision == 0,
+                Some(_) => reservation.state == Prepared,
+            },
+        "reservation deployment predecessor changed"
+    );
+    reservation.state = Prepared;
+    reservation.operation_id = Some(authority.operation_id.clone());
+    save_row(tx, keys, &reservation, profile_ts, wall)?;
+    Ok(previous.is_none())
+}
+
 impl Device {
     pub(super) fn reservation_schema(&self) -> Result<()> {
         self.db.execute_batch(
@@ -441,16 +494,14 @@ impl Device {
         a: &PublicKey,
         op: &str,
     ) -> Result<Reservation> {
-        ensure!(valid_id(op), "invalid operation");
-        self.mutate(s, k, a, |_, r, _, _| {
-            ensure!(
-                matches!(r.state, Reserved | Prepared),
-                "invalid reservation state"
-            );
-            r.state = Prepared;
-            r.operation_id = Some(op.into());
-            Ok(true)
-        })
+        let reservation = self
+            .reservation(s, k, a)?
+            .context("missing agent reservation")?;
+        ensure!(
+            reservation.state == Prepared && reservation.operation_id.as_deref() == Some(op),
+            "deployment is not linked to this reservation"
+        );
+        Ok(reservation)
     }
 
     pub fn mark_reservation_active(
@@ -464,12 +515,11 @@ impl Device {
         ensure!(valid_id(op), "invalid operation");
         self.mutate(s, k, a, |_, r, _, _| {
             ensure!(
-                matches!(r.state, Prepared | Active),
+                matches!(r.state, Prepared | Active) && r.operation_id.as_deref() == Some(op),
                 "invalid reservation state"
             );
             r.state = Active;
             r.pending_name = None;
-            r.operation_id = Some(op.into());
             if let Some(e) = eff {
                 r.config.effort = e;
                 r.config.validate()?;
