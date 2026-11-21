@@ -117,7 +117,9 @@ impl NostrWsConnection {
         Self::connect_with_options(url, HeaderMap::new(), Some(connector)).await
     }
 
-    async fn connect_with_options(
+    /// Connects with the upgrade headers of [`Self::connect_with_headers`] and an
+    /// optional explicit TLS connector for the caller's provider and trust roots.
+    pub async fn connect_with_options(
         url: &str,
         headers: HeaderMap,
         connector: Option<Connector>,
