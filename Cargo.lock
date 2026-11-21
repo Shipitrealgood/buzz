@@ -1375,6 +1375,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "buzz-paired-owner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "buzz-core",
+ "buzz-sdk",
+ "buzz-ws-client",
+ "futures-util",
+ "hex",
+ "nostr 0.44.7",
+ "rand 0.10.1",
+ "reqwest 0.13.4",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "buzz-pairing-cli"
 version = "0.1.0"
 dependencies = [

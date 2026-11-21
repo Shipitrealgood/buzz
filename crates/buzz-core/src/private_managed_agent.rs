@@ -526,7 +526,7 @@ fn validate_active(
 }
 
 /// Shared owner-to-agent attestation check for encrypted native identity transfers.
-pub(crate) fn validate_auth_tag(
+pub fn validate_auth_tag(
     auth_tag: &str,
     expected_owner: &str,
     agent: &PublicKey,

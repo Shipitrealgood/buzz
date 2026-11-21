@@ -1108,3 +1108,352 @@ s=socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM);s.connect(os.environ['NOTIFY_S
     assert!(cat.local.unwrap().home.join("provider-login").is_file());
     assert!(workspace.join("user-work").is_file());
 }
+
+#[tokio::test]
+async fn design_check_2_restart_emits_zero_kind0_events() {
+    use buzz_core::{
+        host_deployment::{wire, Action, Authority, Command, ModelSelection, Outcome},
+        host_registry::{self as w, Body},
+        paired_message::Scope,
+        private_managed_agent::PrivateIdentity,
+    };
+    use futures_util::{SinkExt, StreamExt};
+    use nostr::{Event, EventBuilder, Keys, Kind, ToBech32};
+    use std::sync::{Arc, Mutex};
+    use tokio_tungstenite::tungstenite::Message;
+
+    if let (Some(state), Some(unit)) = (
+        std::env::var_os("BUZZ_DC2_CHILD_STATE"),
+        std::env::var_os("BUZZ_DC2_CHILD_UNIT"),
+    ) {
+        crate::runtime_context::run_user(Path::new(&state), &unit.to_string_lossy())
+            .await
+            .unwrap();
+        return;
+    }
+
+    let (dir, service, mut prepared, mut cat) = fixture();
+    let tools = dir.path().join("tools");
+    let workspace = cat.local.as_ref().unwrap().workspace.clone();
+    script(
+        &tools.join("claude"),
+        "#!/bin/sh\ntest \"$1 $2\" = 'auth status' || exit 3\n",
+    );
+    script(
+        &tools.join("claude-agent-acp"),
+        r#"#!/usr/bin/python3
+import json,sys
+for line in sys.stdin:
+ m=json.loads(line)
+ if m.get('method')=='initialize': r={'protocolVersion':1,'agentInfo':{'name':'synthetic','version':'1'},'agentCapabilities':{}}
+ elif m.get('method')=='session/new':
+  r={'sessionId':'s','configOptions':[{'category':'model','id':'model','currentValue':'chosen','type':'select','options':[{'value':'chosen','name':'Chosen'}]}]}
+ else: raise AssertionError(str(m.get('method')))
+ print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)
+"#,
+    );
+    let harness = tools.join("fixture-buzz-acp");
+    script(
+        &harness,
+        r#"#!/usr/bin/python3
+import os,sys,json,socket
+if sys.argv[1:]==['models','--json']:
+ print(json.dumps({'agent':{'name':'Claude','version':'1.0'},'stable':{'configOptions':[{'category':'model','id':'model','currentValue':'chosen','type':'select','options':[{'value':'chosen','name':'Chosen'}]}]}}))
+ sys.exit(0)
+assert os.environ['BUZZ_ACP_DISPLAY_NAME']=='Initial Name'
+open('conversation-invoked','w').write('checked')
+s=socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM);s.connect(os.environ['NOTIFY_SOCKET']);s.send(b'READY=1')
+"#,
+    );
+    cat.runtimes.clear();
+    cat.community = Some("https://fixture.test".into());
+    cat.local.as_mut().unwrap().buzz_acp = Some(harness);
+    prepared.instance.runtime_id = "main/claude".into();
+    let owner = Keys::generate();
+    let agent = Keys::generate();
+    let relay = Keys::generate();
+    let mut host = crate::registration::Host::at(&service.staging, true).unwrap();
+    let clock = crate::registration::RegistrationClock::read().unwrap();
+    let invitation: serde_json::Value =
+        serde_json::from_str(&host.offer("https://fixture.test".into(), &clock).unwrap()).unwrap();
+    let g = invitation["generation"].as_str().unwrap().to_string();
+    let scope = Scope {
+        community: "https://fixture.test".into(),
+        owner: owner.public_key(),
+        host: host.public_key().unwrap(),
+        generation: g.clone(),
+    };
+    let claim = w::seal(
+        &owner,
+        &scope,
+        Body::PairClaim {
+            proof: invitation["proof"].as_str().unwrap().into(),
+        },
+        "11".repeat(32),
+        None,
+        clock.wall,
+        invitation["expires_at"].as_u64().unwrap(),
+    )
+    .unwrap();
+    host.claim(&g, &claim, &clock).unwrap();
+    for ev in host.pending().unwrap() {
+        host.delivered(&ev.id.to_hex()).unwrap();
+    }
+
+    let unit_hex = "bb".repeat(32);
+    let unit = crate::unit_id(&scope, &unit_hex);
+    prepared.instance.scope = scope.clone();
+    prepared.instance.request_id = unit_hex.clone();
+    prepared.instance.unit_id = unit.clone();
+    prepared.instance.agent = agent.public_key().to_hex();
+    prepared.instance.secret = agent.secret_key().to_secret_hex();
+    prepared.instance.oa = serde_json::to_string(
+        &buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap(),
+    )
+    .unwrap();
+
+    let cat = save_catalog(&service, &mut prepared, &cat);
+    let rev = prepared.instance.revision.clone();
+    {
+        let dep = prepared.instance.deployment.as_mut().unwrap();
+        dep.config.name = "Initial Name".into();
+        dep.config.runtime_id = "main/claude".into();
+        dep.config.model = ModelSelection::Selected {
+            id: "chosen".into(),
+        };
+    }
+
+    let op_id = prepared
+        .instance
+        .deployment
+        .as_ref()
+        .unwrap()
+        .operation_id
+        .clone();
+    let deploy_cfg = prepared
+        .instance
+        .deployment
+        .as_ref()
+        .unwrap()
+        .config
+        .clone();
+    let auth = Authority {
+        v: 1,
+        scope: scope.clone(),
+        agent: agent.public_key(),
+        action: Action::Deploy,
+        operation_id: op_id.clone(),
+        expected_revision: 0,
+        expires_at: nostr::Timestamp::now().as_secs() + 120,
+        content_sha256: String::new(),
+    };
+    let (sealed_auth, deploy_ev) = wire::seal_command(
+        &owner,
+        auth,
+        &Command::Deploy {
+            config: Box::new(deploy_cfg),
+            identity: PrivateIdentity {
+                private_key_nsec: agent.secret_key().to_bech32().unwrap(),
+                auth_tag: Some(
+                    buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap(),
+                ),
+            },
+        },
+        nostr::Timestamp::now().as_secs(),
+    )
+    .unwrap();
+    let deploy_ev_json = serde_json::to_string(&deploy_ev).unwrap();
+    let renamed_kind0 = EventBuilder::new(
+        Kind::Metadata,
+        serde_json::json!({
+            "name": "Renamed Name",
+            "display_name": "Renamed Name",
+            "picture": "https://example.test/renamed.png",
+            "bot": true
+        })
+        .to_string(),
+    )
+    .sign_with_keys(&agent)
+    .unwrap();
+
+    let published = Arc::new(Mutex::new(Vec::<Event>::new()));
+    let published_srv = published.clone();
+    let applied_receipt = Arc::new(Mutex::new(Option::<String>::None));
+    let receipt_srv = applied_receipt.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let host_pk = scope.host;
+    let relay_srv = relay.clone();
+    let op_srv = op_id.clone();
+    let deploy_srv = deploy_ev_json.clone();
+    let auth_srv = sealed_auth.clone();
+    let unit_hex_srv = unit_hex.clone();
+    let renamed_srv = renamed_kind0.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                break;
+            };
+            let published_conn = published_srv.clone();
+            let receipt_conn = receipt_srv.clone();
+            let relay_conn = relay_srv.clone();
+            let op_conn = op_srv.clone();
+            let deploy_conn = deploy_srv.clone();
+            let auth_conn = auth_srv.clone();
+            let unit_hex_conn = unit_hex_srv.clone();
+            let renamed_conn = renamed_srv.clone();
+            tokio::spawn(async move {
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(Ok(frame)) = socket.next().await {
+                    let Message::Text(text) = frame else { continue };
+                    let msg: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    match msg[0].as_str().unwrap() {
+                        "EVENT" => {
+                            let ev: Event = serde_json::from_value(msg[1].clone()).unwrap();
+                            let id = ev.id;
+                            if u32::from(ev.kind.as_u16())
+                                == buzz_core::kind::KIND_HOST_DEPLOYMENT_V1
+                            {
+                                if let Ok((_, wire::Header::Result { result })) = wire::verify(
+                                    msg[1].to_string().as_bytes(),
+                                    "https://fixture.test",
+                                    host_pk,
+                                ) {
+                                    if result.outcome == Outcome::Applied {
+                                        *receipt_conn.lock().unwrap() = Some(msg[1].to_string());
+                                    }
+                                }
+                            }
+                            published_conn.lock().unwrap().push(ev);
+                            socket
+                                .send(Message::Text(
+                                    serde_json::json!(["OK", id, true, ""]).to_string().into(),
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                        "REQ" => {
+                            let sub = msg[1].as_str().unwrap();
+                            if let Some(q_val) = msg[2].get("host_deployment") {
+                                let q: wire::Query = serde_json::from_value(q_val.clone()).unwrap();
+                                let data = match q.view.as_str() {
+                                    "pending" => serde_json::json!({ "operations": [op_conn] }),
+                                    "operation" => {
+                                        let r = receipt_conn.lock().unwrap().clone();
+                                        serde_json::json!({
+                                            "event": deploy_conn,
+                                            "result": r,
+                                            "state": if r.is_some() { "applied" } else { "pending" },
+                                            "unit_id": unit_hex_conn,
+                                            "revision": 1
+                                        })
+                                    }
+                                    "permit" => serde_json::json!({
+                                        "authority": auth_conn,
+                                        "unit_id": unit_hex_conn,
+                                        "revision": 1
+                                    }),
+                                    other => panic!("unexpected host_deployment view {other}"),
+                                };
+                                let reply = wire::reply(
+                                    &relay_conn,
+                                    host_pk,
+                                    &wire::Reply {
+                                        query: q,
+                                        expires_at: nostr::Timestamp::now().as_secs()
+                                            + wire::PERMIT_SECONDS,
+                                        data,
+                                    },
+                                    nostr::Timestamp::now().as_secs(),
+                                )
+                                .unwrap();
+                                socket
+                                    .send(Message::Text(
+                                        serde_json::json!(["EVENT", sub, reply]).to_string().into(),
+                                    ))
+                                    .await
+                                    .unwrap();
+                            } else if msg[2]
+                                .get("kinds")
+                                .and_then(|k| k.as_array())
+                                .is_some_and(|ks| ks.iter().any(|k| k == 0))
+                            {
+                                socket
+                                    .send(Message::Text(
+                                        serde_json::json!(["EVENT", sub, renamed_conn])
+                                            .to_string()
+                                            .into(),
+                                    ))
+                                    .await
+                                    .unwrap();
+                            }
+                            socket
+                                .send(Message::Text(
+                                    serde_json::json!(["EOSE", sub]).to_string().into(),
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+    });
+
+    // Initial reconciliation applies the deployment and emits Applied receipt (no kind 0).
+    let mut ws = buzz_ws_client::NostrWsConnection::connect(&format!("ws://{addr}"))
+        .await
+        .unwrap();
+    host.reconcile_deployments(&mut ws, relay.public_key(), &g, &cat, &rev, &service)
+        .await
+        .unwrap();
+    drop(ws);
+    drop(host);
+    assert!(applied_receipt.lock().unwrap().is_some());
+
+    // Simulate buzz-hostd restart: reopen Host and run reconcile_deployments again.
+    let mut reopened_host = crate::registration::Host::at(&service.staging, false).unwrap();
+    let mut ws = buzz_ws_client::NostrWsConnection::connect(&format!("ws://{addr}"))
+        .await
+        .unwrap();
+    reopened_host
+        .reconcile_deployments(&mut ws, relay.public_key(), &g, &cat, &rev, &service)
+        .await
+        .unwrap();
+    drop(ws);
+
+    // Simulate buzz-hosted-agent@unit restart: run_user executes in child process.
+    let notify = dir.path().join("notify-dc2");
+    let sock = std::os::unix::net::UnixDatagram::bind(&notify).unwrap();
+    sock.set_nonblocking(true).unwrap();
+    let status = tokio::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "user_service::tests::design_check_2_restart_emits_zero_kind0_events",
+        ])
+        .env("BUZZ_DC2_CHILD_STATE", &service.staging)
+        .env("BUZZ_DC2_CHILD_UNIT", &unit)
+        .env("CREDENTIALS_DIRECTORY", service.dir(&unit))
+        .env("NOTIFY_SOCKET", &notify)
+        .status()
+        .await
+        .unwrap();
+    assert!(status.success(), "child run_user failed");
+    assert_eq!(
+        std::fs::read_to_string(workspace.join("conversation-invoked")).unwrap(),
+        "checked"
+    );
+    let mut buf = [0u8; 32];
+    assert_eq!(sock.recv(&mut buf).unwrap(), 7); // READY=1
+
+    let events = published.lock().unwrap();
+    assert!(!events.is_empty(), "expected 43104 reconciliation events");
+    assert_eq!(
+        events.iter().filter(|e| e.kind == Kind::Metadata).count(),
+        0,
+        "restart must emit 0 kind 0 metadata events"
+    );
+    server.abort();
+    let _ = server.await;
+}

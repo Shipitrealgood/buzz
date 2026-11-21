@@ -1,4 +1,4 @@
-use nostr::{Event, EventBuilder, NostrSigner, RelayUrl, Tag};
+use nostr::{Event, EventBuilder, Keys, NostrSigner, RelayUrl, Tag};
 use serde_json::Value;
 
 use crate::error::WsClientError;
@@ -187,5 +187,24 @@ pub async fn build_auth_event<S: NostrSigner>(
     builder
         .sign(signer)
         .await
+        .map_err(|e| WsClientError::EventBuilder(e.to_string()))
+}
+
+/// Synchronously builds a NIP-42 AUTH event signed by `keys`, optionally injecting a NIP-OA auth tag.
+pub fn build_auth_event_with_keys(
+    challenge: &str,
+    relay_url: &str,
+    keys: &Keys,
+    auth_tag: Option<&Tag>,
+) -> Result<Event, WsClientError> {
+    let url = RelayUrl::parse(relay_url).map_err(|e| WsClientError::Url(e.to_string()))?;
+    let builder = EventBuilder::auth(challenge, url);
+    let builder = if let Some(tag) = auth_tag {
+        builder.tags([tag.clone()])
+    } else {
+        builder
+    };
+    builder
+        .sign_with_keys(keys)
         .map_err(|e| WsClientError::EventBuilder(e.to_string()))
 }

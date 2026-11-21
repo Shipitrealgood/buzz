@@ -6,7 +6,9 @@ pub mod message;
 
 pub use connection::{publish_event, NostrWsConnection};
 pub use error::WsClientError;
-pub use message::{build_auth_event, parse_relay_message, OkResponse, RelayMessage};
+pub use message::{
+    build_auth_event, build_auth_event_with_keys, parse_relay_message, OkResponse, RelayMessage,
+};
 pub use tokio_tungstenite::tungstenite::http::{HeaderMap, HeaderName, HeaderValue};
 
 /// Explicit connector for a selected private-CA community.

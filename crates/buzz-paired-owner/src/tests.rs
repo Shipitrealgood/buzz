@@ -1,0 +1,1004 @@
+use super::*;
+use buzz_core::{
+    paired_host::{build_ack, verify_claim, Offer},
+    paired_message::{open, seal, sign_possession, Body, Possession, Route},
+};
+use nostr::PublicKey;
+const C: &str = "https://owner.example";
+struct Setup {
+    dir: tempfile::TempDir,
+    d: Device,
+    o: Keys,
+    h: Keys,
+    s: Scope,
+    b: Binding,
+}
+impl Setup {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let mut d = Device::at(&dir.path().join("state")).unwrap();
+        let o = Keys::generate();
+        let h = Keys::generate();
+        let t = now().unwrap();
+        let (offer, proof) = Offer::issue(C.into(), h.public_key(), t).unwrap();
+        let json=serde_json::json!({"v":1,"community":C,"generation":offer.generation,"host":offer.host.to_hex(),"expires_at":offer.expires_at,"proof":*proof.expose_hex()}).to_string();
+        assert!(d.pair("https://different.example", &o, &json).is_err());
+        let (s, claim) = d.pair(C, &o, &json).unwrap();
+        assert_eq!(
+            id(&claim).unwrap(),
+            id(&d.pair(C, &o, &json).unwrap().1).unwrap()
+        );
+        let c = verify_claim(
+            claim.event.get().as_bytes(),
+            &h,
+            &offer,
+            Some(o.public_key()),
+            &proof.digest(),
+            t,
+        )
+        .unwrap();
+        let ack = Packet {
+            event: serde_json::value::to_raw_value(&build_ack(&h, &c, t).unwrap()).unwrap(),
+            route: Route {
+                r: None,
+                prev: Some(id(&claim).unwrap()),
+                expires_at: offer.expires_at,
+            },
+        };
+        let b = Binding {
+            generation: s.generation.clone(),
+            host: s.host.to_hex(),
+            owner: s.owner.to_hex(),
+            state: "active".into(),
+            claim,
+            ack,
+            tombstone: None,
+            inventory: None,
+            high_water: None,
+        };
+        d.restore(C, &o, &b).unwrap();
+        Self { dir, d, o, h, s, b }
+    }
+    fn sign(&self, body: Body, ttl: u64) -> Packet {
+        let t = now().unwrap();
+        seal(&self.h, &self.s, body, t, t + ttl).unwrap()
+    }
+    fn inventory(&mut self) -> Packet {
+        self.inventory_chain().1
+    }
+    fn inventory_chain(&mut self) -> (Packet, Packet) {
+        let q = self.d.inventory_query(C, &self.o, &self.s).unwrap();
+        let Body::InventoryQuery { nonce, .. } =
+            open(&self.h, &self.s, &q, now().unwrap()).unwrap().body
+        else {
+            panic!()
+        };
+        let p = seal(
+            &self.h,
+            &self.s,
+            Body::Inventory {
+                query_id: id(&q).unwrap(),
+                nonce,
+                sequence: 1,
+                label: "Twin".into(),
+                runtimes: vec!["test/echo".into()],
+                capacity: 2,
+                catalog_revision: "ab".repeat(32),
+            },
+            now().unwrap(),
+            q.route.expires_at,
+        )
+        .unwrap();
+        self.d.accept_inventory(C, &self.o, &self.s, &p).unwrap();
+        (q, p)
+    }
+    fn draft(&self) -> Draft {
+        Draft {
+            runtime: "test/echo".into(),
+            name: "Remote".into(),
+            policy: Policy {
+                respond_to: "owner-only".into(),
+                respond_to_allowlist: vec![],
+                channel_add_policy: "owner_only".into(),
+            },
+            channels: vec!["2c84a2bb-c004-4431-93bb-d7e1af763d5c".into()],
+        }
+    }
+    fn candidate_offer(&self, r: &str, i: &str, confirm: &str, a: &Keys) -> (String, Packet) {
+        let agent = a.public_key().to_hex();
+        let t = now().unwrap();
+        let nonce = "e1".repeat(32);
+        let pop = sign_possession(
+            &self.s,
+            &Possession {
+                request_id: r,
+                intent_id: i,
+                confirm_id: confirm,
+                nonce: &nonce,
+                agent: a.public_key(),
+                expires_at: t + 60,
+            },
+            a,
+        )
+        .unwrap();
+        let offer = seal(
+            &self.h,
+            &self.s,
+            Body::KeyOffer {
+                request_id: r.into(),
+                intent_id: i.into(),
+                confirm_id: confirm.into(),
+                nonce,
+                agent: agent.clone(),
+                agent_sig: pop,
+            },
+            t,
+            t + 60,
+        )
+        .unwrap();
+        (agent, offer)
+    }
+    fn outgoing(&self, r: &str) -> Packet {
+        self.d.outgoing(C, &self.o, &self.s, r).unwrap().unwrap()
+    }
+}
+#[test]
+fn enroll_inventory_revocation_and_restart() {
+    let mut f = Setup::new();
+    assert!(f
+        .d
+        .create(C, &f.o, &f.s, &"01".repeat(32), f.draft())
+        .is_err());
+    let inv = f.inventory();
+    assert!(f.d.view(C, &f.o, &f.s).unwrap().fresh);
+    assert!(f.d.accept_inventory(C, &f.o, &f.s, &inv).is_err());
+    let mut fresh = Device::at(&f.dir.path().join("second-device")).unwrap();
+    assert!(fresh.restore("https://other.example", &f.o, &f.b).is_err());
+    assert!(fresh.restore(C, &Keys::generate(), &f.b).is_err());
+    fresh.restore(C, &f.o, &f.b).unwrap();
+    assert!(!fresh.view(C, &f.o, &f.s).unwrap().fresh);
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    assert!(!f.d.view(C, &f.o, &f.s).unwrap().fresh);
+    let p = f.d.unpair(C, &f.o, &f.s).unwrap();
+    assert_eq!(
+        id(&p).unwrap(),
+        id(&f.d.unpair(C, &f.o, &f.s).unwrap()).unwrap()
+    );
+    assert_eq!(f.d.view(C, &f.o, &f.s).unwrap().state, "unpair-pending");
+    for snapshot in ["fenced", "active"] {
+        f.b.state = snapshot.into();
+        f.d.restore(C, &f.o, &f.b).unwrap();
+        f.d = Device::at(&f.dir.path().join("state")).unwrap();
+        let deliveries = f.d.next_deliveries(C, &f.o).unwrap();
+        assert_eq!(deliveries.len(), 1);
+        let (scope, retry, claim) = &deliveries[0];
+        assert_eq!(scope, &f.s);
+        assert!(!claim);
+        assert_eq!(retry.event.get(), p.event.get());
+        assert_eq!(retry.route, p.route);
+        assert!(f.d.inventory_query(C, &f.o, &f.s).is_err());
+    }
+    f.b.tombstone = Some(f.sign(
+        Body::Unpaired {
+            pair_ack_id: id(&f.b.ack).unwrap(),
+            tombstone_nonce: "cc".repeat(32),
+        },
+        86400,
+    ));
+    f.d.restore(C, &f.o, &f.b).unwrap();
+    f.b.tombstone = None;
+    f.d.restore(C, &f.o, &f.b).unwrap();
+    assert!(f.d.next_deliveries(C, &f.o).unwrap().is_empty());
+    assert_eq!(f.d.view(C, &f.o, &f.s).unwrap().state, "unpaired");
+    assert!(f.d.inventory_query(C, &f.o, &f.s).is_err());
+}
+#[test]
+fn verified_precommit_closure_retires_an_undelivered_outbox_item() {
+    for (lost_activation, state, step) in [
+        (false, "expired", "expired"),
+        (false, "revoked-before-commit", "revoked"),
+        (true, "expired", "expired"),
+        (true, "revoked-before-commit", "revoked"),
+    ] {
+        let mut f = Setup::new();
+        let (query, inventory) = f.inventory_chain();
+        let (r, intent) =
+            f.d.create(C, &f.o, &f.s, &id(&inventory).unwrap(), f.draft())
+                .unwrap();
+        let i = id(&intent).unwrap();
+        let challenge = f.sign(
+            Body::Challenge {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                nonce: "a3".repeat(32),
+                phase: "generate".into(),
+            },
+            60,
+        );
+        f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+        let mut page = crate::create::Evidence {
+            summary: crate::history::Summary {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                commit_id: None,
+                terminal_id: None,
+            },
+            messages: vec![
+                f.b.claim.clone(),
+                f.b.ack.clone(),
+                query,
+                inventory,
+                intent,
+                challenge.clone(),
+            ],
+            unresolved: false,
+        };
+        let candidate = Keys::generate();
+        let mut committed_copy = None;
+        if lost_activation {
+            let confirm = f.outgoing(&r);
+            let (agent, offer) = f.candidate_offer(&r, &i, &id(&confirm).unwrap(), &candidate);
+            f.d.receive(C, &f.o, &f.s, &r, &offer, Some(&candidate.public_key()))
+                .unwrap();
+            let activate = f.outgoing(&r);
+            let commit = f.sign(
+                Body::Committed {
+                    request_id: r.clone(),
+                    intent_id: i.clone(),
+                    agent,
+                    offer_id: id(&offer).unwrap(),
+                    activate_id: id(&activate).unwrap(),
+                },
+                86400,
+            );
+            page.messages.extend([confirm, offer]);
+            // A separate branch actually delivered the activation and verified its commit.
+            let copy = f.dir.path().join("committed");
+            std::fs::copy(f.dir.path().join("state"), &copy).unwrap();
+            let mut d = Device::at(&copy).unwrap();
+            d.receive(C, &f.o, &f.s, &r, &commit, None).unwrap();
+            committed_copy = Some((d, activate, commit));
+        }
+        let terminal = |request: &str, parent: &str, agent: Option<String>| {
+            f.sign(
+                Body::Result {
+                    request_id: request.into(),
+                    intent_id: parent.into(),
+                    agent,
+                    commit_id: None,
+                    state: state.into(),
+                    steps: vec![step.into()],
+                },
+                86400,
+            )
+        };
+        // Both the host that includes its candidate and a closure identifying
+        // only the exact original request are supported by the signed schema.
+        let candidate_hint =
+            (lost_activation && state == "expired").then(|| candidate.public_key().to_hex());
+        let receipt = terminal(&r, &i, candidate_hint.clone());
+        let foreign_parent = terminal(&r, &"11".repeat(32), candidate_hint.clone());
+        let foreign_request = terminal(&"22".repeat(32), &i, candidate_hint);
+        let mut false_receipts = vec![foreign_parent, foreign_request];
+        if lost_activation {
+            false_receipts.push(terminal(
+                &r,
+                &i,
+                Some(Keys::generate().public_key().to_hex()),
+            ));
+        }
+        for false_receipt in false_receipts {
+            page.summary.terminal_id = Some(id(&false_receipt).unwrap());
+            page.messages.push(false_receipt);
+            assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            page.messages.pop();
+        }
+        page.summary.terminal_id = Some(id(&receipt).unwrap());
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.insert(0, receipt.clone());
+        let original = page.messages.remove(5); // signed intent, the terminal's actual predecessor
+        assert_eq!(id(&original).unwrap(), i);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.push(original);
+        if let Some((mut committed, activate, commit)) = committed_copy {
+            assert!(!committed.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            assert!(committed
+                .receive(C, &f.o, &f.s, &r, &receipt, None)
+                .is_err());
+            assert_eq!(
+                committed.request(C, &f.o, &f.s, &r).unwrap().state,
+                "committed"
+            );
+
+            page.messages.extend([activate, commit.clone()]);
+            for head in [None, Some(id(&commit).unwrap())] {
+                page.summary.commit_id = head;
+                assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            }
+            page.summary.commit_id = None;
+            page.messages.truncate(page.messages.len() - 2);
+        }
+        // This is the scheduler's observation point, before it handles status or
+        // replays business packets. Closing twice remains idempotent after restart.
+        for _ in 0..2 {
+            f.d = Device::at(&f.dir.path().join("state")).unwrap();
+            assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+            let view = f.d.request(C, &f.o, &f.s, &r).unwrap();
+            assert_eq!(view.state, state);
+            assert!(!view.evidence_incomplete);
+            assert!(f.d.outgoing(C, &f.o, &f.s, &r).unwrap().is_none());
+            assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+            assert!(f.d.receive(C, &f.o, &f.s, &r, &challenge, None).is_err());
+        }
+        let other = f.sign(
+            Body::Result {
+                request_id: r.clone(),
+                intent_id: i,
+                agent: None,
+                commit_id: None,
+                state: "failed".into(),
+                steps: vec!["catalog-changed".into()],
+            },
+            86400,
+        );
+        page.summary.terminal_id = Some(id(&other).unwrap());
+        page.messages[0] = other;
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, state);
+    }
+}
+
+#[test]
+fn only_initiating_tap_can_automate_credentials_after_exact_commit() {
+    let mut f = Setup::new();
+    let (inventory_query, inv) = f.inventory_chain();
+    let draft = f.draft();
+    let (r, i) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), draft)
+            .unwrap();
+    let intent_packet = i;
+    let i = id(&intent_packet).unwrap();
+    let challenge = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            nonce: "ab".repeat(32),
+            phase: "generate".into(),
+        },
+        60,
+    );
+    f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+    let confirm_packet = f.outgoing(&r);
+    let confirm = id(&confirm_packet).unwrap();
+    f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+    assert_eq!(id(&f.outgoing(&r)).unwrap(), confirm);
+    let hidden_host = Keys::generate();
+    let (other, p) = Offer::issue(C.into(), hidden_host.public_key(), now().unwrap()).unwrap();
+    let (_, foreign_offer) = f.candidate_offer(&r, &i, &confirm, &hidden_host);
+    f.d.pair(C, &f.o, &invitation(&other, &p.expose_hex()))
+        .unwrap();
+    assert!(f
+        .d
+        .receive(
+            C,
+            &f.o,
+            &f.s,
+            &r,
+            &foreign_offer,
+            Some(&hidden_host.public_key())
+        )
+        .is_err());
+    let desktop_agent = Keys::generate();
+    let (_, desktop_offer) = f.candidate_offer(&r, &i, &confirm, &desktop_agent);
+    let pk = desktop_agent.public_key();
+    f.d = f.d.with_local_identities(move || Ok(vec![pk]));
+    assert!(f
+        .d
+        .receive(C, &f.o, &f.s, &r, &desktop_offer, Some(&pk))
+        .is_err());
+    let a = Keys::generate();
+    let (agent, offer) = f.candidate_offer(&r, &i, &confirm, &a);
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &offer, None).is_err());
+    f.d.receive(C, &f.o, &f.s, &r, &offer, Some(&a.public_key()))
+        .unwrap();
+    let activate = f.outgoing(&r);
+    let make_commit = |act: String| {
+        f.sign(
+            Body::Committed {
+                request_id: r.clone(),
+                intent_id: i.clone(),
+                activate_id: act,
+                offer_id: id(&offer).unwrap(),
+                agent: agent.clone(),
+            },
+            86400,
+        )
+    };
+    let bad = make_commit("ab".repeat(32));
+    let good = make_commit(id(&activate).unwrap());
+    let mut detail = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            commit_id: Some(id(&good).unwrap()),
+            terminal_id: None,
+        },
+        messages: vec![
+            f.b.claim.clone(),
+            f.b.ack.clone(),
+            inventory_query,
+            inv,
+            intent_packet.clone(),
+            challenge.clone(),
+            confirm_packet.clone(),
+            offer.clone(),
+            activate.clone(),
+            good.clone(),
+        ],
+        unresolved: false,
+    };
+    for idx in 0..detail.messages.len() {
+        let saved = detail.messages.remove(idx);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+        assert!(f.d.receive(C, &f.o, &f.s, &r, &good, None).is_err());
+        assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+        detail.messages.insert(idx, saved);
+    }
+    // Return all packets in reverse order. Verification follows signed references.
+    detail.messages.reverse();
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    let copy = f.dir.path().join("newly-discovered");
+    std::fs::copy(f.dir.path().join("state"), &copy).unwrap();
+    let pk = a.public_key();
+    let mut interrupted = Device::at(&copy)
+        .unwrap()
+        .with_local_identities(move || Ok(vec![pk]));
+    assert!(interrupted.receive(C, &f.o, &f.s, &r, &good, None).is_err());
+    assert!(interrupted
+        .public_next(C, &f.o, &f.s, &r)
+        .unwrap()
+        .is_none());
+
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &bad, None).is_err());
+    assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+    assert!(f
+        .d
+        .receive("https://other.example", &f.o, &f.s, &r, &good, None)
+        .is_err());
+    assert!(f
+        .d
+        .receive(C, &Keys::generate(), &f.s, &r, &good, None)
+        .is_err());
+    let mut second = Device::at(&f.dir.path().join("elsewhere")).unwrap();
+    second.restore(C, &f.o, &f.b).unwrap();
+    assert!(second.receive(C, &f.o, &f.s, &r, &good, None).is_err());
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    f.d.unpair(C, &f.o, &f.s).unwrap();
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &challenge, None).is_err());
+    f.d.receive(C, &f.o, &f.s, &r, &good, None).unwrap();
+    let credential = f.outgoing(&r);
+    f.d.receive(C, &f.o, &f.s, &r, &good, None).unwrap();
+    assert_eq!(credential.event.get(), f.outgoing(&r).event.get());
+    let Body::Credentials {
+        commit_id,
+        registration,
+        oa,
+        ..
+    } = open(&f.h, &f.s, &credential, now().unwrap()).unwrap().body
+    else {
+        panic!()
+    };
+    assert_eq!(commit_id, id(&good).unwrap());
+    assert_eq!(registration.pubkey, f.o.public_key());
+    assert_eq!(oa[1], f.o.public_key().to_hex());
+    assert!(oa[2].is_empty());
+    let auth = serde_json::to_string(&oa).unwrap();
+    assert!(
+        buzz_sdk::nip_oa::verify_auth_tag(&auth, &PublicKey::from_hex(&agent).unwrap()).is_ok()
+    );
+    assert_eq!(
+        f.d.public_next(C, &f.o, &f.s, &r).unwrap().unwrap(),
+        registration
+    );
+    f.d.public_confirm(C, &f.o, &f.s, &r, &registration)
+        .unwrap();
+    let add = f.d.public_next(C, &f.o, &f.s, &r).unwrap().unwrap();
+    assert_eq!(add.kind.as_u16(), 9000);
+    let incomplete = Body::Result {
+        request_id: r.clone(),
+        intent_id: i.clone(),
+        agent: Some(agent.clone()),
+        commit_id: Some(commit_id.clone()),
+        state: "ready".into(),
+        steps: vec!["verified".into()],
+    };
+    let p = f.sign(incomplete, 86400);
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &p, None).is_err());
+    let mut steps: Vec<String> = [
+        "profile-verified",
+        "directory-verified",
+        "registration-verified",
+        "unit-active",
+        "presence-confirmed",
+        "verified",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    steps.push(format!("membership-verified:{}", f.draft().channels[0]));
+    let p = f.sign(
+        Body::Result {
+            request_id: r.clone(),
+            intent_id: i,
+            agent: Some(agent),
+            commit_id: Some(commit_id),
+            state: "ready".into(),
+            steps,
+        },
+        86400,
+    );
+    f.d.receive(C, &f.o, &f.s, &r, &p, None).unwrap();
+    assert_eq!(
+        f.d.request(C, &f.o, &f.s, &r).unwrap().state,
+        "pending-publication"
+    );
+    f.d.public_confirm(C, &f.o, &f.s, &r, &add).unwrap();
+    assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, "verifying");
+    f.d.record_verified_ready(C, &f.o, &f.s, &r).unwrap();
+    assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, "ready");
+    let summary=serde_json::from_value(serde_json::json!({"request_id":r,"intent_id":id(&intent_packet).unwrap(),"commit_id":id(&good).unwrap(),"terminal_id":id(&p).unwrap()})).unwrap();
+    detail.summary.terminal_id = Some(id(&p).unwrap());
+    detail.messages.extend([credential.clone(), p.clone()]);
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    let original = detail.summary.terminal_id.replace("ab".repeat(32));
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    detail.summary.terminal_id = original;
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &detail).unwrap());
+    let mut historical = vec![
+        p,
+        good,
+        offer,
+        challenge,
+        confirm_packet,
+        intent_packet,
+        activate,
+    ];
+    assert_eq!(
+        crate::history::inspect(&f.o, &f.s, &summary, &historical, false)
+            .unwrap()
+            .host_state,
+        "ready"
+    );
+    let mut misleading = historical.clone();
+    let Body::Result {
+        request_id,
+        intent_id,
+        commit_id,
+        agent,
+        ..
+    } = open(&f.o, &f.s, &misleading[0], now().unwrap())
+        .unwrap()
+        .body
+    else {
+        panic!()
+    };
+    misleading[0] = f.sign(
+        Body::Result {
+            request_id,
+            intent_id,
+            commit_id,
+            agent,
+            state: "ready".into(),
+            steps: vec!["unit-failed".into()],
+        },
+        86400,
+    );
+    let misleading_summary=serde_json::from_value(serde_json::json!({"request_id":r,"intent_id":id(&historical[5]).unwrap(),"commit_id":id(&historical[1]).unwrap(),"terminal_id":id(&misleading[0]).unwrap()})).unwrap();
+    assert!(crate::history::inspect(&f.o, &f.s, &misleading_summary, &misleading, false).is_err());
+    historical.pop();
+    assert!(crate::history::inspect(&f.o, &f.s, &summary, &historical, false).is_err());
+    assert!(second.requests(C, &f.o, &f.s).unwrap().is_empty());
+}
+
+#[test]
+fn status_replies_never_create_signing_authority() {
+    let mut f = Setup::new();
+    let inv = f.inventory();
+    let (r, i) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), f.draft())
+            .unwrap();
+    let query =
+        f.d.status_query(C, &f.o, &f.s, &r, "scoped-cursor")
+            .unwrap()
+            .unwrap();
+    assert!(f
+        .d
+        .status_query(C, &f.o, &f.s, &r, "different")
+        .unwrap()
+        .is_none());
+    let Body::StatusQuery {
+        intent_id, nonce, ..
+    } = open(&f.h, &f.s, &query, now().unwrap()).unwrap().body
+    else {
+        panic!()
+    };
+    let make = |nonce: String| {
+        f.sign(
+            Body::Status {
+                request_id: r.clone(),
+                intent_id: intent_id.clone(),
+                query_id: id(&query).unwrap(),
+                nonce,
+                state: "ready".into(),
+                commit_id: Some("14".repeat(32)),
+                terminal_id: Some("13".repeat(32)),
+            },
+            60,
+        )
+    };
+    let bad = make("dd".repeat(32));
+    let status = make(nonce);
+    assert!(f.d.status_response(C, &f.o, &f.s, &r, &bad).is_err());
+    f.d.status_response(C, &f.o, &f.s, &r, &status).unwrap();
+    assert_eq!(f.d.request(C, &f.o, &f.s, &r).unwrap().state, "pending");
+    assert!(f.d.public_next(C, &f.o, &f.s, &r).unwrap().is_none());
+    assert_eq!(id(&f.outgoing(&r)).unwrap(), id(&i).unwrap());
+    assert_eq!(f.d.requests(C, &f.o, &f.s).unwrap().len(), 1);
+    assert!(f
+        .d
+        .hosts("https://different.example", &f.o)
+        .unwrap()
+        .is_empty());
+}
+
+fn invitation(o: &Offer, proof: &str) -> String {
+    serde_json::json!({"v":1,"community":o.community,"generation":o.generation,"host":o.host.to_hex(),"expires_at":o.expires_at,"proof":proof}).to_string()
+}
+
+#[test]
+fn corrected_invitation_can_enroll_same_generation_and_exact_retry_survives_restart() {
+    let mut f = Setup::new();
+    let host = Keys::generate();
+    let wall = now().unwrap();
+    let (o, p) = Offer::issue(C.into(), host.public_key(), wall).unwrap();
+    let wrong = invitation(&o, &"01".repeat(32));
+    let right = invitation(&o, &p.expose_hex());
+    let (_, bad) = f.d.pair(C, &f.o, &wrong).unwrap();
+    assert!(verify_claim(
+        bad.event.get().as_bytes(),
+        &host,
+        &o,
+        None,
+        &p.digest(),
+        wall
+    )
+    .is_err());
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    assert_eq!(
+        id(&bad).unwrap(),
+        id(&f.d.pair(C, &f.o, &wrong).unwrap().1).unwrap()
+    );
+    let (s, good) = f.d.pair(C, &f.o, &right).unwrap();
+    assert_ne!(id(&good).unwrap(), id(&bad).unwrap());
+    let verified = verify_claim(
+        good.event.get().as_bytes(),
+        &host,
+        &o,
+        None,
+        &p.digest(),
+        wall,
+    )
+    .unwrap();
+    let ack = Packet {
+        event: serde_json::value::to_raw_value(&build_ack(&host, &verified, wall).unwrap())
+            .unwrap(),
+        route: Route {
+            r: None,
+            prev: Some(id(&good).unwrap()),
+            expires_at: o.expires_at,
+        },
+    };
+    // A delayed acknowledgement of a previously submitted correct claim is still ours.
+    f.d.pair(C, &f.o, &wrong).unwrap();
+    f.d.restore(
+        C,
+        &f.o,
+        &Binding {
+            generation: s.generation.clone(),
+            owner: s.owner.to_hex(),
+            host: s.host.to_hex(),
+            state: "active".into(),
+            claim: good,
+            ack,
+            tombstone: None,
+            inventory: None,
+            high_water: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(f.d.view(C, &f.o, &s).unwrap().state, "paired");
+}
+
+#[test]
+fn retry_rotation_delivers_ninth_pending_revocation_across_restart() {
+    let mut f = Setup::new();
+    let mut all = std::collections::BTreeSet::new();
+    for _ in 0..9 {
+        let h = Keys::generate();
+        let wall = now().unwrap();
+        let (o, p) = Offer::issue(C.into(), h.public_key(), wall).unwrap();
+        let (s, claim) = f.d.pair(C, &f.o, &invitation(&o, &p.expose_hex())).unwrap();
+        let c = verify_claim(
+            claim.event.get().as_bytes(),
+            &h,
+            &o,
+            None,
+            &p.digest(),
+            wall,
+        )
+        .unwrap();
+        let ack = Packet {
+            event: serde_json::value::to_raw_value(&build_ack(&h, &c, wall).unwrap()).unwrap(),
+            route: Route {
+                r: None,
+                prev: Some(id(&claim).unwrap()),
+                expires_at: o.expires_at,
+            },
+        };
+        f.d.restore(
+            C,
+            &f.o,
+            &Binding {
+                generation: s.generation.clone(),
+                owner: s.owner.to_hex(),
+                host: s.host.to_hex(),
+                state: "active".into(),
+                claim,
+                ack,
+                tombstone: None,
+                inventory: None,
+                high_water: None,
+            },
+        )
+        .unwrap();
+        f.d.unpair(C, &f.o, &s).unwrap();
+        all.insert(s.generation);
+    }
+    f.b.state = "fenced".into();
+    f.d.restore(C, &f.o, &f.b).unwrap();
+    let first = f.d.next_deliveries(C, &f.o).unwrap();
+    assert_eq!(first.len(), 8);
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    let next = f.d.next_deliveries(C, &f.o).unwrap();
+    let seen = first
+        .iter()
+        .chain(&next)
+        .map(|(s, _, claim)| {
+            assert!(!claim);
+            s.generation.clone()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(seen, all);
+}
+
+#[test]
+fn short_signed_inventory_cannot_grant_a_minute_of_display_freshness() {
+    let fraction = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_millis();
+    if fraction > 400 {
+        std::thread::sleep(std::time::Duration::from_millis((1001 - fraction).into()));
+    }
+    let mut f = Setup::new();
+    let q = f.d.inventory_query(C, &f.o, &f.s).unwrap();
+    let Body::InventoryQuery { nonce, .. } = open(&f.h, &f.s, &q, now().unwrap()).unwrap().body
+    else {
+        panic!()
+    };
+    let p = f.sign(
+        Body::Inventory {
+            nonce,
+            query_id: id(&q).unwrap(),
+            sequence: 1,
+            label: "Short".into(),
+            runtimes: vec!["test/echo".into()],
+            capacity: 1,
+            catalog_revision: "11".repeat(32),
+        },
+        1,
+    );
+    f.d.accept_inventory(C, &f.o, &f.s, &p).unwrap();
+    let v = f.d.view(C, &f.o, &f.s).unwrap();
+    assert_eq!(v.inventory_id.unwrap(), id(&p).unwrap());
+    assert!(v.fresh_for_ms <= 1000);
+}
+
+#[test]
+fn repeated_tap_is_idempotent_after_ipc_loss_and_process_restart() {
+    let mut f = Setup::new();
+    let inventory = id(&f.inventory()).unwrap();
+    let r = random().unwrap();
+    let initial =
+        f.d.create_once(C, &f.o, &f.s, &inventory, &r, f.draft())
+            .unwrap()
+            .1;
+    let draft = f.draft();
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    let replay =
+        f.d.create_once(C, &f.o, &f.s, &inventory, &r, draft.clone())
+            .unwrap()
+            .1;
+    assert_eq!(initial.event.get(), replay.event.get());
+    let mut changed = draft.clone();
+    changed.name = "Different".into();
+    assert!(f
+        .d
+        .create_once(C, &f.o, &f.s, &inventory, &r, changed)
+        .is_err());
+    assert!(f
+        .d
+        .create_once(C, &f.o, &f.s, &"00".repeat(32), &r, draft.clone())
+        .is_err());
+    assert!(f
+        .d
+        .create_once(C, &Keys::generate(), &f.s, &inventory, &r, draft)
+        .is_err());
+    assert_eq!(f.d.requests(C, &f.o, &f.s).unwrap().len(), 1);
+}
+
+#[test]
+fn directory_retains_history_gap_across_worker_success_failure_and_verified_recovery() {
+    let mut f = Setup::new();
+    let (q, inv) = f.inventory_chain();
+    let (r, intent) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), f.draft())
+            .unwrap();
+    let i = id(&intent).unwrap();
+    let challenge = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            phase: "generate".into(),
+            nonce: "ab".repeat(32),
+        },
+        60,
+    );
+    f.d.receive(C, &f.o, &f.s, &r, &challenge, None).unwrap();
+    let confirm = f.outgoing(&r);
+    let mut page = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            commit_id: None,
+            terminal_id: None,
+        },
+        messages: vec![confirm.clone(), intent.clone()],
+        unresolved: true,
+    };
+    let view = |d: &Device| {
+        d.hosts(C, &f.o)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .requests
+            .pop()
+            .unwrap()
+    };
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
+    f.d = Device::at(&f.dir.path().join("state")).unwrap();
+    assert_eq!(view(&f.d).state, "pending");
+    assert!(view(&f.d).evidence_incomplete);
+    f.d.note_issue(C, &f.o, &f.s, &r, Some("Community offline.".into()))
+        .unwrap();
+    page.unresolved = false;
+    assert!(
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "signed intent and confirm alone are incomplete"
+    );
+    page.messages
+        .extend([f.b.claim.clone(), f.b.ack.clone(), q.clone(), inv.clone()]);
+    assert!(
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "host challenge missing"
+    );
+    let wrong = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: i.clone(),
+            phase: "generate".into(),
+            nonce: "11".repeat(32),
+        },
+        60,
+    );
+    page.messages.push(wrong.clone());
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &wrong, None).is_err());
+    assert_eq!(id(&f.outgoing(&r)).unwrap(), id(&confirm).unwrap());
+    let mut altered = challenge.clone();
+    altered.route.prev = Some(id(&inv).unwrap());
+    *page.messages.last_mut().unwrap() = altered;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    let mut bad = challenge.clone();
+    bad.route.expires_at += 1;
+    *page.messages.last_mut().unwrap() = bad;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    let mut forged = challenge.clone();
+    let mut wire: serde_json::Value = serde_json::from_str(forged.event.get()).unwrap();
+    wire["sig"] = serde_json::json!("00".repeat(64));
+    forged.event = serde_json::value::to_raw_value(&wire).unwrap();
+    *page.messages.last_mut().unwrap() = forged;
+    assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    *page.messages.last_mut().unwrap() = challenge;
+    let foreign_parent = f.sign(
+        Body::Challenge {
+            request_id: r.clone(),
+            intent_id: "cd".repeat(32),
+            phase: "generate".into(),
+            nonce: "82".repeat(32),
+        },
+        60,
+    );
+    page.messages.push(foreign_parent);
+    assert!(!f.d.observe_history(C,&f.o,&f.s,&r,&page).unwrap(),"a signed packet with a missing parent invalidates the page even when all locally saved packets are present");
+    page.messages.pop();
+    for idx in 0..page.messages.len() {
+        let packet = page.messages.remove(idx);
+        assert!(!f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+        page.messages.insert(idx, packet);
+    }
+    assert!(view(&f.d).evidence_incomplete);
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    f.d.note_issue(C, &f.o, &f.s, &r, None).unwrap();
+    let repaired = view(&f.d);
+    assert!(!repaired.evidence_incomplete);
+    assert!(repaired.issue.is_none());
+    assert_eq!(repaired.state, "pending");
+}
+
+#[test]
+fn fresh_complete_replacement_challenge_recovers_an_expired_unaccepted_confirm() {
+    let mut f = Setup::new();
+    let (q, inv) = f.inventory_chain();
+    let (r, intent) =
+        f.d.create(C, &f.o, &f.s, &id(&inv).unwrap(), f.draft())
+            .unwrap();
+    let intent_id = id(&intent).unwrap();
+    let challenge = |nonce: String| Body::Challenge {
+        request_id: r.clone(),
+        intent_id: intent_id.clone(),
+        phase: "generate".into(),
+        nonce,
+    };
+    let old = f.sign(challenge("11".repeat(32)), 2);
+    f.d.receive(C, &f.o, &f.s, &r, &old, None).unwrap();
+    let old_answer = id(&f.outgoing(&r)).unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let fresh = f.sign(challenge("12".repeat(32)), 60);
+    let mut page = crate::create::Evidence {
+        summary: crate::history::Summary {
+            request_id: r.clone(),
+            intent_id,
+            commit_id: None,
+            terminal_id: None,
+        },
+        messages: vec![
+            f.b.claim.clone(),
+            f.b.ack.clone(),
+            inv,
+            intent,
+            fresh.clone(),
+        ],
+        unresolved: false,
+    };
+    assert!(
+        !f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap(),
+        "the replacement also needs a complete root"
+    );
+    assert!(f.d.receive(C, &f.o, &f.s, &r, &fresh, None).is_err());
+    page.messages.push(q);
+    assert!(f.d.observe_history(C, &f.o, &f.s, &r, &page).unwrap());
+    f.d.receive(C, &f.o, &f.s, &r, &fresh, None).unwrap();
+    assert_ne!(id(&f.outgoing(&r)).unwrap(), old_answer);
+}
